@@ -1,0 +1,6 @@
+{
+  "name": "Atelier Studio — Visual Web Code Designer",
+  "description": "Upload a project ZIP or import a GitHub repository to visually inspect, drag-reorder, resize, edit text, and restyle pages with 3-stop and 4-stop hex gradients synced directly to the source code.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
