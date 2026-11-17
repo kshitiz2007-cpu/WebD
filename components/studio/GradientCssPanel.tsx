@@ -1,17 +1,28 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Check, Copy, Sparkles, X } from 'lucide-react';
+import { BookmarkPlus, Check, Copy, Sparkles, X } from 'lucide-react';
 import {
   buildGradientCss,
   generateElementGradientCss,
   GRADIENT_PRESETS,
   GradientCssFormat,
+  isFullHexInput,
   isValidHexInput,
   normalizeHex,
   parseGradientCss,
   resizeGradientStops,
 } from '@/lib/studio/gradient';
+import {
+  deleteCustomGradientPreset,
+  getCustomGradientsSnapshot,
+  getLastGradientSnapshot,
+  parseCustomGradientPresetsJson,
+  parseLastGradientJson,
+  saveCustomGradientPreset,
+  saveLastGradientConfig,
+  subscribeGradientStorage,
+} from '@/lib/studio/gradient-persistence';
 import {
   ElementSourcePatch,
   GradientConfig,
@@ -34,13 +45,31 @@ function buildSelectorHint(selected: StudioElementSnapshot | null): string {
   return rawClass ? `${selected.tagName}.${rawClass}` : selected.tagName;
 }
 
-function deriveMultiStopConfig(selected: StudioElementSnapshot | null): GradientConfig {
+function deriveMultiStopConfig(
+  selected: StudioElementSnapshot | null,
+  persistedLast: GradientConfig | null
+): GradientConfig {
+  const fallback: GradientConfig =
+    persistedLast && persistedLast.stops.length >= 2
+      ? {
+          type: persistedLast.type === 'radial' ? 'radial' : 'linear',
+          angle: persistedLast.angle,
+          stopCount: persistedLast.stopCount === 4 ? 4 : 3,
+          stops:
+            persistedLast.stopCount === 4 || persistedLast.stopCount === 3
+              ? persistedLast.stops.slice(0, persistedLast.stopCount)
+              : resizeGradientStops(persistedLast.stops, 3),
+          target: persistedLast.target,
+        }
+      : {
+          ...GRADIENT_PRESETS[0].config,
+          target: 'background',
+        };
+
   if (!selected) {
-    return {
-      ...GRADIENT_PRESETS[0].config,
-      target: 'background',
-    };
+    return fallback;
   }
+
   const bgImg =
     selected.inlineStyles['background-image'] || selected.computedStyles.backgroundImage;
   const bgCol =
@@ -51,6 +80,14 @@ function deriveMultiStopConfig(selected: StudioElementSnapshot | null): Gradient
     selected.computedStyles.backgroundClip;
 
   const parsed = parseGradientCss(bgImg, bgCol, selected.computedStyles.color, clip);
+  if (parsed.type === 'solid') {
+    // Keep the user's persisted gradient hex stops instead of discarding them back to defaults
+    return {
+      ...fallback,
+      target: parsed.target,
+    };
+  }
+
   const stopCount: 3 | 4 = parsed.stopCount === 4 ? 4 : 3;
   return {
     type: parsed.type === 'radial' ? 'radial' : 'linear',
@@ -89,31 +126,70 @@ export default function GradientCssPanel({
   onClose,
   isBottomSheet = false,
 }: GradientCssPanelProps) {
-  const [config, setConfig] = useState<GradientConfig>(() => deriveMultiStopConfig(selected));
+  const lastGradientJson = React.useSyncExternalStore(
+    subscribeGradientStorage,
+    getLastGradientSnapshot,
+    () => ''
+  );
+  const customGradientsJson = React.useSyncExternalStore(
+    subscribeGradientStorage,
+    getCustomGradientsSnapshot,
+    () => '[]'
+  );
+
+  const persistedLast = useMemo(
+    () => parseLastGradientJson(lastGradientJson),
+    [lastGradientJson]
+  );
+  const customPresets = useMemo(
+    () => parseCustomGradientPresetsJson(customGradientsJson),
+    [customGradientsJson]
+  );
+
+  const [config, setConfig] = useState<GradientConfig>(() =>
+    deriveMultiStopConfig(selected, persistedLast)
+  );
   const [hexDrafts, setHexDrafts] = useState<string[]>(() =>
-    deriveMultiStopConfig(selected).stops.map((s) => s.color)
+    deriveMultiStopConfig(selected, persistedLast).stops.map((s) => s.color)
   );
-  const [prevSelectedKey, setPrevSelectedKey] = useState<string | null>(
-    selected ? `${selected.studioId}:${selected.inlineStyles['background-image'] || ''}` : null
+  const [prevSelectedId, setPrevSelectedId] = useState<string | null>(selected?.studioId ?? null);
+  const [prevExternalCss, setPrevExternalCss] = useState<string>(
+    selected?.inlineStyles['background-image'] || ''
   );
+  const [prevPersistedJson, setPrevPersistedJson] = useState<string>(lastGradientJson);
   const [cssFormat, setCssFormat] = useState<GradientCssFormat>('rule');
   const [copied, setCopied] = useState(false);
 
-  const selectedKey = selected
-    ? `${selected.studioId}:${selected.inlineStyles['background-image'] || ''}:${selected.inlineStyles['background-clip'] || ''}`
-    : null;
+  const currentSelectedId = selected?.studioId ?? null;
+  const currentExternalCss = selected
+    ? `${selected.inlineStyles['background-image'] || ''}|${selected.inlineStyles['background-clip'] || ''}`
+    : '';
 
-  if (selectedKey !== prevSelectedKey) {
-    setPrevSelectedKey(selectedKey);
-    if (selected) {
-      const next = deriveMultiStopConfig(selected);
-      setConfig(next);
-      setHexDrafts(next.stops.map((s) => s.color));
+  if (
+    currentSelectedId !== prevSelectedId ||
+    currentExternalCss !== prevExternalCss ||
+    (!selected && lastGradientJson !== prevPersistedJson)
+  ) {
+    const elementChanged = currentSelectedId !== prevSelectedId;
+    setPrevSelectedId(currentSelectedId);
+    setPrevExternalCss(currentExternalCss);
+    setPrevPersistedJson(lastGradientJson);
+
+    const derived = deriveMultiStopConfig(selected, persistedLast);
+    const derivedCss = buildGradientCss(derived);
+    const localCss = buildGradientCss(config);
+
+    if (elementChanged || (!selected && lastGradientJson) || (selected?.inlineStyles['background-image'] && derivedCss !== localCss)) {
+      setConfig(derived);
+      setHexDrafts(derived.stops.map((s) => s.color));
     }
   }
 
   const updateAndApply = (next: GradientConfig, commit: boolean) => {
     setConfig(next);
+    if (commit) {
+      saveLastGradientConfig(next);
+    }
     if (!selected) return;
     const styles = toElementStyles(next);
     if (commit) {
@@ -142,10 +218,26 @@ export default function GradientCssPanel({
     const nextDrafts = [...hexDrafts];
     nextDrafts[idx] = raw;
     setHexDrafts(nextDrafts);
-    if (isValidHexInput(raw)) {
+    if (isFullHexInput(raw)) {
       const normalized = normalizeHex(raw);
       const nextStops = config.stops.map((s, i) => (i === idx ? { ...s, color: normalized } : s));
       updateAndApply({ ...config, stops: nextStops }, true);
+    }
+  };
+
+  const commitStopHexDraft = (idx: number) => {
+    const raw = hexDrafts[idx] ?? '';
+    if (isValidHexInput(raw)) {
+      const normalized = normalizeHex(raw);
+      const nextDrafts = [...hexDrafts];
+      nextDrafts[idx] = normalized;
+      setHexDrafts(nextDrafts);
+      const nextStops = config.stops.map((s, i) => (i === idx ? { ...s, color: normalized } : s));
+      updateAndApply({ ...config, stops: nextStops }, true);
+    } else {
+      const nextDrafts = [...hexDrafts];
+      nextDrafts[idx] = config.stops[idx]?.color || '#2563EB';
+      setHexDrafts(nextDrafts);
     }
   };
 
@@ -189,7 +281,7 @@ export default function GradientCssPanel({
       className={`flex w-full flex-col bg-white ${
         isBottomSheet
           ? 'h-full rounded-t-2xl'
-          : 'shrink-0 border-t border-slate-200 max-h-[296px]'
+          : 'shrink-0 border-t border-slate-200 max-h-[304px]'
       }`}
     >
       {/* Header Bar */}
@@ -211,6 +303,14 @@ export default function GradientCssPanel({
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => saveCustomGradientPreset(config)}
+            className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-700 hover:border-blue-400 hover:text-blue-700"
+          >
+            <BookmarkPlus className="h-3 w-3" />
+            <span>Save Swatch</span>
+          </button>
           <button
             type="button"
             disabled={!selected}
@@ -336,7 +436,7 @@ export default function GradientCssPanel({
                   onChange={(e) =>
                     updateAndApply({ ...config, angle: Number(e.target.value) || 0 }, true)
                   }
-                  className="h-7 w-12 rounded border border-slate-200 px-1 text-right font-mono text-[11px] tabular-nums text-slate-800"
+                  className="h-7 w-14 rounded border border-slate-200 px-1.5 text-right font-mono text-[11px] tabular-nums text-slate-800 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 />
               </div>
             )}
@@ -392,6 +492,10 @@ export default function GradientCssPanel({
                   aria-label={`Panel stop ${idx + 1} hex`}
                   value={hexDrafts[idx] ?? stop.color}
                   onChange={(e) => handleStopHexInput(idx, e.target.value)}
+                  onBlur={() => commitStopHexDraft(idx)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitStopHexDraft(idx);
+                  }}
                   className="h-8 sm:h-6 min-w-0 flex-1 rounded border border-slate-200 bg-white px-1.5 font-mono text-[11px] uppercase text-slate-800 focus:border-blue-500 focus:outline-none"
                 />
                 <div className="flex items-center gap-0.5 shrink-0">
@@ -402,7 +506,7 @@ export default function GradientCssPanel({
                     max={100}
                     value={stop.position}
                     onChange={(e) => handleStopPosChange(idx, Number(e.target.value))}
-                    className="h-8 sm:h-6 w-14 sm:w-12 rounded border border-slate-200 bg-white px-1.5 text-right font-mono text-[11px] tabular-nums text-slate-700"
+                    className="h-8 sm:h-6 w-14 rounded border border-slate-200 bg-white px-1.5 text-right font-mono text-[11px] tabular-nums text-slate-700 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                   <span className="text-[10px] text-slate-400">%</span>
                 </div>
@@ -410,32 +514,82 @@ export default function GradientCssPanel({
             ))}
           </div>
 
-          {/* Presets matching selected stop count */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] font-medium text-slate-500 whitespace-nowrap">
-              {config.stopCount}-Stop Presets:
-            </span>
-            {matchingPresets.map((preset) => {
-              const nextCfg: GradientConfig = { ...preset.config, target: config.target };
-              return (
-                <button
-                  key={preset.name}
-                  type="button"
-                  title={preset.name}
-                  onClick={() => {
-                    setHexDrafts(nextCfg.stops.map((s) => s.color));
-                    updateAndApply(nextCfg, true);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-700 hover:border-blue-400 hover:bg-blue-50/40"
-                >
-                  <span
-                    className="h-3 w-5 rounded-xs border border-slate-200"
-                    style={{ background: buildGradientCss(nextCfg) }}
-                  />
-                  <span>{preset.name.replace(/\s*\(\d-Stop\)/, '')}</span>
-                </button>
-              );
-            })}
+          {/* Saved Custom Swatches + Presets matching selected stop count */}
+          <div className="space-y-1">
+            {customPresets.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-medium text-blue-600 whitespace-nowrap">
+                  Saved:
+                </span>
+                {customPresets.map((preset) => {
+                  const nextCfg: GradientConfig = {
+                    ...preset.config,
+                    target: config.target,
+                    stopCount: preset.config.stopCount === 4 ? 4 : 3,
+                    stops:
+                      preset.config.stopCount >= 3
+                        ? preset.config.stops
+                        : resizeGradientStops(preset.config.stops, 3),
+                  };
+                  return (
+                    <div
+                      key={preset.id}
+                      className="inline-flex items-center rounded border border-blue-200 bg-blue-50/40 px-1 py-0.5 text-[10px] font-medium text-slate-700"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHexDrafts(nextCfg.stops.map((s) => s.color));
+                          updateAndApply(nextCfg, true);
+                        }}
+                        className="inline-flex items-center gap-1 hover:text-blue-700"
+                      >
+                        <span
+                          className="h-3 w-4 rounded-xs border border-slate-200"
+                          style={{ background: buildGradientCss(nextCfg) }}
+                        />
+                        <span className="max-w-[110px] truncate">{preset.name}</span>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Remove saved preset ${preset.name}`}
+                        onClick={() => deleteCustomGradientPreset(preset.id)}
+                        className="ml-1 rounded p-0.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-medium text-slate-500 whitespace-nowrap">
+                {config.stopCount}-Stop Presets:
+              </span>
+              {matchingPresets.map((preset) => {
+                const nextCfg: GradientConfig = { ...preset.config, target: config.target };
+                return (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    title={preset.name}
+                    onClick={() => {
+                      setHexDrafts(nextCfg.stops.map((s) => s.color));
+                      updateAndApply(nextCfg, true);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-700 hover:border-blue-400 hover:bg-blue-50/40"
+                  >
+                    <span
+                      className="h-3 w-5 rounded-xs border border-slate-200"
+                      style={{ background: buildGradientCss(nextCfg) }}
+                    />
+                    <span>{preset.name.replace(/\s*\(\d-Stop\)/, '')}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 

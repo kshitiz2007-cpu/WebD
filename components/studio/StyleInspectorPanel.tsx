@@ -17,6 +17,11 @@ import {
 } from 'lucide-react';
 import GradientEditor from './GradientEditor';
 import { normalizeHex, parseGradientCss } from '@/lib/studio/gradient';
+import {
+  getLastGradientSnapshot,
+  parseLastGradientJson,
+  subscribeGradientStorage,
+} from '@/lib/studio/gradient-persistence';
 import { ElementSourcePatch, GradientConfig, StudioElementSnapshot } from '@/lib/studio/types';
 
 interface StyleInspectorPanelProps {
@@ -69,10 +74,14 @@ export default function StyleInspectorPanel({
   const [borderColorHex, setBorderColorHex] = useState('#E2E8F0');
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
-  const [prevSelected, setPrevSelected] = useState<StudioElementSnapshot | null>(null);
+  const [prevSelectedKey, setPrevSelectedKey] = useState<string | null>(null);
 
-  if (selected !== prevSelected) {
-    setPrevSelected(selected);
+  const selectedSyncKey = selected
+    ? `${selected.studioId}|${selected.textContent}|${selected.computedStyles.color}|${selected.computedStyles.borderColor}|${selected.inlineStyles.transform || selected.computedStyles.transform}`
+    : null;
+
+  if (selectedSyncKey !== prevSelectedKey) {
+    setPrevSelectedKey(selectedSyncKey);
     if (selected) {
       setTextDraft(selected.textContent || '');
       setTextColorHex(normalizeHex(selected.computedStyles.color || '#0F172A', '#0F172A'));
@@ -85,9 +94,19 @@ export default function StyleInspectorPanel({
     }
   }
 
+  const lastGradientJson = React.useSyncExternalStore(
+    subscribeGradientStorage,
+    getLastGradientSnapshot,
+    () => ''
+  );
+  const persistedLast = useMemo(
+    () => parseLastGradientJson(lastGradientJson),
+    [lastGradientJson]
+  );
+
   const gradientValue = useMemo(() => {
     if (!selected) {
-      return parseGradientCss();
+      return persistedLast || parseGradientCss();
     }
     const bgImg =
       selected.inlineStyles['background-image'] ||
@@ -99,8 +118,17 @@ export default function StyleInspectorPanel({
       selected.inlineStyles['-webkit-background-clip'] ||
       selected.inlineStyles['background-clip'] ||
       selected.computedStyles.backgroundClip;
-    return parseGradientCss(bgImg, bgCol, selected.computedStyles.color, clip);
-  }, [selected]);
+    const parsed = parseGradientCss(bgImg, bgCol, selected.computedStyles.color, clip);
+    if (parsed.type === 'solid' && persistedLast && persistedLast.stops.length >= 2) {
+      return {
+        ...parsed,
+        angle: persistedLast.angle,
+        stopCount: persistedLast.stopCount,
+        stops: persistedLast.stops,
+      };
+    }
+    return parsed;
+  }, [selected, persistedLast]);
 
   if (!selected) {
     return (
@@ -368,6 +396,7 @@ export default function StyleInspectorPanel({
                 Fill &amp; Multi-Stop Gradient
               </h3>
               <GradientEditor
+                selectionKey={selected.studioId}
                 value={gradientValue}
                 onPreview={(cfg, css) => handleGradientApply(cfg, css, false)}
                 onCommit={(cfg, css) => handleGradientApply(cfg, css, true)}

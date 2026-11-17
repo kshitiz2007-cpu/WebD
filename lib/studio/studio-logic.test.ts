@@ -3,10 +3,18 @@ import assert from 'node:assert/strict';
 import {
   buildGradientCss,
   generateElementGradientCss,
+  isFullHexInput,
   parseGradientCss,
   resizeGradientStops,
   normalizeHex,
 } from './gradient';
+import {
+  deleteCustomGradientPreset,
+  listCustomGradientPresets,
+  loadLastGradientConfig,
+  saveCustomGradientPreset,
+  saveLastGradientConfig,
+} from './gradient-persistence';
 import { normalizeProjectFiles, scanProjectStructure } from './project-scanner';
 import {
   scanElements,
@@ -259,5 +267,48 @@ test('draft-storage saves, lists, deletes, autosaves, and restores modified Virt
 
   const afterDelete = deleteDraftFromStorage(draft.id, mockStorage);
   assert.equal(afterDelete.length, 0);
+});
+
+test('gradient-persistence saves and reloads custom multi-stop hex config and presets', () => {
+  const mem = new Map<string, string>();
+  const mockStorage: StorageLike = {
+    getItem: (k) => mem.get(k) ?? null,
+    setItem: (k, v) => {
+      mem.set(k, v);
+    },
+    removeItem: (k) => {
+      mem.delete(k);
+    },
+  };
+
+  assert.equal(isFullHexInput('#FF5500'), true);
+  assert.equal(isFullHexInput('#FF5'), false);
+
+  const customCfg = {
+    type: 'linear' as const,
+    angle: 125,
+    stopCount: 4 as const,
+    stops: [
+      { color: '#FF5500', position: 0 },
+      { color: '#E11D48', position: 35 },
+      { color: '#7C3AED', position: 70 },
+      { color: '#0EA5E9', position: 100 },
+    ],
+    target: 'background' as const,
+  };
+
+  assert.equal(saveLastGradientConfig(customCfg, mockStorage), true);
+  const reloaded = loadLastGradientConfig(mockStorage);
+  assert.equal(reloaded?.stopCount, 4);
+  assert.equal(reloaded?.stops[0].color, '#FF5500');
+  assert.equal(reloaded?.stops[2].color, '#7C3AED');
+
+  const presets = saveCustomGradientPreset(customCfg, 'Brand Sunset', mockStorage);
+  assert.equal(presets.length, 1);
+  assert.equal(presets[0].name, 'Brand Sunset');
+  assert.equal(listCustomGradientPresets(mockStorage).length, 1);
+
+  const remaining = deleteCustomGradientPreset(presets[0].id, mockStorage);
+  assert.equal(remaining.length, 0);
 });
 

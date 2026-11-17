@@ -30,6 +30,10 @@ export function isValidHexInput(input: string): boolean {
   return /^#?[0-9a-fA-F]{6}$/.test(input.trim()) || /^#[0-9a-fA-F]{3}$/.test(input.trim());
 }
 
+export function isFullHexInput(input: string): boolean {
+  return /^#?[0-9a-fA-F]{6}$/.test(input.trim());
+}
+
 export function createDefaultStops(count: 2 | 3 | 4, baseHex = '#0F172A'): GradientStop[] {
   const normalizedBase = normalizeHex(baseHex, '#0F172A');
   if (count === 2) {

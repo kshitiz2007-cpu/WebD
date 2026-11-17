@@ -1,16 +1,27 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { BookmarkPlus, X } from 'lucide-react';
 import {
   buildGradientCss,
   GRADIENT_PRESETS,
+  isFullHexInput,
   isValidHexInput,
   normalizeHex,
   resizeGradientStops,
 } from '@/lib/studio/gradient';
+import {
+  deleteCustomGradientPreset,
+  getCustomGradientsSnapshot,
+  parseCustomGradientPresetsJson,
+  saveCustomGradientPreset,
+  saveLastGradientConfig,
+  subscribeGradientStorage,
+} from '@/lib/studio/gradient-persistence';
 import { GradientConfig } from '@/lib/studio/types';
 
 interface GradientEditorProps {
+  selectionKey?: string;
   value: GradientConfig;
   onPreview: (config: GradientConfig, cssValue: string) => void;
   onCommit: (config: GradientConfig, cssValue: string) => void;
@@ -18,6 +29,7 @@ interface GradientEditorProps {
 }
 
 export default function GradientEditor({
+  selectionKey = '',
   value,
   onPreview,
   onCommit,
@@ -25,17 +37,37 @@ export default function GradientEditor({
 }: GradientEditorProps) {
   const [config, setConfig] = useState<GradientConfig>(value);
   const [hexDrafts, setHexDrafts] = useState<string[]>(value.stops.map((s) => s.color));
-  const [prevValue, setPrevValue] = useState<GradientConfig>(value);
+  const incomingSignature = `${selectionKey}:${value.type}:${value.target}:${value.stopCount}:${buildGradientCss(value)}`;
+  const [prevSignature, setPrevSignature] = useState<string>(incomingSignature);
 
-  if (prevValue !== value) {
-    setPrevValue(value);
-    setConfig(value);
-    setHexDrafts(value.stops.map((s) => s.color));
+  const customGradientsJson = React.useSyncExternalStore(
+    subscribeGradientStorage,
+    getCustomGradientsSnapshot,
+    () => '[]'
+  );
+  const customPresets = useMemo(
+    () => parseCustomGradientPresetsJson(customGradientsJson),
+    [customGradientsJson]
+  );
+
+  if (prevSignature !== incomingSignature) {
+    setPrevSignature(incomingSignature);
+    const localCss = buildGradientCss(config);
+    const incomingCss = buildGradientCss(value);
+    const elementChanged = !prevSignature.startsWith(`${selectionKey}:`);
+    // Only overwrite local drafts if the user switched elements or an external change altered the CSS
+    if (elementChanged || incomingCss !== localCss || value.type !== config.type || value.target !== config.target) {
+      setConfig(value);
+      setHexDrafts(value.stops.map((s) => s.color));
+    }
   }
 
   const applyUpdate = (next: GradientConfig, commit: boolean) => {
     setConfig(next);
     const css = buildGradientCss(next);
+    if (commit && next.type !== 'solid') {
+      saveLastGradientConfig(next);
+    }
     if (commit) onCommit(next, css);
     else onPreview(next, css);
   };
@@ -70,10 +102,26 @@ export default function GradientEditor({
     const nextDrafts = [...hexDrafts];
     nextDrafts[idx] = raw;
     setHexDrafts(nextDrafts);
-    if (isValidHexInput(raw)) {
+    if (isFullHexInput(raw)) {
       const normalized = normalizeHex(raw);
       const nextStops = config.stops.map((s, i) => (i === idx ? { ...s, color: normalized } : s));
       applyUpdate({ ...config, stops: nextStops }, true);
+    }
+  };
+
+  const commitStopHexDraft = (idx: number) => {
+    const raw = hexDrafts[idx] ?? '';
+    if (isValidHexInput(raw)) {
+      const normalized = normalizeHex(raw);
+      const nextDrafts = [...hexDrafts];
+      nextDrafts[idx] = normalized;
+      setHexDrafts(nextDrafts);
+      const nextStops = config.stops.map((s, i) => (i === idx ? { ...s, color: normalized } : s));
+      applyUpdate({ ...config, stops: nextStops }, true);
+    } else {
+      const nextDrafts = [...hexDrafts];
+      nextDrafts[idx] = config.stops[idx]?.color || '#2563EB';
+      setHexDrafts(nextDrafts);
     }
   };
 
@@ -166,6 +214,10 @@ export default function GradientEditor({
             type="text"
             value={hexDrafts[0] ?? '#FFFFFF'}
             onChange={(e) => handleStopHexInput(0, e.target.value)}
+            onBlur={() => commitStopHexDraft(0)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitStopHexDraft(0);
+            }}
             placeholder="#FFFFFF"
             className="h-9 sm:h-8 flex-1 rounded-md border border-slate-200 bg-white px-2.5 font-mono text-xs uppercase text-slate-800 focus:border-blue-500 focus:outline-none"
           />
@@ -276,6 +328,10 @@ export default function GradientEditor({
                   aria-label={`Stop ${idx + 1} hex`}
                   value={hexDrafts[idx] ?? stop.color}
                   onChange={(e) => handleStopHexInput(idx, e.target.value)}
+                  onBlur={() => commitStopHexDraft(idx)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitStopHexDraft(idx);
+                  }}
                   placeholder="#000000"
                   className="h-9 sm:h-7 min-w-0 flex-1 rounded border border-slate-200 bg-white px-2 font-mono text-xs uppercase text-slate-800 focus:border-blue-500 focus:outline-none"
                 />
@@ -287,7 +343,7 @@ export default function GradientEditor({
                     max={100}
                     value={stop.position}
                     onChange={(e) => handleStopPosChange(idx, Number(e.target.value), true)}
-                    className="h-9 sm:h-7 w-14 sm:w-12 rounded border border-slate-200 bg-white px-1 text-right font-mono text-xs sm:text-[11px] tabular-nums text-slate-700"
+                    className="h-9 sm:h-7 w-14 rounded border border-slate-200 bg-white px-1.5 text-right font-mono text-xs sm:text-[11px] tabular-nums text-slate-700 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                   <span className="text-[10px] text-slate-400">%</span>
                 </div>
@@ -295,8 +351,55 @@ export default function GradientEditor({
             ))}
           </div>
 
-          {/* Curated 3-Stop & 4-Stop Gradient Presets */}
+          {/* Saved Custom Hex Palettes */}
           <div>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <p className="text-[11px] font-medium text-slate-500">Saved Hex Swatches</p>
+              <button
+                type="button"
+                onClick={() => saveCustomGradientPreset(config)}
+                className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-700 hover:border-blue-400 hover:text-blue-700"
+              >
+                <BookmarkPlus className="h-3 w-3" />
+                <span>Save Hexes</span>
+              </button>
+            </div>
+            {customPresets.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {customPresets.map((preset) => {
+                  const full: GradientConfig = { ...preset.config, target: config.target };
+                  const bg = buildGradientCss(full);
+                  return (
+                    <div
+                      key={preset.id}
+                      className="group relative inline-flex items-center rounded border border-slate-200 bg-white p-0.5"
+                    >
+                      <button
+                        type="button"
+                        title={preset.name}
+                        aria-label={`Apply saved ${preset.name}`}
+                        onClick={() => {
+                          setHexDrafts(full.stops.map((s) => s.color));
+                          applyUpdate(full, true);
+                        }}
+                        className="h-5 w-8 rounded-xs"
+                        style={{ background: bg }}
+                      />
+                      <button
+                        type="button"
+                        aria-label={`Delete saved ${preset.name}`}
+                        onClick={() => deleteCustomGradientPreset(preset.id)}
+                        className="ml-0.5 rounded p-0.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Curated 3-Stop & 4-Stop Gradient Presets */}
             <p className="mb-1.5 text-[11px] font-medium text-slate-500">Quick Palettes</p>
             <div className="grid grid-cols-6 gap-1.5">
               {GRADIENT_PRESETS.map((preset) => {
