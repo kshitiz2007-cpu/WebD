@@ -101,10 +101,11 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
   }
   function setControlValue(target, value) {
     var next = String(value == null ? '' : value);
-    if ('value' in target) {
-      var proto = target.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype
-        : target.tagName === 'SELECT' ? HTMLSelectElement.prototype
-        : HTMLInputElement.prototype;
+    var proto = target.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype
+      : target.tagName === 'SELECT' ? HTMLSelectElement.prototype
+      : target.tagName === 'INPUT' ? HTMLInputElement.prototype
+      : null;
+    if (proto) {
       var descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
       if (descriptor && descriptor.set) descriptor.set.call(target, next);
       else target.value = next;
