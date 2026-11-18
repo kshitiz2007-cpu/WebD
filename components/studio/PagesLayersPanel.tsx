@@ -26,7 +26,8 @@ interface PagesLayersPanelProps {
   pages: ProjectPage[];
   activeRoute: string;
   onSelectPage: (route: string) => void;
-  onCreatePage?: (title: string, slug: string, template: PageTemplatePreset) => boolean;\n  onCreateSiteKit?: () => boolean;
+  onCreatePage?: (title: string, slug: string, template: PageTemplatePreset) => boolean;
+  onCreateSiteKit?: () => boolean;
   components?: ProjectComponentInfo[];
   isolatedComponentPath?: string | null;
   onSelectComponent?: (filePath: string) => void;
@@ -77,7 +78,8 @@ export default function PagesLayersPanel({
   const [newPageTitle, setNewPageTitle] = useState('New Page');
   const [newPageSlug, setNewPageSlug] = useState('new-page');
   const [pageTemplate, setPageTemplate] = useState<PageTemplatePreset>('landing');
-  const [pageError, setPageError] = useState('');\n  const [siteKitError, setSiteKitError] = useState('');
+  const [pageError, setPageError] = useState('');
+  const [siteKitError, setSiteKitError] = useState('');
 
   const toggleCollapse = (id: string) => {
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
