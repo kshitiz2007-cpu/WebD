@@ -754,3 +754,57 @@ export function duplicateElementInSource(
   const block = code.slice(el.openStart, el.closeEnd);
   return code.slice(0, el.closeEnd) + '\n' + block + code.slice(el.closeEnd);
 }
+
+export interface ElementSourceMeta {
+  index: number;
+  tagName: string;
+  className: string;
+  isDynamicClassName: boolean;
+  inlineStyles: Record<string, string>;
+  parentIndex: number;
+  childIndices: number[];
+}
+
+export function readElementMeta(
+  code: string,
+  elementIndex: number,
+  isHtml: boolean
+): ElementSourceMeta | null {
+  const elements = scanElements(code, isHtml);
+  const el = elements[elementIndex];
+  if (!el) return null;
+
+  const openTag = code.slice(el.openStart, el.openEnd);
+  const classAttrName = isHtml ? 'class' : 'className';
+  const foundClass = findAttributeRange(openTag, classAttrName, isHtml);
+  let className = '';
+  let isDynamicClassName = false;
+  if (foundClass) {
+    if (foundClass.kind === 'expr') {
+      isDynamicClassName = true;
+    } else {
+      const raw = openTag.slice(foundClass.valueStart, foundClass.valueEnd);
+      className = raw.replace(/^['"]|['"]$/g, '');
+    }
+  }
+
+  const foundStyle = findAttributeRange(openTag, 'style', isHtml);
+  let inlineStyles: Record<string, string> = {};
+  if (foundStyle) {
+    const rawStyle = openTag.slice(foundStyle.valueStart, foundStyle.valueEnd);
+    inlineStyles = isHtml
+      ? parseHtmlStyleAttr(rawStyle)
+      : parseJsxStyleObject(rawStyle).entries;
+  }
+
+  return {
+    index: el.index,
+    tagName: el.tagName,
+    className,
+    isDynamicClassName,
+    inlineStyles,
+    parentIndex: el.parentIndex,
+    childIndices: el.childIndices,
+  };
+}
+

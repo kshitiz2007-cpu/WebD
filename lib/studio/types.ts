@@ -39,6 +39,7 @@ export interface ElementRect {
 
 export interface StudioElementSnapshot {
   studioId: string;
+  instanceStudioId?: string;
   filePath: string;
   elementIndex: number;
   tagName: string;

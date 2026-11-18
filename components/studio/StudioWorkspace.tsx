@@ -1,28 +1,61 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Code2, Layers, Monitor, SlidersHorizontal, Smartphone, Sparkles, Tablet } from 'lucide-react';
+import { Code2, Layers, Monitor, Palette, SlidersHorizontal, Smartphone, Sparkles, Tablet } from 'lucide-react';
 import TopToolbar from './TopToolbar';
 import PagesLayersPanel from './PagesLayersPanel';
 import VisualCanvas from './VisualCanvas';
 import StyleInspectorPanel from './StyleInspectorPanel';
 import GradientCssPanel from './GradientCssPanel';
+import GlobalStylesPanel from './GlobalStylesPanel';
 import ImportProjectModal from './ImportProjectModal';
 import DraftsModal from './DraftsModal';
+import ReactLibraryModal from './ReactLibraryModal';
+import SmartAlignerPanel from './SmartAlignerPanel';
 import CodeDrawer from './CodeDrawer';
 import {
   applyElementPatchToSource,
   deleteElementInSource,
   duplicateElementInSource,
   moveElementSiblingInSource,
+  readElementMeta,
+  scanElements,
 } from '@/lib/studio/source-editor';
 import {
+  AlignBreakpointScope,
+  AutoAlignMode,
+  BlockRedesignPattern,
+  HorizontalAlign,
+  SpacingDensity,
+  VerticalAlign,
+  WidthPreset,
+  alignElementClassName,
+  applyWidthAndSpacingToClassName,
+  autoAlignSourceCode,
+  redesignBlockClassName,
+  resolveEffectiveBreakpoint,
+  scopeElementPatchToBreakpoint,
+} from '@/lib/studio/smart-aligner';
+import {
+  ComponentInsertPosition,
+  ComponentTemplatePreset,
   createComponentFileTemplate,
   extractSelectionToComponent,
+  insertComponentIntoSource,
+  insertJsxSnippetIntoSource,
   patchJsxPropInSource,
+  replaceElementWithComponentInSource,
   scanComponentUsagesInFile,
   scanProjectComponents,
 } from '@/lib/studio/component-editor';
+import {
+  addPackageDependencyToFiles,
+  buildEsmShUrl,
+  injectLibraryImportIntoSource,
+  parsePackageDependencies,
+  removePackageDependencyFromFiles,
+  scanExternalImportsInSource,
+} from '@/lib/studio/library-importer';
 import {
   clearAutosaveProgress,
   createDraftSnapshot,
@@ -68,11 +101,26 @@ export default function StudioWorkspace() {
   const [desktopLeftOpen, setDesktopLeftOpen] = useState<boolean>(true);
   const [desktopRightOpen, setDesktopRightOpen] = useState<boolean>(true);
   const [desktopGradientOpen, setDesktopGradientOpen] = useState<boolean>(true);
+  const [desktopGlobalStylesOpen, setDesktopGlobalStylesOpen] = useState<boolean>(false);
+  const [desktopSmartAlignerOpen, setDesktopSmartAlignerOpen] = useState<boolean>(false);
   const [compactLeftOpen, setCompactLeftOpen] = useState<boolean>(false);
   const [compactRightOpen, setCompactRightOpen] = useState<boolean>(false);
   const [compactGradientOpen, setCompactGradientOpen] = useState<boolean>(false);
+  const [compactGlobalStylesOpen, setCompactGlobalStylesOpen] = useState<boolean>(false);
+  const [compactSmartAlignerOpen, setCompactSmartAlignerOpen] = useState<boolean>(false);
+  const [alignBreakpointScope, setAlignBreakpointScope] = useState<AlignBreakpointScope>('auto');
   const [snapEnabled, setSnapEnabled] = useState<boolean>(true);
   const [isolatedComponentPath, setIsolatedComponentPath] = useState<string | null>(null);
+  const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
+  const [externalLibVersion, setExternalLibVersion] = useState(0);
+  const [pendingSelectStudioId, setPendingSelectStudioId] = useState<string | null>(null);
+  const [lastPageTarget, setLastPageTarget] = useState<{
+    route: string;
+    filePath: string;
+    elementIndex: number;
+    label: string;
+  } | null>(null);
+  const requestedLibsRef = useRef<Set<string>>(new Set());
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const isCompactViewport = React.useSyncExternalStore(
@@ -98,12 +146,16 @@ export default function StudioWorkspace() {
   const showLeftPanel = isCompactViewport ? compactLeftOpen : desktopLeftOpen;
   const showRightPanel = isCompactViewport ? compactRightOpen : desktopRightOpen;
   const showGradientPanel = isCompactViewport ? compactGradientOpen : desktopGradientOpen;
+  const showGlobalStylesPanel = isCompactViewport ? compactGlobalStylesOpen : desktopGlobalStylesOpen;
+  const showSmartAligner = isCompactViewport ? compactSmartAlignerOpen : desktopSmartAlignerOpen;
 
   const handleToggleLeftPanel = useCallback(() => {
     if (isCompactViewport) {
       setCompactLeftOpen((v) => !v);
       setCompactRightOpen(false);
       setCompactGradientOpen(false);
+      setCompactGlobalStylesOpen(false);
+      setCompactSmartAlignerOpen(false);
     } else {
       setDesktopLeftOpen((v) => !v);
     }
@@ -114,6 +166,8 @@ export default function StudioWorkspace() {
       setCompactRightOpen((v) => !v);
       setCompactLeftOpen(false);
       setCompactGradientOpen(false);
+      setCompactGlobalStylesOpen(false);
+      setCompactSmartAlignerOpen(false);
     } else {
       setDesktopRightOpen((v) => !v);
     }
@@ -124,8 +178,55 @@ export default function StudioWorkspace() {
       setCompactGradientOpen((v) => !v);
       setCompactLeftOpen(false);
       setCompactRightOpen(false);
+      setCompactGlobalStylesOpen(false);
+      setCompactSmartAlignerOpen(false);
     } else {
-      setDesktopGradientOpen((v) => !v);
+      setDesktopGradientOpen((v) => {
+        const next = !v;
+        if (next) {
+          setDesktopSmartAlignerOpen(false);
+          setDesktopGlobalStylesOpen(false);
+        }
+        return next;
+      });
+    }
+  }, [isCompactViewport]);
+
+  const handleToggleGlobalStylesPanel = useCallback(() => {
+    if (isCompactViewport) {
+      setCompactGlobalStylesOpen((v) => !v);
+      setCompactLeftOpen(false);
+      setCompactRightOpen(false);
+      setCompactGradientOpen(false);
+      setCompactSmartAlignerOpen(false);
+    } else {
+      setDesktopGlobalStylesOpen((v) => {
+        const next = !v;
+        if (next) {
+          setDesktopGradientOpen(false);
+          setDesktopSmartAlignerOpen(false);
+        }
+        return next;
+      });
+    }
+  }, [isCompactViewport]);
+
+  const handleToggleSmartAligner = useCallback(() => {
+    if (isCompactViewport) {
+      setCompactSmartAlignerOpen((v) => !v);
+      setCompactLeftOpen(false);
+      setCompactRightOpen(false);
+      setCompactGradientOpen(false);
+      setCompactGlobalStylesOpen(false);
+    } else {
+      setDesktopSmartAlignerOpen((v) => {
+        const next = !v;
+        if (next) {
+          setDesktopGradientOpen(false);
+          setDesktopGlobalStylesOpen(false);
+        }
+        return next;
+      });
     }
   }, [isCompactViewport]);
 
@@ -169,6 +270,54 @@ export default function StudioWorkspace() {
     );
   }, [selected?.filePath, canvasTargetPage.filePath, project.files, projectComponents]);
 
+  const packageDependencies = useMemo(
+    () => parsePackageDependencies(project.files),
+    [project.files]
+  );
+
+  const selectedFileExternalImports = useMemo(() => {
+    const targetFile = selected?.filePath || canvasTargetPage.filePath;
+    return scanExternalImportsInSource(project.files[targetFile] || '');
+  }, [selected?.filePath, canvasTargetPage.filePath, project.files]);
+
+  const preloadExternalLibrary = useCallback((packageName: string) => {
+    if (typeof window === 'undefined') return;
+    const clean = packageName.trim();
+    if (!clean || requestedLibsRef.current.has(clean)) return;
+    requestedLibsRef.current.add(clean);
+
+    const win = window as unknown as Record<string, Record<string, Record<string, unknown>>>;
+    const rt = win.__STUDIO_RUNTIME__ || {};
+    const cache = rt.ExternalLibs || {};
+    if (cache[clean]) return;
+
+    const esmUrl = buildEsmShUrl(clean);
+    import(/* webpackIgnore: true */ esmUrl)
+      .then((mod) => {
+        const nextRt = win.__STUDIO_RUNTIME__ || {};
+        nextRt.ExternalLibs = {
+          ...(nextRt.ExternalLibs || {}),
+          [clean]: mod,
+        };
+        win.__STUDIO_RUNTIME__ = nextRt;
+        setExternalLibVersion((v) => v + 1);
+      })
+      .catch(() => {
+        // Fallback shim or proxy in preview-runner stays active if CDN is unreachable
+      });
+  }, []);
+
+  useEffect(() => {
+    const onLibRequest = (ev: MessageEvent) => {
+      const msg = ev.data || {};
+      if (msg.type === 'studio:request-lib' && typeof msg.packageName === 'string') {
+        preloadExternalLibrary(msg.packageName);
+      }
+    };
+    window.addEventListener('message', onLibRequest);
+    return () => window.removeEventListener('message', onLibRequest);
+  }, [preloadExternalLibrary]);
+
   // Compile real Tailwind CSS whenever project structure or CSS files change
   const cssSignature = useMemo(() => {
     const cssText = project.globalCssPaths.map((p) => project.files[p] || '').join('\n');
@@ -180,12 +329,13 @@ export default function StudioWorkspace() {
   }, [project.files, project.globalCssPaths]);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
         const res = await fetch('/api/compile-css', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             css: cssSignature.cssText,
             sources: [cssSignature.sourceText],
@@ -193,16 +343,16 @@ export default function StudioWorkspace() {
         });
         if (!res.ok) return;
         const data = await res.json();
-        if (!cancelled && typeof data.css === 'string') {
+        if (!controller.signal.aborted && typeof data.css === 'string') {
           setCompiledTailwindCss(data.css);
         }
       } catch {
-        // Keep previous compiled CSS on transient errors
+        // Keep previous compiled CSS on abort or transient errors
       }
-    }, 80);
+    }, 16);
 
     return () => {
-      cancelled = true;
+      controller.abort();
       clearTimeout(timer);
     };
   }, [cssSignature]);
@@ -211,7 +361,14 @@ export default function StudioWorkspace() {
     (nextFiles: Record<string, string>, touchedFile?: string) => {
       setHistoryPast((prev) => [...prev.slice(-49), project.files]);
       setHistoryFuture([]);
-      setProject((prev) => ({ ...prev, files: nextFiles }));
+      const nextCssPaths = Object.keys(nextFiles)
+        .filter((p) => /\.css$/i.test(p))
+        .sort();
+      setProject((prev) => ({
+        ...prev,
+        files: nextFiles,
+        globalCssPaths: nextCssPaths,
+      }));
       if (touchedFile) {
         setCodeDrawerFile(touchedFile);
       }
@@ -219,12 +376,32 @@ export default function StudioWorkspace() {
     [project.files]
   );
 
+  const handleUpdateFileContent = useCallback(
+    (filePath: string, content: string) => {
+      if (project.files[filePath] === content) return;
+      commitFilesMutation({ ...project.files, [filePath]: content }, filePath);
+    },
+    [project.files, commitFilesMutation]
+  );
+
+  const handleOpenInMonaco = useCallback((filePath: string) => {
+    setDesktopGlobalStylesOpen(false);
+    setDesktopGradientOpen(false);
+    setDesktopSmartAlignerOpen(false);
+    setCompactGlobalStylesOpen(false);
+    setCodeDrawerFile(filePath);
+    setIsCodeDrawerOpen(true);
+  }, []);
+
   const handleUndo = useCallback(() => {
     if (historyPast.length === 0) return;
     const previous = historyPast[historyPast.length - 1];
     setHistoryPast((prev) => prev.slice(0, -1));
     setHistoryFuture((prev) => [project.files, ...prev.slice(0, 49)]);
-    setProject((prev) => ({ ...prev, files: previous }));
+    const nextCssPaths = Object.keys(previous)
+      .filter((p) => /\.css$/i.test(p))
+      .sort();
+    setProject((prev) => ({ ...prev, files: previous, globalCssPaths: nextCssPaths }));
   }, [historyPast, project.files]);
 
   const handleRedo = useCallback(() => {
@@ -232,13 +409,22 @@ export default function StudioWorkspace() {
     const next = historyFuture[0];
     setHistoryFuture((prev) => prev.slice(1));
     setHistoryPast((prev) => [...prev.slice(-49), project.files]);
-    setProject((prev) => ({ ...prev, files: next }));
+    const nextCssPaths = Object.keys(next)
+      .filter((p) => /\.css$/i.test(p))
+      .sort();
+    setProject((prev) => ({ ...prev, files: next, globalCssPaths: nextCssPaths }));
   }, [historyFuture, project.files]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          target.closest('.monaco-editor'))
+      ) {
         return;
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
@@ -266,11 +452,19 @@ export default function StudioWorkspace() {
       const currentCode = project.files[filePath];
       if (!currentCode) return;
       const isHtml = /\.html?$/i.test(filePath);
-      const updatedCode = applyElementPatchToSource(currentCode, elementIndex, isHtml, patch);
+      const effectiveBp = resolveEffectiveBreakpoint(alignBreakpointScope, viewport);
+      const scopedPatch = scopeElementPatchToBreakpoint({
+        code: currentCode,
+        elementIndex,
+        isHtml,
+        patch,
+        breakpoint: effectiveBp,
+      });
+      const updatedCode = applyElementPatchToSource(currentCode, elementIndex, isHtml, scopedPatch);
       if (updatedCode === currentCode) return;
       commitFilesMutation({ ...project.files, [filePath]: updatedCode }, filePath);
     },
-    [project.files, commitFilesMutation]
+    [project.files, alignBreakpointScope, viewport, commitFilesMutation]
   );
 
   const handleMoveSibling = useCallback(
@@ -278,12 +472,41 @@ export default function StudioWorkspace() {
       const currentCode = project.files[filePath];
       if (!currentCode) return;
       const isHtml = /\.html?$/i.test(filePath);
+      const elsBefore = scanElements(currentCode, isHtml);
+      const elBefore = elsBefore[elementIndex];
       const updatedCode = moveElementSiblingInSource(currentCode, elementIndex, targetIndex, isHtml);
       if (updatedCode === currentCode) return;
-      setSelected(null);
+      if (elBefore && elBefore.parentIndex >= 0) {
+        const elsAfter = scanElements(updatedCode, isHtml);
+        const parentAfter = elsAfter[elBefore.parentIndex];
+        const movedNewIndex = parentAfter?.childIndices[targetIndex];
+        if (movedNewIndex !== undefined) {
+          setPendingSelectStudioId(`${filePath}::${movedNewIndex}`);
+        }
+      }
       commitFilesMutation({ ...project.files, [filePath]: updatedCode }, filePath);
     },
     [project.files, commitFilesMutation]
+  );
+
+  const handleClearPendingSelect = useCallback(() => {
+    setPendingSelectStudioId(null);
+  }, []);
+
+  const handleSelectElement = useCallback(
+    (snap: StudioElementSnapshot) => {
+      setSelected(snap);
+      if (snap?.filePath) setCodeDrawerFile(snap.filePath);
+      if (snap && !activeIsolatedPath && snap.filePath === activePage.filePath) {
+        setLastPageTarget({
+          route: activePage.route,
+          filePath: snap.filePath,
+          elementIndex: snap.elementIndex,
+          label: `<${snap.tagName}>`,
+        });
+      }
+    },
+    [activeIsolatedPath, activePage.filePath, activePage.route]
   );
 
   const handleDuplicate = useCallback(
@@ -340,18 +563,181 @@ export default function StudioWorkspace() {
   }, [activePage.filePath]);
 
   const handleCreateComponent = useCallback(
-    (rawName: string) => {
-      const created = createComponentFileTemplate(rawName);
+    (rawName: string, preset: ComponentTemplatePreset = 'card') => {
+      const created = createComponentFileTemplate(rawName, preset);
       let targetPath = created.filePath;
       let counter = 2;
       while (project.files[targetPath]) {
         targetPath = `components/${created.componentName}${counter}.tsx`;
         counter += 1;
       }
-      const nextFiles = { ...project.files, [targetPath]: created.code };
+      const nextCreated =
+        targetPath === created.filePath
+          ? created
+          : createComponentFileTemplate(`${created.componentName}${counter - 1}`, preset);
+      const nextFiles = { ...project.files, [targetPath]: nextCreated.code };
       commitFilesMutation(nextFiles, targetPath);
       setIsolatedComponentPath(targetPath);
       setSelected(null);
+    },
+    [project.files, commitFilesMutation]
+  );
+
+  const handleReplaceWithComponent = useCallback(
+    (targetFilePath: string, elementIndex: number, componentFilePath: string) => {
+      const targetCode = project.files[targetFilePath];
+      const comp = projectComponents.find((c) => c.filePath === componentFilePath);
+      if (!targetCode || !comp) return;
+      const defaultProps: Record<string, string> = {};
+      for (const p of comp.props) {
+        if (p.defaultValue !== undefined) defaultProps[p.name] = p.defaultValue;
+      }
+      const updated = replaceElementWithComponentInSource({
+        targetCode,
+        targetFilePath,
+        elementIndex,
+        componentName: comp.name,
+        componentFilePath: comp.filePath,
+        componentCode: project.files[comp.filePath],
+        props: defaultProps,
+      });
+      if (!updated || updated === targetCode) return;
+      setSelected(null);
+      commitFilesMutation({ ...project.files, [targetFilePath]: updated }, targetFilePath);
+    },
+    [project.files, projectComponents, commitFilesMutation]
+  );
+
+  const handleInsertComponent = useCallback(
+    (
+      targetFilePath: string,
+      elementIndex: number,
+      position: ComponentInsertPosition,
+      componentFilePath: string
+    ) => {
+      const targetCode = project.files[targetFilePath];
+      const comp = projectComponents.find((c) => c.filePath === componentFilePath);
+      if (!targetCode || !comp) return;
+      const updated = insertComponentIntoSource({
+        targetCode,
+        targetFilePath,
+        targetElementIndex: elementIndex,
+        position,
+        componentName: comp.name,
+        componentFilePath: comp.filePath,
+        componentCode: project.files[comp.filePath],
+      });
+      if (!updated || updated === targetCode) return;
+      setSelected(null);
+      commitFilesMutation({ ...project.files, [targetFilePath]: updated }, targetFilePath);
+    },
+    [project.files, projectComponents, commitFilesMutation]
+  );
+
+  const handleInsertComponentOnPage = useCallback(
+    (componentFilePath: string, explicitPosition?: ComponentInsertPosition) => {
+      const targetFilePath = activePage.filePath;
+      const targetCode = project.files[targetFilePath];
+      const comp = projectComponents.find((c) => c.filePath === componentFilePath);
+      if (!targetCode || !comp) return;
+
+      const useCurrentSelection = selected && selected.filePath === targetFilePath;
+      const useRememberedTarget =
+        !useCurrentSelection &&
+        lastPageTarget &&
+        lastPageTarget.filePath === targetFilePath;
+
+      const targetIndex = useCurrentSelection
+        ? selected.elementIndex
+        : useRememberedTarget
+        ? lastPageTarget.elementIndex
+        : 0;
+      const pos: ComponentInsertPosition =
+        explicitPosition ||
+        (useCurrentSelection || useRememberedTarget ? 'after' : 'inside-end');
+
+      const updated = insertComponentIntoSource({
+        targetCode,
+        targetFilePath,
+        targetElementIndex: targetIndex,
+        position: pos,
+        componentName: comp.name,
+        componentFilePath: comp.filePath,
+        componentCode: project.files[comp.filePath],
+      });
+      if (!updated || updated === targetCode) return;
+
+      setIsolatedComponentPath(null);
+      setSelected(null);
+      commitFilesMutation({ ...project.files, [targetFilePath]: updated }, targetFilePath);
+    },
+    [
+      activePage.filePath,
+      project.files,
+      projectComponents,
+      selected,
+      lastPageTarget,
+      commitFilesMutation,
+    ]
+  );
+
+  const handleInsertIsolatedComponent = useCallback(
+    (position: ComponentInsertPosition) => {
+      if (!activeIsolatedPath) return;
+      handleInsertComponentOnPage(activeIsolatedPath, position);
+    },
+    [activeIsolatedPath, handleInsertComponentOnPage]
+  );
+
+  const handleImportReactLibrary = useCallback(
+    (params: {
+      packageName: string;
+      version?: string;
+      importMode: 'named' | 'default' | 'namespace';
+      identifiers: string[];
+      targetFilePath: string;
+      sampleJsx?: string;
+    }) => {
+      const { packageName, version, importMode, identifiers, targetFilePath, sampleJsx } = params;
+      const currentTargetCode = project.files[targetFilePath];
+      if (!currentTargetCode) {
+        return { ok: false, error: 'Target source file not found.' };
+      }
+
+      let nextFiles = addPackageDependencyToFiles(project.files, packageName, version);
+      let updatedSource = injectLibraryImportIntoSource(currentTargetCode, {
+        packageName,
+        importMode,
+        identifiers,
+      });
+
+      if (sampleJsx && /\.(tsx|jsx)$/i.test(targetFilePath)) {
+        const targetIdx =
+          selected && selected.filePath === targetFilePath ? selected.elementIndex : 0;
+        const withSnippet = insertJsxSnippetIntoSource({
+          targetCode: updatedSource,
+          targetElementIndex: targetIdx,
+          position: 'inside-end',
+          jsxSnippet: sampleJsx,
+        });
+        if (withSnippet) {
+          updatedSource = withSnippet;
+        }
+      }
+
+      nextFiles = { ...nextFiles, [targetFilePath]: updatedSource };
+      commitFilesMutation(nextFiles, targetFilePath);
+      preloadExternalLibrary(packageName);
+      return { ok: true };
+    },
+    [project.files, selected, commitFilesMutation, preloadExternalLibrary]
+  );
+
+  const handleRemoveDependency = useCallback(
+    (packageName: string) => {
+      const nextFiles = removePackageDependencyFromFiles(project.files, packageName);
+      if (nextFiles === project.files) return;
+      commitFilesMutation(nextFiles);
     },
     [project.files, commitFilesMutation]
   );
@@ -396,6 +782,187 @@ export default function StudioWorkspace() {
       if (!currentCode) return;
       const updated = patchJsxPropInSource(currentCode, elementIndex, propName, propValue);
       if (updated === currentCode) return;
+      commitFilesMutation({ ...project.files, [filePath]: updated }, filePath);
+    },
+    [project.files, commitFilesMutation]
+  );
+
+  const handleAutoAlign = useCallback(
+    (mode: AutoAlignMode, scopeElementIndex?: number) => {
+      const primaryFile =
+        scopeElementIndex !== undefined && selected?.filePath
+          ? selected.filePath
+          : canvasTargetPage.filePath;
+      const primaryCode = project.files[primaryFile];
+      if (!primaryCode) return { changesCount: 0, summary: [] as string[] };
+
+      const isHtml = /\.html?$/i.test(primaryFile);
+      const effectiveBp = resolveEffectiveBreakpoint(alignBreakpointScope, viewport);
+      const nextFiles = { ...project.files };
+      const primaryRes = autoAlignSourceCode({
+        code: primaryCode,
+        isHtml,
+        mode,
+        scopeElementIndex,
+        breakpoint: effectiveBp,
+      });
+
+      let totalChanges = primaryRes.changesCount;
+      const allSummaries = [...primaryRes.summary];
+      if (primaryRes.updatedCode !== primaryCode) {
+        nextFiles[primaryFile] = primaryRes.updatedCode;
+      }
+
+      // Also align components rendered on the page when running whole-page auto-align
+      if (scopeElementIndex === undefined && !activeIsolatedPath && !isHtml) {
+        const usedCompFiles = new Set<string>();
+        for (const usage of componentUsages) {
+          const def = projectComponents.find((c) => c.name === usage.componentName);
+          if (def && def.filePath !== primaryFile) usedCompFiles.add(def.filePath);
+        }
+        for (const compPath of usedCompFiles) {
+          const compCode = project.files[compPath];
+          if (!compCode) continue;
+          const compRes = autoAlignSourceCode({
+            code: compCode,
+            isHtml: false,
+            mode,
+            breakpoint: effectiveBp,
+          });
+          if (compRes.updatedCode !== compCode) {
+            nextFiles[compPath] = compRes.updatedCode;
+            totalChanges += compRes.changesCount;
+            allSummaries.push(...compRes.summary);
+          }
+        }
+      }
+
+      if (totalChanges > 0) {
+        commitFilesMutation(nextFiles, primaryFile);
+      }
+      return {
+        changesCount: totalChanges,
+        summary: Array.from(new Set(allSummaries)).slice(0, 6),
+      };
+    },
+    [
+      selected,
+      canvasTargetPage.filePath,
+      project.files,
+      alignBreakpointScope,
+      viewport,
+      activeIsolatedPath,
+      componentUsages,
+      projectComponents,
+      commitFilesMutation,
+    ]
+  );
+
+  const handleSmartAlignElement = useCallback(
+    (opts: {
+      filePath: string;
+      elementIndex: number;
+      horizontal?: HorizontalAlign;
+      vertical?: VerticalAlign;
+    }) => {
+      const code = project.files[opts.filePath];
+      if (!code) return;
+      const isHtml = /\.html?$/i.test(opts.filePath);
+      const meta = readElementMeta(code, opts.elementIndex, isHtml);
+      if (!meta || meta.isDynamicClassName) return;
+
+      const bp = resolveEffectiveBreakpoint(alignBreakpointScope, viewport);
+      const res = alignElementClassName(meta.className, {
+        tagName: meta.tagName,
+        inlineStyles: meta.inlineStyles,
+        breakpoint: bp,
+        horizontal: opts.horizontal,
+        vertical: opts.vertical,
+        hasChildren: meta.childIndices.length > 0,
+      });
+
+      const updated = applyElementPatchToSource(code, opts.elementIndex, isHtml, {
+        className: res.className,
+        styles:
+          Object.keys(res.clearInlineStyles).length > 0 ? res.clearInlineStyles : undefined,
+      });
+      if (updated === code) return;
+      commitFilesMutation({ ...project.files, [opts.filePath]: updated }, opts.filePath);
+    },
+    [project.files, alignBreakpointScope, viewport, commitFilesMutation]
+  );
+
+  const handleRedesignBlock = useCallback(
+    (filePath: string, elementIndex: number, pattern: BlockRedesignPattern) => {
+      const code = project.files[filePath];
+      if (!code) return;
+      const isHtml = /\.html?$/i.test(filePath);
+      const meta = readElementMeta(code, elementIndex, isHtml);
+      if (!meta || meta.isDynamicClassName) return;
+
+      const bp = resolveEffectiveBreakpoint(alignBreakpointScope, viewport);
+      const nextClassName = redesignBlockClassName(meta.className, pattern, bp);
+      const clearStyles: Record<string, null> = {};
+      if (meta.inlineStyles.display) clearStyles.display = null;
+      if (meta.inlineStyles.flexDirection) clearStyles.flexDirection = null;
+      if (meta.inlineStyles.gridTemplateColumns) clearStyles.gridTemplateColumns = null;
+      if (meta.inlineStyles.transform) clearStyles.transform = null;
+
+      const updated = applyElementPatchToSource(code, elementIndex, isHtml, {
+        className: nextClassName,
+        styles: Object.keys(clearStyles).length > 0 ? clearStyles : undefined,
+      });
+      if (updated === code) return;
+      commitFilesMutation({ ...project.files, [filePath]: updated }, filePath);
+    },
+    [project.files, alignBreakpointScope, viewport, commitFilesMutation]
+  );
+
+  const handleApplyWidthAndSpacing = useCallback(
+    (
+      filePath: string,
+      elementIndex: number,
+      opts: { widthPreset?: WidthPreset; density?: SpacingDensity }
+    ) => {
+      const code = project.files[filePath];
+      if (!code) return;
+      const isHtml = /\.html?$/i.test(filePath);
+      const meta = readElementMeta(code, elementIndex, isHtml);
+      if (!meta || meta.isDynamicClassName) return;
+
+      const bp = resolveEffectiveBreakpoint(alignBreakpointScope, viewport);
+      const nextClassName = applyWidthAndSpacingToClassName(meta.className, {
+        breakpoint: bp,
+        widthPreset: opts.widthPreset,
+        density: opts.density,
+      });
+
+      const updated = applyElementPatchToSource(code, elementIndex, isHtml, {
+        className: nextClassName,
+        styles: opts.widthPreset ? { width: null, maxWidth: null } : undefined,
+      });
+      if (updated === code) return;
+      commitFilesMutation({ ...project.files, [filePath]: updated }, filePath);
+    },
+    [project.files, alignBreakpointScope, viewport, commitFilesMutation]
+  );
+
+  const handleResetManualOffsets = useCallback(
+    (filePath: string, elementIndex: number) => {
+      const code = project.files[filePath];
+      if (!code) return;
+      const isHtml = /\.html?$/i.test(filePath);
+      const updated = applyElementPatchToSource(code, elementIndex, isHtml, {
+        styles: {
+          transform: null,
+          left: null,
+          right: null,
+          top: null,
+          bottom: null,
+          width: null,
+        },
+      });
+      if (updated === code) return;
       commitFilesMutation({ ...project.files, [filePath]: updated }, filePath);
     },
     [project.files, commitFilesMutation]
@@ -560,6 +1127,8 @@ export default function StudioWorkspace() {
         onToggleRightPanel={handleToggleRightPanel}
         showGradientPanel={showGradientPanel}
         onToggleGradientPanel={handleToggleGradientPanel}
+        showGlobalStylesPanel={showGlobalStylesPanel}
+        onToggleGlobalStylesPanel={handleToggleGlobalStylesPanel}
         savedDraftsCount={savedDrafts.length}
         justSavedDraft={justSavedDraft}
         onQuickSaveDraft={handleQuickSaveDraft}
@@ -591,10 +1160,16 @@ export default function StudioWorkspace() {
                 handleSelectComponent(filePath);
                 if (isCompactViewport) setCompactLeftOpen(false);
               }}
-              onCreateComponent={(name) => {
-                handleCreateComponent(name);
+              onCreateComponent={(name, preset) => {
+                handleCreateComponent(name, preset);
                 if (isCompactViewport) setCompactLeftOpen(false);
               }}
+              onInsertComponentOnPage={(compPath) => {
+                handleInsertComponentOnPage(compPath);
+                if (isCompactViewport) setCompactLeftOpen(false);
+              }}
+              installedLibCount={Object.keys(packageDependencies).length}
+              onOpenLibraryModal={() => setIsLibraryModalOpen(true)}
               layerTree={layerTree}
               selectedStudioId={selected?.studioId || null}
               onSelectLayer={(id) => {
@@ -608,18 +1183,25 @@ export default function StudioWorkspace() {
         )}
 
         {/* Backdrop when compact drawer or bottom sheet is open */}
-        {isCompactViewport && (showLeftPanel || showRightPanel || showGradientPanel) && (
-          <button
-            type="button"
-            aria-label="Close panel drawer"
-            onClick={() => {
-              setCompactLeftOpen(false);
-              setCompactRightOpen(false);
-              setCompactGradientOpen(false);
-            }}
-            className="absolute inset-0 z-30 bg-slate-900/30"
-          />
-        )}
+        {isCompactViewport &&
+          (showLeftPanel ||
+            showRightPanel ||
+            showGradientPanel ||
+            showGlobalStylesPanel ||
+            showSmartAligner) && (
+            <button
+              type="button"
+              aria-label="Close panel drawer"
+              onClick={() => {
+                setCompactLeftOpen(false);
+                setCompactRightOpen(false);
+                setCompactGradientOpen(false);
+                setCompactGlobalStylesOpen(false);
+                setCompactSmartAlignerOpen(false);
+              }}
+              className="absolute inset-0 z-30 bg-slate-900/30"
+            />
+          )}
 
         <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
           <VisualCanvas
@@ -629,10 +1211,9 @@ export default function StudioWorkspace() {
             viewport={viewport}
             interactionMode={interactionMode}
             selected={selected}
-            onSelectElement={(snap) => {
-              setSelected(snap);
-              if (snap?.filePath) setCodeDrawerFile(snap.filePath);
-            }}
+            pendingSelectStudioId={pendingSelectStudioId}
+            onClearPendingSelect={handleClearPendingSelect}
+            onSelectElement={handleSelectElement}
             onUpdateLayerTree={setLayerTree}
             onNavigateRoute={handleSelectPage}
             onCommitPatch={handleCommitPatch}
@@ -644,7 +1225,36 @@ export default function StudioWorkspace() {
             onToggleSnap={() => setSnapEnabled((v) => !v)}
             isIsolatedComponent={Boolean(activeIsolatedPath)}
             onExitComponentIsolation={handleExitComponentIsolation}
+            onInsertIsolatedComponent={handleInsertIsolatedComponent}
+            isolatedTargetLabel={
+              lastPageTarget && lastPageTarget.filePath === activePage.filePath
+                ? lastPageTarget.label
+                : null
+            }
+            onOpenLibraryModal={() => setIsLibraryModalOpen(true)}
+            externalLibVersion={externalLibVersion}
+            showSmartAligner={showSmartAligner}
+            onToggleSmartAligner={handleToggleSmartAligner}
           />
+
+          {/* Smart Aligner Panel (docked on desktop) */}
+          {!isCompactViewport && showSmartAligner && (
+            <SmartAlignerPanel
+              selected={selected}
+              activeFilePath={canvasTargetPage.filePath}
+              activeFileCode={project.files[canvasTargetPage.filePath] || ''}
+              viewport={viewport}
+              onChangeViewport={setViewport}
+              breakpointScope={alignBreakpointScope}
+              onChangeBreakpointScope={setAlignBreakpointScope}
+              onAutoAlign={handleAutoAlign}
+              onAlignElement={handleSmartAlignElement}
+              onRedesignBlock={handleRedesignBlock}
+              onApplyWidthAndSpacing={handleApplyWidthAndSpacing}
+              onResetManualOffsets={handleResetManualOffsets}
+              onClose={() => setDesktopSmartAlignerOpen(false)}
+            />
+          )}
 
           {/* Multi-Stop Gradient & CSS Panel (docked on desktop) */}
           {!isCompactViewport && showGradientPanel && (
@@ -656,6 +1266,18 @@ export default function StudioWorkspace() {
             />
           )}
 
+          {/* Global Styles Manager (docked on desktop) */}
+          {!isCompactViewport && showGlobalStylesPanel && (
+            <GlobalStylesPanel
+              files={project.files}
+              globalCssPaths={project.globalCssPaths}
+              framework={project.framework}
+              onUpdateCssFile={handleUpdateFileContent}
+              onOpenInMonaco={handleOpenInMonaco}
+              onClose={() => setDesktopGlobalStylesOpen(false)}
+            />
+          )}
+
           <CodeDrawer
             isOpen={isCodeDrawerOpen}
             onClose={() => setIsCodeDrawerOpen(false)}
@@ -663,9 +1285,38 @@ export default function StudioWorkspace() {
             originalFiles={project.originalFiles}
             activeFilePath={codeDrawerFile}
             onSelectFile={setCodeDrawerFile}
+            onUpdateFile={handleUpdateFileContent}
             onRevertFile={handleRevertFile}
           />
         </div>
+
+        {/* Smart Aligner Panel (bottom sheet on mobile/compact screens) */}
+        {isCompactViewport && showSmartAligner && (
+          <div
+            className={
+              isPhoneViewport
+                ? 'absolute inset-x-0 bottom-0 z-40 flex h-[74vh] max-h-[620px] rounded-t-2xl shadow-2xl overflow-hidden'
+                : 'absolute inset-x-0 bottom-0 z-40 flex max-h-[360px] shadow-2xl overflow-hidden'
+            }
+          >
+            <SmartAlignerPanel
+              selected={selected}
+              activeFilePath={canvasTargetPage.filePath}
+              activeFileCode={project.files[canvasTargetPage.filePath] || ''}
+              viewport={viewport}
+              onChangeViewport={setViewport}
+              breakpointScope={alignBreakpointScope}
+              onChangeBreakpointScope={setAlignBreakpointScope}
+              onAutoAlign={handleAutoAlign}
+              onAlignElement={handleSmartAlignElement}
+              onRedesignBlock={handleRedesignBlock}
+              onApplyWidthAndSpacing={handleApplyWidthAndSpacing}
+              onResetManualOffsets={handleResetManualOffsets}
+              onClose={() => setCompactSmartAlignerOpen(false)}
+              isBottomSheet={isPhoneViewport}
+            />
+          </div>
+        )}
 
         {/* Multi-Stop Gradient & CSS Panel (bottom sheet on mobile/compact screens) */}
         {isCompactViewport && showGradientPanel && (
@@ -681,6 +1332,30 @@ export default function StudioWorkspace() {
               onPreviewStyles={handlePreviewStyles}
               onCommitPatch={handleCommitPatch}
               onClose={() => setCompactGradientOpen(false)}
+              isBottomSheet={isPhoneViewport}
+            />
+          </div>
+        )}
+
+        {/* Global Styles Manager (bottom sheet on mobile/compact screens) */}
+        {isCompactViewport && showGlobalStylesPanel && (
+          <div
+            className={
+              isPhoneViewport
+                ? 'absolute inset-x-0 bottom-0 z-40 flex h-[76vh] max-h-[640px] rounded-t-2xl shadow-2xl overflow-hidden'
+                : 'absolute inset-x-0 bottom-0 z-40 flex max-h-[360px] shadow-2xl overflow-hidden'
+            }
+          >
+            <GlobalStylesPanel
+              files={project.files}
+              globalCssPaths={project.globalCssPaths}
+              framework={project.framework}
+              onUpdateCssFile={handleUpdateFileContent}
+              onOpenInMonaco={(path) => {
+                setCompactGlobalStylesOpen(false);
+                handleOpenInMonaco(path);
+              }}
+              onClose={() => setCompactGlobalStylesOpen(false)}
               isBottomSheet={isPhoneViewport}
             />
           </div>
@@ -712,6 +1387,28 @@ export default function StudioWorkspace() {
               onIsolateComponent={handleSelectComponent}
               onExtractComponent={handleExtractComponent}
               onPatchComponentProp={handlePatchComponentProp}
+              onReplaceWithComponent={handleReplaceWithComponent}
+              onInsertComponent={handleInsertComponent}
+              onOpenLibraryModal={() => setIsLibraryModalOpen(true)}
+              fileExternalImports={selectedFileExternalImports}
+              dependenciesCount={Object.keys(packageDependencies).length}
+              viewport={viewport}
+              alignBreakpointScope={alignBreakpointScope}
+              onChangeAlignBreakpointScope={setAlignBreakpointScope}
+              onSmartAutoAlign={handleAutoAlign}
+              onSmartAlignElement={handleSmartAlignElement}
+              onSmartRedesignBlock={handleRedesignBlock}
+              onOpenSmartAligner={() => {
+                if (isCompactViewport) {
+                  setCompactRightOpen(false);
+                  setCompactGlobalStylesOpen(false);
+                  setCompactSmartAlignerOpen(true);
+                } else {
+                  setDesktopGradientOpen(false);
+                  setDesktopGlobalStylesOpen(false);
+                  setDesktopSmartAlignerOpen(true);
+                }
+              }}
             />
           </div>
         )}
@@ -796,7 +1493,22 @@ export default function StudioWorkspace() {
             }`}
           >
             <Sparkles className="h-3.5 w-3.5 shrink-0" />
-            <span>CSS</span>
+            <span className="hidden sm:inline">CSS</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleToggleGlobalStylesPanel}
+            aria-pressed={showGlobalStylesPanel}
+            aria-label="Toggle global styles manager"
+            className={`inline-flex h-9 items-center gap-1 rounded-lg border px-2 text-xs font-medium whitespace-nowrap transition-colors ${
+              showGlobalStylesPanel
+                ? 'border-blue-600 bg-blue-50 text-blue-700'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <Palette className="h-3.5 w-3.5 shrink-0" />
+            <span className="hidden sm:inline">Global</span>
           </button>
 
           <button
@@ -858,6 +1570,16 @@ export default function StudioWorkspace() {
         onLoadDraft={handleLoadDraft}
         onDeleteDraft={handleDeleteDraft}
         onClearAutosave={handleClearAutosave}
+      />
+
+      <ReactLibraryModal
+        isOpen={isLibraryModalOpen}
+        onClose={() => setIsLibraryModalOpen(false)}
+        files={project.files}
+        defaultTargetFile={selected?.filePath || canvasTargetPage.filePath}
+        dependencies={packageDependencies}
+        onImportLibrary={handleImportReactLibrary}
+        onRemoveDependency={handleRemoveDependency}
       />
     </div>
   );

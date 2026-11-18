@@ -177,13 +177,125 @@ export function patchJsxPropInSource(
   return code.slice(0, el.openStart) + nextOpenTag + code.slice(el.openEnd);
 }
 
-export function createComponentFileTemplate(rawName: string): {
+export type ComponentTemplatePreset = 'card' | 'hero' | 'cta' | 'stats';
+
+export function createComponentFileTemplate(
+  rawName: string,
+  preset: ComponentTemplatePreset = 'card'
+): {
   componentName: string;
   filePath: string;
   code: string;
 } {
   const componentName = toPascalCase(rawName);
   const filePath = `components/${componentName}.tsx`;
+
+  if (preset === 'hero') {
+    const code = `'use client';
+import React from 'react';
+
+export default function ${componentName}({
+  badge = 'Featured Component',
+  heading = '${componentName}',
+  description = 'Redesign typography, gradients, spacing, and constraints visually, then insert anywhere on a page.',
+  ctaLabel = 'Get Started',
+}: {
+  badge?: string;
+  heading?: string;
+  description?: string;
+  ctaLabel?: string;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 via-indigo-950 to-sky-900 p-8 text-white shadow-lg">
+      <span className="inline-block rounded-full bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide text-sky-200">
+        {badge}
+      </span>
+      <h2 className="mt-4 text-2xl font-bold tracking-tight text-white">{heading}</h2>
+      <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-200">{description}</p>
+      <div className="mt-5 flex flex-wrap gap-3">
+        <button
+          type="button"
+          className="rounded-lg bg-white px-4 py-2 text-xs font-semibold text-slate-900 shadow-xs"
+        >
+          {ctaLabel}
+        </button>
+      </div>
+    </section>
+  );
+}
+`;
+    return { componentName, filePath, code };
+  }
+
+  if (preset === 'cta') {
+    const code = `'use client';
+import React from 'react';
+
+export default function ${componentName}({
+  title = 'Ready to deploy ${componentName}?',
+  subtitle = 'Configure layout, colors, and props visually before placing on your page.',
+  buttonText = 'Launch Now',
+}: {
+  title?: string;
+  subtitle?: string;
+  buttonText?: string;
+}) {
+  return (
+    <div className="flex flex-col items-start justify-between gap-4 rounded-xl border border-indigo-200 bg-indigo-50 p-6 sm:flex-row sm:items-center">
+      <div>
+        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+        <p className="mt-1 text-xs text-slate-600">{subtitle}</p>
+      </div>
+      <button
+        type="button"
+        className="shrink-0 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-xs"
+      >
+        {buttonText}
+      </button>
+    </div>
+  );
+}
+`;
+    return { componentName, filePath, code };
+  }
+
+  if (preset === 'stats') {
+    const code = `'use client';
+import React from 'react';
+
+export default function ${componentName}({
+  metric = '99.98%',
+  label = 'System Uptime',
+  delta = '+0.4% this quarter',
+}: {
+  metric?: string;
+  label?: string;
+  delta?: string;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+        <p className="text-xs font-medium text-slate-500">{label}</p>
+        <p className="mt-1.5 text-2xl font-bold text-slate-900">{metric}</p>
+        <p className="mt-1 text-[11px] font-medium text-emerald-600">{delta}</p>
+      </div>
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+        <p className="text-xs font-medium text-slate-500">Active Nodes</p>
+        <p className="mt-1.5 text-2xl font-bold text-slate-900">1,284</p>
+        <p className="mt-1 text-[11px] font-medium text-blue-600">Across 14 regions</p>
+      </div>
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+        <p className="text-xs font-medium text-slate-500">Median Latency</p>
+        <p className="mt-1.5 text-2xl font-bold text-slate-900">18ms</p>
+        <p className="mt-1 text-[11px] font-medium text-indigo-600">Edge cached</p>
+      </div>
+    </div>
+  );
+}
+`;
+    return { componentName, filePath, code };
+  }
+
   const code = `'use client';
 import React from 'react';
 
@@ -320,3 +432,186 @@ ${indentedSnippet}
     updatedPageCode,
   };
 }
+
+export type ComponentInsertPosition = 'before' | 'after' | 'inside-start' | 'inside-end';
+
+export function computeComponentImportSpecifier(componentFilePath: string): string {
+  const withoutExt = componentFilePath.replace(/\.(tsx|jsx|ts|js)$/i, '');
+  const withoutIndex = withoutExt.replace(/\/index$/i, '');
+  const normalized = withoutIndex.replace(/^src\//, '');
+  return `@/${normalized}`;
+}
+
+export function ensureComponentImportInSource(params: {
+  code: string;
+  componentName: string;
+  componentFilePath: string;
+  componentCode?: string;
+}): string {
+  const { code, componentName, componentFilePath, componentCode } = params;
+  const specifier = computeComponentImportSpecifier(componentFilePath);
+  const existingImportRegex = new RegExp(
+    `import\\s+[^;\\n]*\\b${componentName}\\b[^;\\n]*from\\s+['"][^'"]+['"]`
+  );
+  if (existingImportRegex.test(code)) return code;
+
+  const isNamedOnly =
+    Boolean(componentCode) &&
+    !/export\s+default\b/.test(componentCode || '') &&
+    new RegExp(`export\\s+(?:function|const|class)\\s+${componentName}\\b`).test(
+      componentCode || ''
+    );
+
+  const importLine = isNamedOnly
+    ? `import { ${componentName} } from '${specifier}';`
+    : `import ${componentName} from '${specifier}';`;
+
+  const importLines = [...code.matchAll(/^import\s+[^\n]+\n?/gm)];
+  if (importLines.length > 0) {
+    const last = importLines[importLines.length - 1];
+    const insertPos = (last.index ?? 0) + last[0].length;
+    const sep = last[0].endsWith('\n') ? '' : '\n';
+    return code.slice(0, insertPos) + sep + importLine + '\n' + code.slice(insertPos);
+  }
+
+  const useClientMatch = code.match(/^['"]use client['"];?\s*\n?/);
+  if (useClientMatch) {
+    const insertPos = useClientMatch[0].length;
+    return code.slice(0, insertPos) + importLine + '\n' + code.slice(insertPos);
+  }
+
+  return `${importLine}\n${code}`;
+}
+
+export function formatComponentJsxTag(
+  componentName: string,
+  props?: Record<string, string>
+): string {
+  const entries = Object.entries(props || {}).filter(
+    ([k, v]) => /^[A-Za-z_][A-Za-z0-9_-]*$/.test(k) && v !== undefined && v !== ''
+  );
+  if (entries.length === 0) return `<${componentName} />`;
+  const attrs = entries
+    .map(([k, v]) => `${k}="${v.replace(/"/g, '&quot;')}"`)
+    .join(' ');
+  return `<${componentName} ${attrs} />`;
+}
+
+export function replaceElementWithComponentInSource(params: {
+  targetCode: string;
+  targetFilePath: string;
+  elementIndex: number;
+  componentName: string;
+  componentFilePath: string;
+  componentCode?: string;
+  props?: Record<string, string>;
+}): string | null {
+  const {
+    targetCode,
+    targetFilePath,
+    elementIndex,
+    componentName,
+    componentFilePath,
+    componentCode,
+    props,
+  } = params;
+  if (targetFilePath === componentFilePath) return null;
+  if (/\.html?$/i.test(targetFilePath)) return null;
+
+  const elements = scanElements(targetCode, false);
+  const el = elements[elementIndex];
+  if (!el || el.closeEnd <= el.openStart) return null;
+
+  const jsxTag = formatComponentJsxTag(componentName, props);
+  const replaced =
+    targetCode.slice(0, el.openStart) + jsxTag + targetCode.slice(el.closeEnd);
+
+  return ensureComponentImportInSource({
+    code: replaced,
+    componentName,
+    componentFilePath,
+    componentCode,
+  });
+}
+
+export function insertJsxSnippetIntoSource(params: {
+  targetCode: string;
+  targetElementIndex: number;
+  position: ComponentInsertPosition;
+  jsxSnippet: string;
+}): string | null {
+  const { targetCode, targetElementIndex, position, jsxSnippet } = params;
+  const elements = scanElements(targetCode, false);
+  if (elements.length === 0) return null;
+
+  const el = elements[targetElementIndex] ?? elements[0];
+  if (!el) return null;
+
+  let insertPos = el.closeEnd;
+  let effectivePos = position;
+  if ((effectivePos === 'inside-start' || effectivePos === 'inside-end') && el.selfClosing) {
+    effectivePos = 'after';
+  }
+
+  // Never insert before/after top-level return root element when it has no parent; insert inside instead
+  if (el.parentIndex < 0 && (effectivePos === 'before' || effectivePos === 'after')) {
+    if (!el.selfClosing) {
+      effectivePos = effectivePos === 'before' ? 'inside-start' : 'inside-end';
+    } else {
+      return null;
+    }
+  }
+
+  if (effectivePos === 'before') insertPos = el.openStart;
+  else if (effectivePos === 'after') insertPos = el.closeEnd;
+  else if (effectivePos === 'inside-start') insertPos = el.openEnd;
+  else insertPos = el.closeStart;
+
+  const block =
+    effectivePos === 'before' || effectivePos === 'inside-end'
+      ? `\n${jsxSnippet}\n`
+      : `\n${jsxSnippet}`;
+
+  return targetCode.slice(0, insertPos) + block + targetCode.slice(insertPos);
+}
+
+export function insertComponentIntoSource(params: {
+  targetCode: string;
+  targetFilePath: string;
+  targetElementIndex: number;
+  position: ComponentInsertPosition;
+  componentName: string;
+  componentFilePath: string;
+  componentCode?: string;
+  props?: Record<string, string>;
+}): string | null {
+  const {
+    targetCode,
+    targetFilePath,
+    targetElementIndex,
+    position,
+    componentName,
+    componentFilePath,
+    componentCode,
+    props,
+  } = params;
+  if (targetFilePath === componentFilePath) return null;
+  if (/\.html?$/i.test(targetFilePath)) return null;
+
+  const jsxTag = formatComponentJsxTag(componentName, props);
+  const withTag = insertJsxSnippetIntoSource({
+    targetCode,
+    targetElementIndex,
+    position,
+    jsxSnippet: jsxTag,
+  });
+  if (!withTag) return null;
+
+  return ensureComponentImportInSource({
+    code: withTag,
+    componentName,
+    componentFilePath,
+    componentCode,
+  });
+}
+

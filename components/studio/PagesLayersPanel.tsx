@@ -1,8 +1,20 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, Component, FileCode2, Layers, Plus, X } from 'lucide-react';
-import { ProjectComponentInfo } from '@/lib/studio/component-editor';
+import {
+  ChevronDown,
+  ChevronRight,
+  Component,
+  FileCode2,
+  Layers,
+  PackagePlus,
+  Plus,
+  X,
+} from 'lucide-react';
+import {
+  ComponentTemplatePreset,
+  ProjectComponentInfo,
+} from '@/lib/studio/component-editor';
 import { LayerTreeNode, ProjectPage } from '@/lib/studio/types';
 
 interface PagesLayersPanelProps {
@@ -12,7 +24,10 @@ interface PagesLayersPanelProps {
   components?: ProjectComponentInfo[];
   isolatedComponentPath?: string | null;
   onSelectComponent?: (filePath: string) => void;
-  onCreateComponent?: (name: string) => void;
+  onCreateComponent?: (name: string, preset?: ComponentTemplatePreset) => void;
+  onInsertComponentOnPage?: (componentFilePath: string) => void;
+  installedLibCount?: number;
+  onOpenLibraryModal?: () => void;
   layerTree: LayerTreeNode[];
   selectedStudioId: string | null;
   onSelectLayer: (studioId: string) => void;
@@ -28,6 +43,9 @@ export default function PagesLayersPanel({
   isolatedComponentPath = null,
   onSelectComponent,
   onCreateComponent,
+  onInsertComponentOnPage,
+  installedLibCount = 0,
+  onOpenLibraryModal,
   layerTree,
   selectedStudioId,
   onSelectLayer,
@@ -37,6 +55,7 @@ export default function PagesLayersPanel({
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [topSectionTab, setTopSectionTab] = useState<'pages' | 'components'>('pages');
   const [newCompName, setNewCompName] = useState('');
+  const [compPreset, setCompPreset] = useState<ComponentTemplatePreset>('card');
 
   const toggleCollapse = (id: string) => {
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -182,35 +201,48 @@ export default function PagesLayersPanel({
         ) : (
           <div className="space-y-2">
             {onCreateComponent && (
-              <div className="flex items-center gap-1">
-                <input
-                  type="text"
-                  aria-label="New component name"
-                  value={newCompName}
-                  onChange={(e) => setNewCompName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && newCompName.trim()) {
-                      onCreateComponent(newCompName.trim());
+              <div className="space-y-1">
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    aria-label="New component name"
+                    value={newCompName}
+                    onChange={(e) => setNewCompName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newCompName.trim()) {
+                        onCreateComponent(newCompName.trim(), compPreset);
+                        setNewCompName('');
+                      }
+                    }}
+                    placeholder="FeatureCard..."
+                    className="h-7 min-w-0 flex-1 rounded border border-slate-200 px-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                  />
+                  <select
+                    aria-label="Component starter template"
+                    value={compPreset}
+                    onChange={(e) => setCompPreset(e.target.value as ComponentTemplatePreset)}
+                    className="h-7 rounded border border-slate-200 bg-white px-1 text-[10px] font-medium text-slate-700"
+                  >
+                    <option value="card">Card</option>
+                    <option value="hero">Hero</option>
+                    <option value="cta">CTA</option>
+                    <option value="stats">Stats</option>
+                  </select>
+                  <button
+                    type="button"
+                    aria-label="Create component"
+                    disabled={!newCompName.trim()}
+                    onClick={() => {
+                      if (!newCompName.trim()) return;
+                      onCreateComponent(newCompName.trim(), compPreset);
                       setNewCompName('');
-                    }
-                  }}
-                  placeholder="FeatureCard..."
-                  className="h-7 min-w-0 flex-1 rounded border border-slate-200 px-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
-                />
-                <button
-                  type="button"
-                  aria-label="Create component"
-                  disabled={!newCompName.trim()}
-                  onClick={() => {
-                    if (!newCompName.trim()) return;
-                    onCreateComponent(newCompName.trim());
-                    setNewCompName('');
-                  }}
-                  className="inline-flex h-7 items-center gap-1 rounded bg-indigo-600 px-2 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:opacity-40"
-                >
-                  <Plus className="h-3 w-3" />
-                  <span>New</span>
-                </button>
+                    }}
+                    className="inline-flex h-7 items-center gap-0.5 rounded bg-indigo-600 px-2 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:opacity-40"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span>New</span>
+                  </button>
+                </div>
               </div>
             )}
 
@@ -223,29 +255,65 @@ export default function PagesLayersPanel({
                 components.map((comp) => {
                   const active = isolatedComponentPath === comp.filePath;
                   return (
-                    <button
+                    <div
                       key={comp.filePath}
-                      type="button"
-                      onClick={() => onSelectComponent?.(comp.filePath)}
-                      className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
+                      className={`flex items-center justify-between gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
                         active
-                          ? 'bg-indigo-600 font-medium text-white'
+                          ? 'bg-indigo-600 text-white'
                           : 'text-slate-700 hover:bg-slate-100'
                       }`}
                     >
-                      <span className="truncate font-medium">{comp.name}</span>
-                      <span
-                        className={`ml-2 shrink-0 font-mono text-[10px] ${
-                          active ? 'text-indigo-100' : 'text-slate-400'
-                        }`}
+                      <button
+                        type="button"
+                        onClick={() => onSelectComponent?.(comp.filePath)}
+                        title={`Design or redesign <${comp.name} />`}
+                        className="flex min-w-0 flex-1 items-center justify-between gap-1.5 py-0.5 text-left"
                       >
-                        {comp.usageCount}×
-                      </span>
-                    </button>
+                        <span className="truncate font-medium">{comp.name}</span>
+                        <span
+                          className={`shrink-0 font-mono text-[10px] ${
+                            active ? 'text-indigo-100' : 'text-slate-400'
+                          }`}
+                        >
+                          {comp.usageCount}×
+                        </span>
+                      </button>
+                      {onInsertComponentOnPage && (
+                        <button
+                          type="button"
+                          aria-label={`Insert ${comp.name} onto page`}
+                          title={`Insert <${comp.name} /> onto page`}
+                          onClick={() => onInsertComponentOnPage(comp.filePath)}
+                          className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                            active
+                              ? 'bg-white/20 text-white hover:bg-white/30'
+                              : 'border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                          }`}
+                        >
+                          Insert
+                        </button>
+                      )}
+                    </div>
                   );
                 })
               )}
             </nav>
+
+            {onOpenLibraryModal && (
+              <button
+                type="button"
+                onClick={onOpenLibraryModal}
+                className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                <span className="flex items-center gap-1.5">
+                  <PackagePlus className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>Import React Library</span>
+                </span>
+                <span className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-500 border border-slate-200">
+                  {installedLibCount}
+                </span>
+              </button>
+            )}
           </div>
         )}
       </div>

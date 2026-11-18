@@ -61,6 +61,28 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
   var SELECTED_ID = null;
   var HOVER_ID = null;
   var EDITING_EL = null;
+  var ACTIVE_PREVIEW_RECORDS = [];
+  window.__STUDIO_REACT_OWNED_STYLES__ = window.__STUDIO_REACT_OWNED_STYLES__ || {};
+
+  function clearTrackedPreviewStyles() {
+    if (!ACTIVE_PREVIEW_RECORDS.length) return;
+    var ownedMap = window.__STUDIO_REACT_OWNED_STYLES__ || {};
+    ACTIVE_PREVIEW_RECORDS.forEach(function(rec) {
+      try {
+        if (!rec.el || !rec.el.style) return;
+        var sid = rec.el.getAttribute('data-studio-id');
+        var owned = sid && ownedMap[sid];
+        if (owned && Object.prototype.hasOwnProperty.call(owned, rec.key)) {
+          rec.el.style[rec.key] = owned[rec.key];
+          return;
+        }
+        if (rec.el.style[rec.key] === rec.val) {
+          rec.el.style[rec.key] = rec.prevVal || '';
+        }
+      } catch (e) {}
+    });
+    ACTIVE_PREVIEW_RECORDS = [];
+  }
 
   function parseStudioId(id) {
     if (!id) return null;
@@ -140,15 +162,32 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
 
     var parentEl = el.parentElement ? el.parentElement.closest('[data-studio-id]') : null;
     var parentSid = parentEl ? parentEl.getAttribute('data-studio-id') : null;
+    var parentParsed = parseStudioId(parentSid);
+    var ownInstanceSid = el.getAttribute('data-studio-instance') || undefined;
+    var ownReorderId = ownInstanceSid || sid;
+    var ownReorderParsed = parseStudioId(ownReorderId);
     var rawParentEl = el.parentElement;
     var parentRectRaw = rawParentEl ? rawParentEl.getBoundingClientRect() : null;
     var siblingEls = [];
+    var siblingReorderIds = [];
+    var seenReorderIds = {};
     var siblingRects = [];
     if (el.parentElement) {
       for (var k = 0; k < el.parentElement.children.length; k++) {
         var childNode = el.parentElement.children[k];
-        if (childNode.hasAttribute('data-studio-id')) {
-          siblingEls.push(childNode);
+        var chReorderId = childNode.getAttribute('data-studio-instance') || childNode.getAttribute('data-studio-id');
+        if (chReorderId) {
+          var chParsed = parseStudioId(chReorderId);
+          if (
+            ownReorderParsed &&
+            chParsed &&
+            chParsed.filePath === ownReorderParsed.filePath &&
+            !seenReorderIds[chReorderId]
+          ) {
+            seenReorderIds[chReorderId] = true;
+            siblingEls.push(childNode);
+            siblingReorderIds.push(chReorderId);
+          }
           if (childNode !== el) {
             var sr = childNode.getBoundingClientRect();
             if (sr.width > 0 && sr.height > 0) {
@@ -168,11 +207,12 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
         siblingRects.push({ x: br.left, y: br.top, width: br.width, height: br.height });
       }
     }
-    var siblingIdx = siblingEls.indexOf(el);
+    var siblingIdx = siblingReorderIds.indexOf(ownReorderId);
     var textMeta = getDirectText(el);
 
     return {
       studioId: sid,
+      instanceStudioId: ownInstanceSid,
       filePath: parsed ? parsed.filePath : '',
       elementIndex: parsed ? parsed.elementIndex : 0,
       tagName: el.tagName.toLowerCase(),
@@ -193,6 +233,13 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
         textAlign: cs.textAlign,
         width: cs.width,
         height: cs.height,
+        minWidth: cs.minWidth,
+        minHeight: cs.minHeight,
+        maxWidth: cs.maxWidth,
+        maxHeight: cs.maxHeight,
+        boxSizing: cs.boxSizing,
+        overflowWrap: cs.overflowWrap,
+        whiteSpace: cs.whiteSpace,
         paddingTop: cs.paddingTop,
         paddingRight: cs.paddingRight,
         paddingBottom: cs.paddingBottom,
@@ -227,7 +274,8 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
         borderColor: cs.borderTopColor,
         boxShadow: cs.boxShadow,
         opacity: cs.opacity,
-        transform: cs.transform
+        transform: cs.transform,
+        translate: cs.translate
       },
       rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
       parentStudioId: parentSid,
@@ -236,7 +284,13 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       viewportSize: { width: window.innerWidth, height: window.innerHeight },
       siblingIndex: siblingIdx,
       siblingCount: siblingEls.length,
-      canReorderSiblings: siblingEls.length > 1 && parentSid !== null,
+      canReorderSiblings: Boolean(
+        siblingEls.length > 1 &&
+        siblingIdx !== -1 &&
+        parentParsed &&
+        ownReorderParsed &&
+        parentParsed.filePath === ownReorderParsed.filePath
+      ),
       href: el.getAttribute('href') || undefined,
       src: el.getAttribute('src') || undefined
     };
@@ -245,7 +299,10 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
   function findStudioElement(sid) {
     if (!sid) return null;
     try {
-      return document.querySelector('[data-studio-id="' + CSS.escape(sid) + '"]');
+      return (
+        document.querySelector('[data-studio-instance="' + CSS.escape(sid) + '"]') ||
+        document.querySelector('[data-studio-id="' + CSS.escape(sid) + '"]')
+      );
     } catch (e) {
       return null;
     }
@@ -386,27 +443,51 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
     var msg = ev.data || {};
     if (msg.type === 'studio:set-mode') {
       CURRENT_MODE = msg.mode;
+    } else if (msg.type === 'studio:update-css') {
+      if (typeof msg.tailwindCss === 'string') {
+        var twStyle = document.getElementById('studio-tailwind-css');
+        if (twStyle) twStyle.textContent = msg.tailwindCss;
+      }
+      if (typeof msg.userCss === 'string') {
+        var uStyle = document.getElementById('studio-user-css');
+        if (uStyle) uStyle.textContent = msg.userCss;
+      }
+      clearTrackedPreviewStyles();
+      postSelectedRect();
+      if (SELECTED_ID) {
+        var updatedSel = findStudioElement(SELECTED_ID);
+        if (updatedSel) {
+          window.parent.postMessage({
+            type: 'studio:select',
+            element: extractSnapshot(updatedSel)
+          }, '*');
+        }
+      }
     } else if (msg.type === 'studio:select-by-id') {
       var el = findStudioElement(msg.studioId);
       if (el) {
-        SELECTED_ID = msg.studioId;
-        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        SELECTED_ID = el.getAttribute('data-studio-id') || msg.studioId;
+        if (msg.scroll !== false) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
         setTimeout(function() {
           window.parent.postMessage({
             type: 'studio:select',
             element: extractSnapshot(el)
           }, '*');
-        }, 60);
+        }, 25);
       }
     } else if (msg.type === 'studio:preview-style') {
       var el2 = findStudioElement(msg.studioId);
       if (el2 && msg.styles) {
         Object.keys(msg.styles).forEach(function(k) {
           var v = msg.styles[k];
+          var prevVal = el2.style[k] || '';
           if (v === null || v === '') {
             el2.style[k] = '';
           } else {
             el2.style[k] = v;
+            ACTIVE_PREVIEW_RECORDS.push({ el: el2, key: k, val: el2.style[k], prevVal: prevVal });
           }
         });
         postSelectedRect();
@@ -414,17 +495,38 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
     } else if (msg.type === 'studio:drag-probe') {
       var dragEl = findStudioElement(msg.studioId);
       if (!dragEl || !dragEl.parentElement) return;
+      var dragReorderId = dragEl.getAttribute('data-studio-instance') || dragEl.getAttribute('data-studio-id');
+      var dragParsed = parseStudioId(dragReorderId);
+      if (!dragParsed) return;
       var siblings = [];
+      var seenProbeIds = {};
       for (var i = 0; i < dragEl.parentElement.children.length; i++) {
         var ch = dragEl.parentElement.children[i];
-        if (ch.hasAttribute('data-studio-id')) siblings.push(ch);
+        var chId = ch.getAttribute('data-studio-instance') || ch.getAttribute('data-studio-id');
+        if (!chId || seenProbeIds[chId]) continue;
+        var chP = parseStudioId(chId);
+        if (chP && chP.filePath === dragParsed.filePath) {
+          seenProbeIds[chId] = true;
+          siblings.push(ch);
+        }
       }
-      if (siblings.length < 2) return;
-      var bestIdx = siblings.indexOf(dragEl);
-      var bestDist = Infinity;
-      var indicatorRect = null;
+      var fromPos = siblings.indexOf(dragEl);
+      if (siblings.length < 2 || fromPos === -1) return;
+
       var parentCs = window.getComputedStyle(dragEl.parentElement);
-      var isHorizontal = (parentCs.display === 'flex' && parentCs.flexDirection.startsWith('row')) || parentCs.display === 'grid';
+      var isHorizontal = false;
+      if (parentCs.display === 'flex' || parentCs.display === 'inline-flex') {
+        isHorizontal = parentCs.flexDirection.startsWith('row');
+      } else if (parentCs.display === 'grid' || parentCs.display === 'inline-grid') {
+        var r0 = siblings[0].getBoundingClientRect();
+        var r1 = siblings[1].getBoundingClientRect();
+        isHorizontal = Math.abs(r0.top - r1.top) < Math.min(r0.height, r1.height) * 0.5;
+      }
+
+      var bestIdx = fromPos;
+      var bestDist = Infinity;
+      var bestAfter = false;
+      var indicatorRect = null;
 
       siblings.forEach(function(sib, idx) {
         var r = sib.getBoundingClientRect();
@@ -435,18 +537,18 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
           bestDist = d;
           bestIdx = idx;
           if (isHorizontal) {
-            var after = msg.x > cx;
+            bestAfter = msg.x > cx;
             indicatorRect = {
-              x: after ? r.right + 2 : r.left - 4,
+              x: bestAfter ? r.right + 2 : r.left - 4,
               y: r.top,
               width: 3,
               height: r.height
             };
           } else {
-            var afterY = msg.y > cy;
+            bestAfter = msg.y > cy;
             indicatorRect = {
               x: r.left,
-              y: afterY ? r.bottom + 2 : r.top - 4,
+              y: bestAfter ? r.bottom + 2 : r.top - 4,
               width: r.width,
               height: 3
             };
@@ -454,16 +556,51 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
         }
       });
 
+      var slot = bestAfter ? (bestIdx + 1) : bestIdx;
+      var rawTarget = slot > fromPos ? slot - 1 : slot;
+      var targetIdx = Math.max(0, Math.min(siblings.length - 1, rawTarget));
+
       window.parent.postMessage({
         type: 'studio:drop-target',
-        targetIndex: bestIdx,
+        targetIndex: targetIdx,
         indicatorRect: indicatorRect
       }, '*');
+    } else if (msg.type === 'studio:hot-update-html') {
+      if (typeof msg.bodyHtml === 'string') {
+        document.body.innerHTML = msg.bodyHtml;
+      }
+      if (typeof msg.tailwindCss === 'string') {
+        var twHtmlStyle = document.getElementById('studio-tailwind-css');
+        if (twHtmlStyle) twHtmlStyle.textContent = msg.tailwindCss;
+      }
+      if (typeof msg.userCss === 'string') {
+        var uHtmlStyle = document.getElementById('studio-user-css');
+        if (uHtmlStyle) uHtmlStyle.textContent = msg.userCss;
+      }
+      ACTIVE_PREVIEW_RECORDS = [];
+      if (msg.selectStudioId) {
+        SELECTED_ID = msg.selectStudioId;
+      }
+      postTree();
+      if (SELECTED_ID) {
+        var selHtml = findStudioElement(SELECTED_ID);
+        if (selHtml) {
+          SELECTED_ID = selHtml.getAttribute('data-studio-id') || SELECTED_ID;
+          window.parent.postMessage({
+            type: 'studio:select',
+            element: extractSnapshot(selHtml)
+          }, '*');
+        }
+      }
     } else if (msg.type === 'studio:ping-tree') {
+      if (msg.selectStudioId) {
+        SELECTED_ID = msg.selectStudioId;
+      }
       postTree();
       if (SELECTED_ID) {
         var sel = findStudioElement(SELECTED_ID);
         if (sel) {
+          SELECTED_ID = sel.getAttribute('data-studio-id') || SELECTED_ID;
           window.parent.postMessage({
             type: 'studio:select',
             element: extractSnapshot(sel)
@@ -482,52 +619,30 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
 `;
 }
 
-export function buildPreviewDocument(
+export interface ReactPreviewPayload {
+  modules: Record<string, string>;
+  resMap: Record<string, Record<string, string>>;
+  jsonFiles: Record<string, string>;
+  activeRoute: string;
+  entryFile: string;
+  layoutFile: string | null;
+  isolateComponent: boolean;
+  userCss: string;
+  compileErrors: string[];
+}
+
+export function compileReactPreviewPayload(
   project: VirtualProject,
   activePage: ProjectPage,
-  compiledTailwindCss: string,
-  interactionMode: 'design' | 'interact',
-  selectedStudioId: string | null,
   options?: { isolateComponent?: boolean }
-): CompiledPreviewBundle {
+): ReactPreviewPayload {
   const compileErrors: string[] = [];
   const isolateComponent = Boolean(options?.isolateComponent);
-
-  // Pure HTML mode
-  if (project.framework === 'html' || /\.html?$/i.test(activePage.filePath)) {
-    const rawHtml = project.files[activePage.filePath] || '<div>Empty HTML page</div>';
-    const instrumentedHtml = instrumentSourceWithStudioIds(rawHtml, activePage.filePath, true);
-    const cssParts = project.globalCssPaths
-      .map((p) => project.files[p] || '')
-      .join('\n');
-    const bridge = buildDesignerBridgeScript(activePage.route, interactionMode);
-    const injection = `<style>${compiledTailwindCss}\n${cssParts}</style><script>${escapeScriptClose(
-      bridge
-    )}</script>`;
-
-    let finalHtml = instrumentedHtml;
-    if (/<\/head>/i.test(finalHtml)) {
-      finalHtml = finalHtml.replace(/<\/head>/i, `${injection}</head>`);
-    } else {
-      finalHtml = `<!doctype html><html><head>${injection}</head><body>${finalHtml}</body></html>`;
-    }
-    if (selectedStudioId) {
-      finalHtml = finalHtml.replace(
-        /<\/body>/i,
-        `<script>setTimeout(function(){window.postMessage({type:'studio:select-by-id',studioId:${JSON.stringify(
-          selectedStudioId
-        )}},'*')},120);</script></body>`
-      );
-    }
-    return { html: finalHtml, compileErrors };
-  }
-
-  // React / Next.js TSX/JSX bundle mode
   const compiledModules: Record<string, string> = {};
-  const cssContent = project.globalCssPaths
+
+  const userCss = project.globalCssPaths
     .map((p) => {
       const css = project.files[p] || '';
-      // Strip Tailwind directives since compiledTailwindCss already includes full compiled CSS
       return css
         .replace(/@import\s+["']tailwindcss["']\s*;/g, '')
         .replace(/@tailwind\s+[^;]+;/g, '');
@@ -560,7 +675,6 @@ export function buildPreviewDocument(
     }
   }
 
-  // Build resolution lookup map so the iframe's require() resolves relative & alias imports
   const resolutionMap: Record<string, Record<string, string>> = {};
   for (const [filePath] of sourceEntries) {
     const code = project.files[filePath];
@@ -577,6 +691,83 @@ export function buildPreviewDocument(
     resolutionMap[filePath] = imports;
   }
 
+  const jsonFiles = Object.fromEntries(
+    Object.entries(project.files).filter(([p]) => p.endsWith('.json'))
+  );
+
+  const layoutFile = isolateComponent
+    ? null
+    : ['app/layout.tsx', 'app/layout.jsx', 'src/app/layout.tsx', 'src/app/layout.jsx'].find(
+        (p) => Boolean(project.files[p])
+      ) || null;
+
+  return {
+    modules: compiledModules,
+    resMap: resolutionMap,
+    jsonFiles,
+    activeRoute: activePage.route,
+    entryFile: activePage.filePath,
+    layoutFile,
+    isolateComponent,
+    userCss,
+    compileErrors,
+  };
+}
+
+export function compileHtmlBodyPayload(project: VirtualProject, activePage: ProjectPage): {
+  bodyHtml: string;
+  userCss: string;
+} {
+  const rawHtml = project.files[activePage.filePath] || '<div>Empty HTML page</div>';
+  const instrumentedHtml = instrumentSourceWithStudioIds(rawHtml, activePage.filePath, true);
+  const bodyMatch = instrumentedHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const bodyHtml = bodyMatch ? bodyMatch[1] : instrumentedHtml;
+  const userCss = project.globalCssPaths.map((p) => project.files[p] || '').join('\n');
+  return { bodyHtml, userCss };
+}
+
+export function buildPreviewDocument(
+  project: VirtualProject,
+  activePage: ProjectPage,
+  compiledTailwindCss: string,
+  interactionMode: 'design' | 'interact',
+  selectedStudioId: string | null,
+  options?: { isolateComponent?: boolean }
+): CompiledPreviewBundle {
+  const isolateComponent = Boolean(options?.isolateComponent);
+
+  // Pure HTML mode
+  if (project.framework === 'html' || /\.html?$/i.test(activePage.filePath)) {
+    const rawHtml = project.files[activePage.filePath] || '<div>Empty HTML page</div>';
+    const instrumentedHtml = instrumentSourceWithStudioIds(rawHtml, activePage.filePath, true);
+    const cssParts = project.globalCssPaths
+      .map((p) => project.files[p] || '')
+      .join('\n');
+    const bridge = buildDesignerBridgeScript(activePage.route, interactionMode);
+    const injection = `<style id="studio-tailwind-css">${compiledTailwindCss}</style><style id="studio-user-css">${cssParts}</style><script>${escapeScriptClose(
+      bridge
+    )}</script>`;
+
+    let finalHtml = instrumentedHtml;
+    if (/<\/head>/i.test(finalHtml)) {
+      finalHtml = finalHtml.replace(/<\/head>/i, `${injection}</head>`);
+    } else {
+      finalHtml = `<!doctype html><html><head>${injection}</head><body>${finalHtml}</body></html>`;
+    }
+    if (selectedStudioId) {
+      finalHtml = finalHtml.replace(
+        /<\/body>/i,
+        `<script>setTimeout(function(){window.postMessage({type:'studio:select-by-id',studioId:${JSON.stringify(
+          selectedStudioId
+        )},scroll:false},'*')},120);</script></body>`
+      );
+    }
+    return { html: finalHtml, compileErrors: [] };
+  }
+
+  // React / Next.js TSX/JSX bundle mode
+  const payload = compileReactPreviewPayload(project, activePage, { isolateComponent });
+
   const runtimeScript = `
 (function bootStudioRuntime() {
   var RT = window.parent && window.parent.__STUDIO_RUNTIME__;
@@ -587,36 +778,71 @@ export function buildPreviewDocument(
   var React = RT.React;
   var ReactDOMClient = RT.ReactDOMClient;
   var LucideIcons = RT.LucideIcons || {};
-  var MODULES = ${escapeScriptClose(JSON.stringify(compiledModules))};
-  var RES_MAP = ${escapeScriptClose(JSON.stringify(resolutionMap))};
-  var JSON_FILES = ${escapeScriptClose(
-    JSON.stringify(
-      Object.fromEntries(
-        Object.entries(project.files).filter(([p]) => p.endsWith('.json'))
-      )
-    )
-  )};
-  var ACTIVE_ROUTE = ${JSON.stringify(activePage.route)};
-  var ENTRY_FILE = ${JSON.stringify(activePage.filePath)};
-  var ISOLATE_COMPONENT = ${JSON.stringify(isolateComponent)};
-  var LAYOUT_FILE = ${JSON.stringify(
-    isolateComponent
-      ? null
-      : ['app/layout.tsx', 'app/layout.jsx', 'src/app/layout.tsx', 'src/app/layout.jsx'].find(
-          (p) => Boolean(project.files[p])
-        ) || null
-  )};
+  var ExternalLibs = RT.ExternalLibs || {};
+  var REQUESTED_LIBS = {};
+  var MODULES = ${escapeScriptClose(JSON.stringify(payload.modules))};
+  var RES_MAP = ${escapeScriptClose(JSON.stringify(payload.resMap))};
+  var JSON_FILES = ${escapeScriptClose(JSON.stringify(payload.jsonFiles))};
+  var ACTIVE_ROUTE = ${JSON.stringify(payload.activeRoute)};
+  var ENTRY_FILE = ${JSON.stringify(payload.entryFile)};
+  var ISOLATE_COMPONENT = ${JSON.stringify(payload.isolateComponent)};
+  var LAYOUT_FILE = ${JSON.stringify(payload.layoutFile)};
   var CACHE = {};
+  var PROJECT_MODULE_FNS = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+  var WRAPPED_COMP_MAP = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+  var studioRoot = null;
+
+  function getWrappedComponent(Comp) {
+    if (!WRAPPED_COMP_MAP) return Comp;
+    var existing = WRAPPED_COMP_MAP.get(Comp);
+    if (existing) return existing;
+    var Wrapped = function StudioComponentHost(props) {
+      var instId = props && props['data-studio-id'];
+      var cleanProps = props;
+      if (instId) {
+        cleanProps = Object.assign({}, props);
+        delete cleanProps['data-studio-id'];
+      }
+      var rendered = Comp(cleanProps);
+      if (instId && React.isValidElement(rendered) && typeof rendered.type === 'string') {
+        return React.cloneElement(rendered, { 'data-studio-instance': instId });
+      }
+      return rendered;
+    };
+    Wrapped.displayName = Comp.displayName || Comp.name || 'StudioComponent';
+    WRAPPED_COMP_MAP.set(Comp, Wrapped);
+    return Wrapped;
+  }
 
   // Wrap React.createElement so Next.js RootLayout <html> and <body> render safely inside #root
+  // and project component callsites preserve data-studio-instance for parent-level reordering
   var StudioReact = Object.assign({}, React, {
     createElement: function(type, props) {
       var args = Array.prototype.slice.call(arguments, 2);
+      if (typeof type === 'string' && props && props['data-studio-id']) {
+        var ownedMap = window.__STUDIO_REACT_OWNED_STYLES__ || (window.__STUDIO_REACT_OWNED_STYLES__ = {});
+        if (props.style && typeof props.style === 'object') {
+          ownedMap[props['data-studio-id']] = Object.assign({}, props.style);
+        } else {
+          delete ownedMap[props['data-studio-id']];
+        }
+      }
       if (type === 'html' || type === 'body') {
         var nextProps = props ? Object.assign({}, props) : {};
         delete nextProps.lang;
         delete nextProps.suppressHydrationWarning;
         return React.createElement.apply(React, ['div', nextProps].concat(args));
+      }
+      if (
+        typeof type === 'function' &&
+        PROJECT_MODULE_FNS &&
+        PROJECT_MODULE_FNS.has(type) &&
+        props &&
+        props['data-studio-id'] &&
+        !(type.prototype && type.prototype.isReactComponent)
+      ) {
+        var wrapped = getWrappedComponent(type);
+        return React.createElement.apply(React, [wrapped, props].concat(args));
       }
       return React.createElement.apply(React, [type, props].concat(args));
     }
@@ -806,6 +1032,26 @@ export function buildPreviewDocument(
         twMerge: function() { return Array.from(arguments).filter(Boolean).join(' '); }
       };
     }
+    if (spec === 'class-variance-authority') {
+      return {
+        cva: function(base) { return function() { return base || ''; }; }
+      };
+    }
+    if (spec === 'sonner') {
+      var noopToast = Object.assign(function() {}, {
+        success: function() {},
+        error: function() {},
+        info: function() {},
+        warning: function() {}
+      });
+      return {
+        Toaster: function() { return null; },
+        toast: noopToast
+      };
+    }
+    if (spec === 'canvas-confetti') {
+      return { __esModule: true, default: function() {} };
+    }
     if (spec === 'zustand') {
       return {
         __esModule: true,
@@ -839,14 +1085,32 @@ export function buildPreviewDocument(
     var localRequire = function(spec) {
       var builtIn = resolveBuiltIn(spec);
       if (builtIn) return builtIn;
+      if (ExternalLibs[spec]) return ExternalLibs[spec];
       var resolved = RES_MAP[filePath] && RES_MAP[filePath][spec];
       if (resolved) return loadModule(resolved);
+      if (!spec.startsWith('.') && !spec.startsWith('@/') && !REQUESTED_LIBS[spec]) {
+        REQUESTED_LIBS[spec] = true;
+        try {
+          window.parent.postMessage({ type: 'studio:request-lib', packageName: spec }, '*');
+        } catch (e) {}
+      }
       return createFallbackProxy(spec);
     };
 
     try {
       var fn = new Function('require', 'module', 'exports', 'React', 'process', code);
       fn(localRequire, mod, mod.exports, StudioReact, { env: {} });
+      if (PROJECT_MODULE_FNS) {
+        if (typeof mod.exports === 'function') {
+          PROJECT_MODULE_FNS.add(mod.exports);
+        } else if (mod.exports && typeof mod.exports === 'object') {
+          Object.keys(mod.exports).forEach(function(ek) {
+            if (typeof mod.exports[ek] === 'function') {
+              PROJECT_MODULE_FNS.add(mod.exports[ek]);
+            }
+          });
+        }
+      }
     } catch (err) {
       console.error('Module error in ' + filePath + ':', err);
       mod.exports = {
@@ -933,13 +1197,55 @@ export function buildPreviewDocument(
 
   var rootNode = document.getElementById('root');
   if (rootNode) {
-    ReactDOMClient.createRoot(rootNode).render(React.createElement(StudioRoot));
+    studioRoot = ReactDOMClient.createRoot(rootNode);
+    studioRoot.render(React.createElement(StudioRoot));
     setTimeout(function() {
       window.postMessage({ type: 'studio:ping-tree' }, '*');
       if (${JSON.stringify(Boolean(selectedStudioId))}) {
-        window.postMessage({ type: 'studio:select-by-id', studioId: ${JSON.stringify(selectedStudioId)} }, '*');
+        window.postMessage({ type: 'studio:select-by-id', studioId: ${JSON.stringify(selectedStudioId)}, scroll: false }, '*');
       }
-    }, 120);
+    }, 80);
+
+    window.addEventListener('message', function(ev) {
+      var msg = ev.data || {};
+      if (msg.type === 'studio:hot-update' && msg.payload) {
+        var p = msg.payload;
+        MODULES = p.modules || MODULES;
+        RES_MAP = p.resMap || RES_MAP;
+        JSON_FILES = p.jsonFiles || JSON_FILES;
+        ACTIVE_ROUTE = p.activeRoute || ACTIVE_ROUTE;
+        ENTRY_FILE = p.entryFile || ENTRY_FILE;
+        LAYOUT_FILE = p.layoutFile !== undefined ? p.layoutFile : LAYOUT_FILE;
+        ISOLATE_COMPONENT = p.isolateComponent !== undefined ? p.isolateComponent : ISOLATE_COMPONENT;
+        CACHE = {};
+        if (typeof msg.tailwindCss === 'string') {
+          var twEl = document.getElementById('studio-tailwind-css');
+          if (twEl) twEl.textContent = msg.tailwindCss;
+        }
+        if (typeof p.userCss === 'string') {
+          var uEl = document.getElementById('studio-user-css');
+          if (uEl) uEl.textContent = p.userCss;
+        }
+        studioRoot.render(React.createElement(StudioRoot));
+        setTimeout(function() {
+          window.postMessage({
+            type: 'studio:ping-tree',
+            selectStudioId: msg.selectStudioId || null
+          }, '*');
+        }, 45);
+      } else if (msg.type === 'studio:refresh-runtime') {
+        var nextRT = window.parent && window.parent.__STUDIO_RUNTIME__;
+        if (nextRT) {
+          LucideIcons = nextRT.LucideIcons || LucideIcons;
+          ExternalLibs = nextRT.ExternalLibs || ExternalLibs;
+        }
+        CACHE = {};
+        studioRoot.render(React.createElement(StudioRoot));
+        setTimeout(function() {
+          window.postMessage({ type: 'studio:ping-tree' }, '*');
+        }, 30);
+      }
+    });
   }
 })();
 `;
@@ -950,7 +1256,8 @@ export function buildPreviewDocument(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <style>${compiledTailwindCss}\n${cssContent}</style>
+  <style id="studio-tailwind-css">${compiledTailwindCss}</style>
+  <style id="studio-user-css">${payload.userCss}</style>
 </head>
 <body>
   <div id="root"></div>
@@ -959,5 +1266,5 @@ export function buildPreviewDocument(
 </body>
 </html>`;
 
-  return { html, compileErrors };
+  return { html, compileErrors: payload.compileErrors };
 }

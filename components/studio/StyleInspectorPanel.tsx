@@ -11,10 +11,14 @@ import {
   Component,
   Copy,
   Move,
+  PackagePlus,
   Palette,
+  Replace,
   SlidersHorizontal,
+  Sparkles,
   Trash2,
   Type,
+  Wand2,
   X,
 } from 'lucide-react';
 import GradientEditor from './GradientEditor';
@@ -29,18 +33,21 @@ import {
   matchShadowPresetLabel,
 } from '@/lib/studio/border-elevation';
 import {
+  ComponentInsertPosition,
   ComponentInstanceUsage,
   ProjectComponentInfo,
 } from '@/lib/studio/component-editor';
+import { ExternalImportEntry } from '@/lib/studio/library-importer';
 import {
   HorizontalConstraint,
   PositionMode,
-  SizeConstraintMode,
   VerticalConstraint,
   applyHorizontalConstraintPatch,
   applySizeConstraintMode,
   applyVerticalConstraintPatch,
+  buildResizeContainmentStyles,
   detectConstraintState,
+  parseElementTranslateOffsets,
   parseGridColumnCount,
 } from '@/lib/studio/layout-constraints';
 import { normalizeHex, parseGradientCss } from '@/lib/studio/gradient';
@@ -49,7 +56,21 @@ import {
   parseLastGradientJson,
   subscribeGradientStorage,
 } from '@/lib/studio/gradient-persistence';
-import { ElementSourcePatch, GradientConfig, StudioElementSnapshot } from '@/lib/studio/types';
+import {
+  AlignBreakpointScope,
+  AutoAlignMode,
+  BlockRedesignPattern,
+  HorizontalAlign,
+  VerticalAlign,
+  detectBreakpointSizeMode,
+  resolveEffectiveBreakpoint,
+} from '@/lib/studio/smart-aligner';
+import {
+  ElementSourcePatch,
+  GradientConfig,
+  StudioElementSnapshot,
+  ViewportPreset,
+} from '@/lib/studio/types';
 
 interface StyleInspectorPanelProps {
   selected: StudioElementSnapshot | null;
@@ -71,6 +92,36 @@ interface StyleInspectorPanelProps {
     propName: string,
     propValue: string
   ) => void;
+  onReplaceWithComponent?: (
+    targetFilePath: string,
+    elementIndex: number,
+    componentFilePath: string
+  ) => void;
+  onInsertComponent?: (
+    targetFilePath: string,
+    elementIndex: number,
+    position: ComponentInsertPosition,
+    componentFilePath: string
+  ) => void;
+  onOpenLibraryModal?: () => void;
+  fileExternalImports?: ExternalImportEntry[];
+  dependenciesCount?: number;
+  viewport?: ViewportPreset;
+  alignBreakpointScope?: AlignBreakpointScope;
+  onChangeAlignBreakpointScope?: (scope: AlignBreakpointScope) => void;
+  onSmartAutoAlign?: (mode: AutoAlignMode, scopeElementIndex?: number) => void;
+  onSmartAlignElement?: (opts: {
+    filePath: string;
+    elementIndex: number;
+    horizontal?: HorizontalAlign;
+    vertical?: VerticalAlign;
+  }) => void;
+  onSmartRedesignBlock?: (
+    filePath: string,
+    elementIndex: number,
+    pattern: BlockRedesignPattern
+  ) => void;
+  onOpenSmartAligner?: () => void;
 }
 
 function parsePxNumber(val?: string): string {
@@ -80,20 +131,12 @@ function parsePxNumber(val?: string): string {
   return m ? String(Math.round(parseFloat(m[0]))) : '';
 }
 
-function parseTranslateOffsets(transformVal?: string): { x: number; y: number } {
-  if (!transformVal || transformVal === 'none') return { x: 0, y: 0 };
-  const tMatch = transformVal.match(/translate\(\s*(-?\d+(?:\.\d+)?)px\s*,\s*(-?\d+(?:\.\d+)?)px\s*\)/);
-  if (tMatch) {
-    return { x: Math.round(parseFloat(tMatch[1])), y: Math.round(parseFloat(tMatch[2])) };
-  }
-  const mMatch = transformVal.match(/^matrix\(([^)]+)\)$/);
-  if (mMatch) {
-    const parts = mMatch[1].split(',').map((s) => parseFloat(s.trim()));
-    if (parts.length === 6 && Number.isFinite(parts[4]) && Number.isFinite(parts[5])) {
-      return { x: Math.round(parts[4]), y: Math.round(parts[5]) };
-    }
-  }
-  return { x: 0, y: 0 };
+function parseStudioTarget(id: string): { filePath: string; elementIndex: number } | null {
+  const sep = id.lastIndexOf('::');
+  if (sep === -1) return null;
+  const idx = Number(id.slice(sep + 2));
+  if (!Number.isFinite(idx)) return null;
+  return { filePath: id.slice(0, sep), elementIndex: idx };
 }
 
 export default function StyleInspectorPanel({
@@ -111,6 +154,18 @@ export default function StyleInspectorPanel({
   onIsolateComponent,
   onExtractComponent,
   onPatchComponentProp,
+  onReplaceWithComponent,
+  onInsertComponent,
+  onOpenLibraryModal,
+  fileExternalImports = [],
+  dependenciesCount = 0,
+  viewport = 'desktop',
+  alignBreakpointScope = 'auto',
+  onChangeAlignBreakpointScope,
+  onSmartAutoAlign,
+  onSmartAlignElement,
+  onSmartRedesignBlock,
+  onOpenSmartAligner,
 }: StyleInspectorPanelProps) {
   const [activeTab, setActiveTab] = useState<'style' | 'layout' | 'type' | 'comp'>('style');
   const [textDraft, setTextDraft] = useState(selected?.textContent || '');
@@ -125,6 +180,7 @@ export default function StyleInspectorPanel({
   const [hrefDraft, setHrefDraft] = useState('');
   const [srcDraft, setSrcDraft] = useState('');
   const [extractCompName, setExtractCompName] = useState('');
+  const [targetCompPath, setTargetCompPath] = useState('');
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
   const [prevSelectedKey, setPrevSelectedKey] = useState<string | null>(null);
@@ -150,7 +206,7 @@ export default function StyleInspectorPanel({
   const rawElevation = boxShadowToElevationHint(rawBoxShadow);
 
   const selectedSyncKey = selected
-    ? `${selected.studioId}|${selected.textContent}|${selected.className}|${selected.href || ''}|${selected.src || ''}|${selected.computedStyles.color}|${selected.computedStyles.borderColor}|${rawRadius}|${rawBorderWidth}|${rawOpacity}|${rawBoxShadow}|${selected.inlineStyles.transform || selected.computedStyles.transform}`
+    ? `${selected.studioId}|${selected.textContent}|${selected.className}|${selected.href || ''}|${selected.src || ''}|${selected.computedStyles.color}|${selected.computedStyles.borderColor}|${rawRadius}|${rawBorderWidth}|${rawOpacity}|${rawBoxShadow}|${selected.inlineStyles.translate || selected.computedStyles.translate || ''}|${selected.inlineStyles.transform || selected.computedStyles.transform || ''}`
     : null;
 
   if (selectedSyncKey !== prevSelectedKey) {
@@ -167,8 +223,9 @@ export default function StyleInspectorPanel({
       setClassDraft(selected.className || '');
       setHrefDraft(selected.href || '');
       setSrcDraft(selected.src || '');
-      const offsets = parseTranslateOffsets(
-        selected.inlineStyles.transform || selected.computedStyles.transform
+      const offsets = parseElementTranslateOffsets(
+        selected.inlineStyles,
+        selected.computedStyles
       );
       setOffsetX(offsets.x);
       setOffsetY(offsets.y);
@@ -333,32 +390,47 @@ export default function StyleInspectorPanel({
             </p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {selected.canReorderSiblings && (
-              <>
-                <button
-                  type="button"
-                  aria-label="Move element earlier"
-                  disabled={selected.siblingIndex <= 0}
-                  onClick={() =>
-                    onMoveSibling(selected.filePath, selected.elementIndex, selected.siblingIndex - 1)
-                  }
-                  className="rounded border border-slate-200 p-1.5 sm:p-1 text-slate-600 hover:bg-slate-50 disabled:opacity-35"
-                >
-                  <ArrowUp className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Move element later"
-                  disabled={selected.siblingIndex >= selected.siblingCount - 1}
-                  onClick={() =>
-                    onMoveSibling(selected.filePath, selected.elementIndex, selected.siblingIndex + 1)
-                  }
-                  className="rounded border border-slate-200 p-1.5 sm:p-1 text-slate-600 hover:bg-slate-50 disabled:opacity-35"
-                >
-                  <ArrowDown className="h-3.5 w-3.5" />
-                </button>
-              </>
-            )}
+            {selected.canReorderSiblings && (() => {
+              const reorderTarget =
+                parseStudioTarget(selected.instanceStudioId || selected.studioId) || {
+                  filePath: selected.filePath,
+                  elementIndex: selected.elementIndex,
+                };
+              return (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Move element earlier"
+                    disabled={selected.siblingIndex <= 0}
+                    onClick={() =>
+                      onMoveSibling(
+                        reorderTarget.filePath,
+                        reorderTarget.elementIndex,
+                        selected.siblingIndex - 1
+                      )
+                    }
+                    className="rounded border border-slate-200 p-1.5 sm:p-1 text-slate-600 hover:bg-slate-50 disabled:opacity-35"
+                  >
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Move element later"
+                    disabled={selected.siblingIndex >= selected.siblingCount - 1}
+                    onClick={() =>
+                      onMoveSibling(
+                        reorderTarget.filePath,
+                        reorderTarget.elementIndex,
+                        selected.siblingIndex + 1
+                      )
+                    }
+                    className="rounded border border-slate-200 p-1.5 sm:p-1 text-slate-600 hover:bg-slate-50 disabled:opacity-35"
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              );
+            })()}
             <button
               type="button"
               aria-label="Duplicate element"
@@ -829,16 +901,145 @@ export default function StyleInspectorPanel({
           const isGrid = displayMode === 'grid';
           const gridCols = parseGridColumnCount(ins['grid-template-columns'] || cs.gridTemplateColumns);
 
-          const getSizeMode = (rawVal?: string): SizeConstraintMode => {
-            if (!rawVal || rawVal === 'auto') return 'hug';
-            if (rawVal === '100%') return 'fill';
-            return 'fixed';
-          };
-          const widthMode = getSizeMode(ins.width);
-          const heightMode = getSizeMode(ins.height);
+          const effectiveBp = resolveEffectiveBreakpoint(alignBreakpointScope, viewport);
+          const widthMode = detectBreakpointSizeMode(selected.className, ins.width, 'width', effectiveBp);
+          const heightMode = detectBreakpointSizeMode(selected.className, ins.height, 'height', effectiveBp);
 
           return (
             <>
+              {/* Smart Aligner Quick Section */}
+              {(onSmartAutoAlign || onSmartAlignElement || onSmartRedesignBlock) && (
+                <section className="space-y-2.5 border-b border-slate-100 pb-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-800">
+                      <Wand2 className="h-3.5 w-3.5 text-indigo-600" />
+                      <span>Smart Aligner</span>
+                    </h3>
+                    {onOpenSmartAligner && (
+                      <button
+                        type="button"
+                        onClick={onOpenSmartAligner}
+                        className="text-[10px] font-semibold text-indigo-600 hover:underline"
+                      >
+                        Full Panel
+                      </button>
+                    )}
+                  </div>
+
+                  {onChangeAlignBreakpointScope && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px] text-slate-500">
+                        <span>Breakpoint Scope</span>
+                        <span className="font-mono text-indigo-600">{effectiveBp}</span>
+                      </div>
+                      <div className="grid grid-cols-5 gap-0.5 rounded-md border border-slate-200 bg-slate-100 p-0.5">
+                        {(
+                          [
+                            { id: 'auto', label: 'Auto' },
+                            { id: 'mobile', label: 'Mob' },
+                            { id: 'tablet', label: 'Tab' },
+                            { id: 'desktop', label: 'Desk' },
+                            { id: 'all', label: 'All' },
+                          ] as Array<{ id: AlignBreakpointScope; label: string }>
+                        ).map((bp) => (
+                          <button
+                            key={bp.id}
+                            type="button"
+                            onClick={() => onChangeAlignBreakpointScope(bp.id)}
+                            className={`h-6 rounded text-[10px] font-medium ${
+                              alignBreakpointScope === bp.id
+                                ? 'bg-white text-indigo-700 shadow-xs font-semibold'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            {bp.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {onSmartAutoAlign && (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => onSmartAutoAlign('responsive-all', selected.elementIndex)}
+                        className="inline-flex h-8 items-center justify-center gap-1 rounded-md bg-indigo-600 px-2 text-[11px] font-semibold text-white hover:bg-indigo-700"
+                      >
+                        <Sparkles className="h-3 w-3 shrink-0" />
+                        <span>Auto-Align Block</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onSmartAutoAlign('responsive-all')}
+                        className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100"
+                      >
+                        <span>Auto-Align Page</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {onSmartAlignElement && (
+                    <div className="grid grid-cols-4 gap-1">
+                      {(
+                        [
+                          { id: 'left', label: 'Left' },
+                          { id: 'center', label: 'Center' },
+                          { id: 'right', label: 'Right' },
+                          { id: 'between', label: 'Betw' },
+                        ] as Array<{ id: HorizontalAlign; label: string }>
+                      ).map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          aria-label={`Smart align ${opt.id}`}
+                          onClick={() =>
+                            onSmartAlignElement({
+                              filePath: selected.filePath,
+                              elementIndex: selected.elementIndex,
+                              horizontal: opt.id,
+                            })
+                          }
+                          className="h-7 rounded border border-slate-200 bg-white text-[10px] font-medium text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {onSmartRedesignBlock && (
+                    <div className="grid grid-cols-3 gap-1">
+                      {(
+                        [
+                          { id: 'stack', label: 'Stack ↓' },
+                          { id: 'split-2', label: '2-Col' },
+                          { id: 'grid-3', label: '3-Col' },
+                          { id: 'wrap-row', label: 'Wrap Row' },
+                          { id: 'center-hero', label: 'Center Hero' },
+                          { id: 'space-bar', label: 'Space Bar' },
+                        ] as Array<{ id: BlockRedesignPattern; label: string }>
+                      ).map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() =>
+                            onSmartRedesignBlock(
+                              selected.filePath,
+                              selected.elementIndex,
+                              preset.id
+                            )
+                          }
+                          className="h-7 rounded border border-slate-200 bg-slate-50 px-1 text-[10px] font-medium text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
+
               {/* Size & Responsive Sizing Modes */}
               <section className="space-y-2.5 border-b border-slate-100 pb-4">
                 <h3 className="text-[11px] font-semibold text-slate-700">Dimensions &amp; Sizing</h3>
@@ -853,11 +1054,21 @@ export default function StyleInspectorPanel({
                           <button
                             key={m}
                             type="button"
-                            onClick={() =>
-                              commitStyles(
-                                applySizeConstraintMode('width', m, selected.rect.width)
-                              )
-                            }
+                            onClick={() => {
+                              const modePatch = applySizeConstraintMode('width', m, selected.rect.width);
+                              if (m === 'hug') {
+                                commitStyles(modePatch);
+                              } else {
+                                commitStyles(
+                                  buildResizeContainmentStyles({
+                                    width: modePatch.width || undefined,
+                                    inlineStyles: selected.inlineStyles,
+                                    computedStyles: selected.computedStyles,
+                                    currentRect: selected.rect,
+                                  })
+                                );
+                              }
+                            }}
                             className={`rounded px-1 py-0.5 text-[9px] font-semibold uppercase ${
                               widthMode === m
                                 ? 'bg-blue-100 text-blue-700'
@@ -877,7 +1088,19 @@ export default function StyleInspectorPanel({
                       onBlur={(e) => {
                         const v = e.target.value.trim();
                         if (!v) return;
-                        commitStyles({ width: /^\d+$/.test(v) ? `${v}px` : v });
+                        const nextW = /^\d+$/.test(v) ? `${v}px` : v;
+                        if (nextW === 'auto') {
+                          commitStyles({ width: 'auto' });
+                        } else {
+                          commitStyles(
+                            buildResizeContainmentStyles({
+                              width: nextW,
+                              inlineStyles: selected.inlineStyles,
+                              computedStyles: selected.computedStyles,
+                              currentRect: selected.rect,
+                            })
+                          );
+                        }
                       }}
                       className="h-8 w-full rounded-md border border-slate-200 px-2 font-mono text-xs tabular-nums text-slate-800"
                     />
@@ -892,11 +1115,21 @@ export default function StyleInspectorPanel({
                           <button
                             key={m}
                             type="button"
-                            onClick={() =>
-                              commitStyles(
-                                applySizeConstraintMode('height', m, selected.rect.height)
-                              )
-                            }
+                            onClick={() => {
+                              const modePatch = applySizeConstraintMode('height', m, selected.rect.height);
+                              if (m === 'hug') {
+                                commitStyles(modePatch);
+                              } else {
+                                commitStyles(
+                                  buildResizeContainmentStyles({
+                                    height: modePatch.height || undefined,
+                                    inlineStyles: selected.inlineStyles,
+                                    computedStyles: selected.computedStyles,
+                                    currentRect: selected.rect,
+                                  })
+                                );
+                              }
+                            }}
                             className={`rounded px-1 py-0.5 text-[9px] font-semibold uppercase ${
                               heightMode === m
                                 ? 'bg-blue-100 text-blue-700'
@@ -916,7 +1149,19 @@ export default function StyleInspectorPanel({
                       onBlur={(e) => {
                         const v = e.target.value.trim();
                         if (!v) return;
-                        commitStyles({ height: /^\d+$/.test(v) ? `${v}px` : v });
+                        const nextH = /^\d+$/.test(v) ? `${v}px` : v;
+                        if (nextH === 'auto') {
+                          commitStyles({ height: 'auto' });
+                        } else {
+                          commitStyles(
+                            buildResizeContainmentStyles({
+                              height: nextH,
+                              inlineStyles: selected.inlineStyles,
+                              computedStyles: selected.computedStyles,
+                              currentRect: selected.rect,
+                            })
+                          );
+                        }
                       }}
                       className="h-8 w-full rounded-md border border-slate-200 px-2 font-mono text-xs tabular-nums text-slate-800"
                     />
@@ -1650,6 +1895,14 @@ export default function StyleInspectorPanel({
         {activeTab === 'comp' && (() => {
           const ownerComponent = components.find((c) => c.filePath === selected.filePath);
           const isReactFile = /\.(tsx|jsx)$/i.test(selected.filePath);
+          const insertableComponents = components.filter(
+            (c) => c.filePath !== selected.filePath
+          );
+          const pickedCompPath = insertableComponents.some(
+            (c) => c.filePath === targetCompPath
+          )
+            ? targetCompPath
+            : insertableComponents[0]?.filePath || '';
 
           return (
             <div className="space-y-4">
@@ -1672,7 +1925,7 @@ export default function StyleInspectorPanel({
                           onClick={() => onIsolateComponent(ownerComponent.filePath)}
                           className="rounded bg-indigo-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-indigo-700"
                         >
-                          Isolate
+                          Redesign
                         </button>
                       )}
                     </div>
@@ -1718,6 +1971,143 @@ export default function StyleInspectorPanel({
                   </div>
                 )}
               </section>
+
+              {/* Replace Existing Element or Insert Component at Intended Location */}
+              {isReactFile && (
+                <section className="space-y-2.5 border-b border-slate-100 pb-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+                      <Replace className="h-3.5 w-3.5 text-indigo-600" />
+                      <span>Replace or Insert Component</span>
+                    </h3>
+                    {pickedCompPath && onIsolateComponent && (
+                      <button
+                        type="button"
+                        onClick={() => onIsolateComponent(pickedCompPath)}
+                        className="text-[10px] font-semibold text-indigo-600 hover:underline"
+                      >
+                        Design Selected
+                      </button>
+                    )}
+                  </div>
+
+                  {insertableComponents.length === 0 ? (
+                    <p className="text-[11px] text-slate-400">
+                      Create or extract a React component to insert or replace elements here.
+                    </p>
+                  ) : (
+                    <>
+                      <div>
+                        <label htmlFor="target-react-comp" className="sr-only">
+                          Choose React component
+                        </label>
+                        <select
+                          id="target-react-comp"
+                          aria-label="Choose React component to insert or replace"
+                          value={pickedCompPath}
+                          onChange={(e) => setTargetCompPath(e.target.value)}
+                          className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-800"
+                        >
+                          {insertableComponents.map((c) => (
+                            <option key={c.filePath} value={c.filePath}>
+                              &lt;{c.name} /&gt; ({c.filePath})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {onReplaceWithComponent && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onReplaceWithComponent(
+                              selected.filePath,
+                              selected.elementIndex,
+                              pickedCompPath
+                            )
+                          }
+                          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100"
+                        >
+                          <Replace className="h-3.5 w-3.5" />
+                          <span>Replace &lt;{selected.tagName}&gt; with Component</span>
+                        </button>
+                      )}
+
+                      {onInsertComponent && (
+                        <div className="space-y-1">
+                          <span className="block text-[10px] font-medium text-slate-500">
+                            Insert Component Relative to &lt;{selected.tagName}&gt;
+                          </span>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {(
+                              [
+                                { pos: 'before', label: 'Before' },
+                                { pos: 'after', label: 'After' },
+                                { pos: 'inside-start', label: 'Inside Top' },
+                                { pos: 'inside-end', label: 'Inside End' },
+                              ] as Array<{ pos: ComponentInsertPosition; label: string }>
+                            ).map((opt) => (
+                              <button
+                                key={opt.pos}
+                                type="button"
+                                aria-label={`Insert component ${opt.label.toLowerCase()}`}
+                                onClick={() =>
+                                  onInsertComponent(
+                                    selected.filePath,
+                                    selected.elementIndex,
+                                    opt.pos,
+                                    pickedCompPath
+                                  )
+                                }
+                                className="h-7 rounded border border-slate-200 bg-white px-2 text-[11px] font-medium text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </section>
+              )}
+
+              {/* React Libraries & Imports */}
+              {onOpenLibraryModal && (
+                <section className="space-y-2 border-b border-slate-100 pb-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+                      <PackagePlus className="h-3.5 w-3.5 text-indigo-600" />
+                      <span>React Libraries</span>
+                    </h3>
+                    <span className="font-mono text-[10px] text-slate-400">
+                      {dependenciesCount} deps
+                    </span>
+                  </div>
+
+                  {fileExternalImports.length > 0 && (
+                    <div className="space-y-1">
+                      {fileExternalImports.slice(0, 4).map((imp, idx) => (
+                        <div
+                          key={`${imp.packageName}-${idx}`}
+                          className="truncate rounded border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-[10px] text-slate-700"
+                        >
+                          {imp.packageName}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={onOpenLibraryModal}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    <PackagePlus className="h-3.5 w-3.5 text-indigo-600" />
+                    <span>Import React Library</span>
+                  </button>
+                </section>
+              )}
 
               {/* Page Component Instances & Props */}
               <section className="space-y-2 border-b border-slate-100 pb-4">
