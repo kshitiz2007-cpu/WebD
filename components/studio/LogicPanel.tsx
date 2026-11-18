@@ -89,7 +89,7 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-slate-900">{selected.label || selected.tagName}</p>
-                <p className="truncate font-mono text-[10px] text-slate-500">{selected.filePath} · {selected.studioId}</p>
+                <p className="truncate font-mono text-[10px] text-slate-500">{selected.filePath} · {selected.instanceStudioId || selected.studioId}</p>
               </div>
               <span className="rounded-md bg-white px-2 py-1 text-[10px] font-semibold text-slate-600">{selected.tagName}</span>
             </div>
