@@ -1,4 +1,5 @@
-import type { ProjectFramework } from './types';\nimport { addLayoutToHtmlPage, addLayoutToReactPage } from './site-kit';
+import type { ProjectFramework } from './types';
+import { addLayoutToHtmlPage, addLayoutToReactPage } from './site-kit';
 
 export type PageTemplatePreset = 'blank' | 'landing' | 'about' | 'contact' | 'pricing';
 
