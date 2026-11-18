@@ -88,7 +88,8 @@ import {
 } from '@/lib/studio/draft-storage';
 import { createProjectFromFiles, STARTER_NEXTJS_FILES } from '@/lib/studio/sample-project';
 import { scanProjectStructure } from '@/lib/studio/project-scanner';
-import { createPageFile, type PageTemplatePreset } from '@/lib/studio/page-generator';\nimport { createSharedSiteKit } from '@/lib/studio/site-kit';
+import { createPageFile, type PageTemplatePreset } from '@/lib/studio/page-generator';
+import { createSharedSiteKit } from '@/lib/studio/site-kit';
 import {
   CanvasInteractionMode,
   ElementSourcePatch,
