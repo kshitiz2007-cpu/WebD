@@ -817,13 +817,14 @@ export default function StudioWorkspace() {
   }, [activePage.filePath]);
 
   const handleCreatePage = useCallback(
-    (title: string, slug: string, template: PageTemplatePreset): boolean => {
+    (title: string, slug: string, template: PageTemplatePreset, customTemplateCode?: string): boolean => {
       try {
         const generated = createPageFile({
           framework: project.framework,
           title,
           slug,
           template,
+          customTemplateCode,
           files: project.files,
         });
         if (project.pages.some((page) => page.route === generated.route)) return false;
@@ -1571,8 +1572,9 @@ export default function StudioWorkspace() {
                 handleSelectPage(route);
                 if (isCompactViewport) setCompactLeftOpen(false);
               }}
-              onCreatePage={(title, slug, template) => {
-                const created = handleCreatePage(title, slug, template);
+              isHtmlProject={project.framework === 'html'}
+              onCreatePage={(title, slug, template, customTemplateCode) => {
+                const created = handleCreatePage(title, slug, template, customTemplateCode);
                 if (created && isCompactViewport) setCompactLeftOpen(false);
                 return created;
               }}
