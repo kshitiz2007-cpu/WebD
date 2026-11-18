@@ -11,6 +11,7 @@ import {
   Monitor,
   MousePointer2,
   Palette,
+  GitBranch,
   Play,
   Redo2,
   Save,
@@ -48,6 +49,8 @@ interface TopToolbarProps {
   onToggleGradientPanel: () => void;
   showGlobalStylesPanel: boolean;
   onToggleGlobalStylesPanel: () => void;
+  showLogicPanel: boolean;
+  onToggleLogicPanel: () => void;
   savedDraftsCount: number;
   justSavedDraft: boolean;
   onQuickSaveDraft: () => void;
@@ -80,6 +83,8 @@ export default function TopToolbar({
   onToggleGradientPanel,
   showGlobalStylesPanel,
   onToggleGlobalStylesPanel,
+  showLogicPanel,
+  onToggleLogicPanel,
   savedDraftsCount,
   justSavedDraft,
   onQuickSaveDraft,
@@ -304,6 +309,20 @@ export default function TopToolbar({
           >
             <Palette className="h-3.5 w-3.5" />
             <span>Global CSS</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onToggleLogicPanel}
+            aria-pressed={showLogicPanel}
+            className={`hidden lg:inline-flex h-8 items-center gap-1.5 rounded-md border px-2 xl:px-2.5 text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${
+              showLogicPanel
+                ? 'border-violet-600 bg-violet-50 text-violet-700'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <GitBranch className="h-3.5 w-3.5" />
+            <span>Logic</span>
           </button>
 
           <button
