@@ -88,7 +88,7 @@ import {
 } from '@/lib/studio/draft-storage';
 import { createProjectFromFiles, STARTER_NEXTJS_FILES } from '@/lib/studio/sample-project';
 import { scanProjectStructure } from '@/lib/studio/project-scanner';
-import { createPageFile, type PageTemplatePreset } from '@/lib/studio/page-generator';
+import { createPageFile, type PageTemplatePreset } from '@/lib/studio/page-generator';\nimport { createSharedSiteKit } from '@/lib/studio/site-kit';
 import {
   CanvasInteractionMode,
   ElementSourcePatch,
@@ -803,6 +803,25 @@ export default function StudioWorkspace() {
     [project.framework, project.files, project.pages, commitFilesMutation]
   );
 
+  const handleCreateSiteKit = useCallback((): boolean => {
+    try {
+      const result = createSharedSiteKit({
+        framework: project.framework,
+        files: project.files,
+        pagePaths: project.pages.map((page) => page.filePath),
+      });
+      commitFilesMutation(result.files, result.componentPaths[0]);
+      setIsolatedComponentPath(null);
+      setSelected(null);
+      setMultiSelected([]);
+      setCodeDrawerFile(result.componentPaths[0]);
+      return true;
+    } catch (error) {
+      console.error('Unable to generate shared site kit:', error);
+      return false;
+    }
+  }, [project.framework, project.files, project.pages, commitFilesMutation]);
+
   const handleCreateComponent = useCallback(
     (rawName: string, preset: ComponentTemplatePreset = 'card') => {
       const created = createComponentFileTemplate(rawName, preset);
@@ -1515,6 +1534,7 @@ export default function StudioWorkspace() {
                 if (created && isCompactViewport) setCompactLeftOpen(false);
                 return created;
               }}
+              onCreateSiteKit={() => handleCreateSiteKit()}
               components={projectComponents}
               isolatedComponentPath={activeIsolatedPath}
               onSelectComponent={(filePath) => {
