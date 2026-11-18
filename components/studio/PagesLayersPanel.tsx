@@ -260,7 +260,7 @@ export default function PagesLayersPanel({
                     if (created) {
                       setShowNewPage(false); setPageError(''); setNewPageTitle('New Page'); setNewPageSlug('new-page'); setPageTemplate('landing');
                     } else {
-                      setPageError('This route already exists or the page name is invalid.');
+                      setPageError('Could not create the page. Check the URL path and pasted template code.');
                     }
                   }}>
                     <label className="block text-[10px] font-semibold text-slate-600">Page name
