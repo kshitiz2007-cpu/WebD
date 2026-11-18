@@ -194,4 +194,100 @@ export default function UiPagination({ totalPages = '5' }: { totalPages?: string
 }`,
     inlineJsx: `<nav aria-label="Pagination" className="flex items-center gap-1"><button type="button" className="rounded-lg border px-3 py-2 text-xs">Previous</button><button type="button" className="h-9 w-9 rounded-lg bg-indigo-600 text-xs font-semibold text-white">1</button><button type="button" className="h-9 w-9 rounded-lg border text-xs">2</button><button type="button" className="h-9 w-9 rounded-lg border text-xs">3</button><button type="button" className="rounded-lg border px-3 py-2 text-xs">Next</button></nav>`,
   },
+
+  {
+    id: 'ui-single-button',
+    componentName: 'UiActionButton',
+    title: 'Single Action Button',
+    category: 'Buttons & Inputs',
+    description: 'One reusable clickable button with label, style variant, size, and optional destination URL.',
+    tags: ['button', 'click', 'cta', 'action', 'link'],
+    packages: noPackages,
+    defaultProps: { label: 'Click me', variant: 'primary', size: 'md', href: '' },
+    componentSource: `'use client';
+import React from 'react';
+type Props = { label?: string; variant?: 'primary' | 'secondary' | 'outline' | 'danger'; size?: 'sm' | 'md' | 'lg'; href?: string };
+export default function UiActionButton({ label = 'Click me', variant = 'primary', size = 'md', href = '' }: Props) {
+  const styles = {
+    primary: 'bg-indigo-600 text-white hover:bg-indigo-700',
+    secondary: 'bg-slate-900 text-white hover:bg-slate-800',
+    outline: 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50',
+    danger: 'bg-rose-600 text-white hover:bg-rose-700',
+  };
+  const sizes = { sm: 'px-3 py-1.5 text-xs', md: 'px-4 py-2 text-sm', lg: 'px-5 py-3 text-base' };
+  const className = 'inline-flex items-center justify-center rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-300 ' + styles[variant] + ' ' + sizes[size];
+  return href.trim()
+    ? <a href={href} className={className}>{label}</a>
+    : <button type="button" className={className}>{label}</button>;
+}`,
+    inlineJsx: `<button type="button" className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700">Click me</button>`,
+  },
+  {
+    id: 'ui-icon-button',
+    componentName: 'UiIconButton',
+    title: 'Icon Button',
+    category: 'Buttons & Inputs',
+    description: 'Compact icon-only button with accessible label and configurable visual style.',
+    tags: ['icon', 'button', 'toolbar', 'action'],
+    packages: noPackages,
+    defaultProps: { label: 'Add item', symbol: '+', variant: 'primary' },
+    componentSource: `'use client';
+import React from 'react';
+type Props = { label?: string; symbol?: string; variant?: 'primary' | 'outline' | 'ghost' };
+export default function UiIconButton({ label = 'Add item', symbol = '+', variant = 'primary' }: Props) {
+  const styles = { primary: 'bg-indigo-600 text-white hover:bg-indigo-700', outline: 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50', ghost: 'bg-transparent text-slate-600 hover:bg-slate-100' };
+  return <button type="button" aria-label={label} title={label} className={'inline-flex h-10 w-10 items-center justify-center rounded-lg text-lg font-semibold transition-colors ' + styles[variant]}>{symbol}</button>;
+}`,
+    inlineJsx: `<button type="button" aria-label="Add item" title="Add item" className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600 text-lg font-semibold text-white">+</button>`,
+  },
+  {
+    id: 'ui-text-link',
+    componentName: 'UiTextLink',
+    title: 'Text Link',
+    category: 'Buttons & Inputs',
+    description: 'Simple accessible inline link with editable label and destination.',
+    tags: ['link', 'anchor', 'navigation', 'text'],
+    packages: noPackages,
+    defaultProps: { label: 'Learn more', href: '/about' },
+    componentSource: `'use client';
+import React from 'react';
+export default function UiTextLink({ label = 'Learn more', href = '/about' }: { label?: string; href?: string }) {
+  return <a href={href} className="font-medium text-indigo-600 underline-offset-4 hover:text-indigo-800 hover:underline">{label} <span aria-hidden="true">→</span></a>;
+}`,
+    inlineJsx: `<a href="/about" className="font-medium text-indigo-600 underline-offset-4 hover:text-indigo-800 hover:underline">Learn more <span aria-hidden="true">→</span></a>`,
+  },
+  {
+    id: 'ui-status-badge',
+    componentName: 'UiStatusBadge',
+    title: 'Status Badge',
+    category: 'Feedback',
+    description: 'Small status pill for labels such as Active, Pending, Draft, or Completed.',
+    tags: ['badge', 'pill', 'status', 'label'],
+    packages: noPackages,
+    defaultProps: { label: 'Active', tone: 'success' },
+    componentSource: `'use client';
+import React from 'react';
+export default function UiStatusBadge({ label = 'Active', tone = 'success' }: { label?: string; tone?: 'success' | 'warning' | 'danger' | 'neutral' }) {
+  const tones = { success: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20', warning: 'bg-amber-50 text-amber-700 ring-amber-600/20', danger: 'bg-rose-50 text-rose-700 ring-rose-600/20', neutral: 'bg-slate-100 text-slate-700 ring-slate-500/20' };
+  return <span className={'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ' + tones[tone]}>{label}</span>;
+}`,
+    inlineJsx: `<span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">Active</span>`,
+  },
+  {
+    id: 'ui-text-input',
+    componentName: 'UiTextInput',
+    title: 'Text Input Field',
+    category: 'Forms',
+    description: 'Labeled text input with placeholder, helper text, and accessible labeling.',
+    tags: ['input', 'text', 'field', 'form', 'search'],
+    packages: noPackages,
+    defaultProps: { label: 'Your name', placeholder: 'Enter your name', helper: '' },
+    componentSource: `'use client';
+import React from 'react';
+export default function UiTextInput({ label = 'Your name', placeholder = 'Enter your name', helper = '' }: { label?: string; placeholder?: string; helper?: string }) {
+  const id = React.useId();
+  return <label htmlFor={id} className="block w-full space-y-1.5"><span className="block text-sm font-medium text-slate-700">{label}</span><input id={id} type="text" placeholder={placeholder} className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" />{helper && <span className="block text-xs text-slate-500">{helper}</span>}</label>;
+}`,
+    inlineJsx: `<label className="block w-full space-y-1.5"><span className="block text-sm font-medium text-slate-700">Your name</span><input type="text" placeholder="Enter your name" className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /></label>`,
+  },
 ];
