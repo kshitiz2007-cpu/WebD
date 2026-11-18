@@ -42,6 +42,7 @@ import {
   compileReactPreviewPayload,
 } from '@/lib/studio/preview-runner';
 import { WrapContainerLayout } from '@/lib/studio/source-editor';
+import type { VisualLogicRule } from '@/lib/studio/logic-engine';
 import {
   MultiAlignAction,
   NUDGE_GRID_STEPS,
@@ -64,6 +65,7 @@ import {
 
 interface VisualCanvasProps {
   project: VirtualProject;
+  logicRules?: VisualLogicRule[];
   activePage: ProjectPage;
   compiledTailwindCss: string;
   viewport: ViewportPreset;
@@ -127,6 +129,7 @@ if (typeof window !== 'undefined') {
 
 export default function VisualCanvas({
   project,
+  logicRules = [],
   activePage,
   compiledTailwindCss,
   viewport,
@@ -321,6 +324,7 @@ export default function VisualCanvas({
     compiledTailwindCss,
     interactionMode,
     pendingSelectStudioId,
+    logicRules,
   });
   const callbacksRef = useRef({
     onUpdateLayerTree,
@@ -348,6 +352,7 @@ export default function VisualCanvas({
       compiledTailwindCss,
       interactionMode,
       pendingSelectStudioId,
+      logicRules,
     };
     callbacksRef.current = {
       onUpdateLayerTree,
@@ -393,6 +398,15 @@ export default function VisualCanvas({
     }
   }, [mounted, docKey, isHtmlPage, reactPayload, htmlPayload, pendingSelectStudioId, iframeRef]);
 
+  // Keep visual logic rules synchronized with the preview runtime.
+  useEffect(() => {
+    if (!mounted || readyDocKeyRef.current !== docKey) return;
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: 'studio:set-logic-rules', rules: logicRules },
+      '*'
+    );
+  }, [mounted, docKey, logicRules, iframeRef]);
+
   // Apply compiled Tailwind CSS updates in-place without reloading or resetting React state
   useEffect(() => {
     if (!mounted) return;
@@ -421,6 +435,7 @@ export default function VisualCanvas({
           const latest = latestStateRef.current;
           if (win) {
             win.postMessage({ type: 'studio:set-mode', mode: latest.interactionMode }, '*');
+            win.postMessage({ type: 'studio:set-logic-rules', rules: latest.logicRules || [] }, '*');
             if (latest.bootedProject && latest.bootedProject !== latest.project) {
               if (latest.isHtmlPage && latest.htmlPayload) {
                 win.postMessage(
