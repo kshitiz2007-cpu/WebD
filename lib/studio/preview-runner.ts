@@ -140,12 +140,32 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
 
     var parentEl = el.parentElement ? el.parentElement.closest('[data-studio-id]') : null;
     var parentSid = parentEl ? parentEl.getAttribute('data-studio-id') : null;
+    var rawParentEl = el.parentElement;
+    var parentRectRaw = rawParentEl ? rawParentEl.getBoundingClientRect() : null;
     var siblingEls = [];
+    var siblingRects = [];
     if (el.parentElement) {
       for (var k = 0; k < el.parentElement.children.length; k++) {
-        if (el.parentElement.children[k].hasAttribute('data-studio-id')) {
-          siblingEls.push(el.parentElement.children[k]);
+        var childNode = el.parentElement.children[k];
+        if (childNode.hasAttribute('data-studio-id')) {
+          siblingEls.push(childNode);
+          if (childNode !== el) {
+            var sr = childNode.getBoundingClientRect();
+            if (sr.width > 0 && sr.height > 0) {
+              siblingRects.push({ x: sr.left, y: sr.top, width: sr.width, height: sr.height });
+            }
+          }
         }
+      }
+    }
+    // Also collect major landmark sibling/section rects on the page for richer alignment guides
+    var allBench = document.querySelectorAll('section[data-studio-id], article[data-studio-id], header[data-studio-id], footer[data-studio-id], main[data-studio-id]');
+    for (var b = 0; b < allBench.length && siblingRects.length < 36; b++) {
+      var bel = allBench[b];
+      if (bel === el || bel.contains(el) || el.contains(bel)) continue;
+      var br = bel.getBoundingClientRect();
+      if (br.width > 0 && br.height > 0) {
+        siblingRects.push({ x: br.left, y: br.top, width: br.width, height: br.height });
       }
     }
     var siblingIdx = siblingEls.indexOf(el);
@@ -183,9 +203,25 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
         marginLeft: cs.marginLeft,
         display: cs.display,
         flexDirection: cs.flexDirection,
+        flexWrap: cs.flexWrap,
+        flexGrow: cs.flexGrow,
+        flexShrink: cs.flexShrink,
+        alignSelf: cs.alignSelf,
         gap: cs.gap,
+        rowGap: cs.rowGap,
+        columnGap: cs.columnGap,
         justifyContent: cs.justifyContent,
         alignItems: cs.alignItems,
+        justifyItems: cs.justifyItems,
+        gridTemplateColumns: cs.gridTemplateColumns,
+        gridTemplateRows: cs.gridTemplateRows,
+        position: cs.position,
+        top: cs.top,
+        right: cs.right,
+        bottom: cs.bottom,
+        left: cs.left,
+        zIndex: cs.zIndex,
+        overflow: cs.overflow,
         borderRadius: cs.borderRadius,
         borderWidth: cs.borderTopWidth,
         borderColor: cs.borderTopColor,
@@ -195,6 +231,9 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       },
       rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
       parentStudioId: parentSid,
+      parentRect: parentRectRaw ? { x: parentRectRaw.left, y: parentRectRaw.top, width: parentRectRaw.width, height: parentRectRaw.height } : null,
+      siblingRects: siblingRects,
+      viewportSize: { width: window.innerWidth, height: window.innerHeight },
       siblingIndex: siblingIdx,
       siblingCount: siblingEls.length,
       canReorderSiblings: siblingEls.length > 1 && parentSid !== null,
@@ -448,9 +487,11 @@ export function buildPreviewDocument(
   activePage: ProjectPage,
   compiledTailwindCss: string,
   interactionMode: 'design' | 'interact',
-  selectedStudioId: string | null
+  selectedStudioId: string | null,
+  options?: { isolateComponent?: boolean }
 ): CompiledPreviewBundle {
   const compileErrors: string[] = [];
+  const isolateComponent = Boolean(options?.isolateComponent);
 
   // Pure HTML mode
   if (project.framework === 'html' || /\.html?$/i.test(activePage.filePath)) {
@@ -557,10 +598,13 @@ export function buildPreviewDocument(
   )};
   var ACTIVE_ROUTE = ${JSON.stringify(activePage.route)};
   var ENTRY_FILE = ${JSON.stringify(activePage.filePath)};
+  var ISOLATE_COMPONENT = ${JSON.stringify(isolateComponent)};
   var LAYOUT_FILE = ${JSON.stringify(
-    ['app/layout.tsx', 'app/layout.jsx', 'src/app/layout.tsx', 'src/app/layout.jsx'].find(
-      (p) => Boolean(project.files[p])
-    ) || null
+    isolateComponent
+      ? null
+      : ['app/layout.tsx', 'app/layout.jsx', 'src/app/layout.tsx', 'src/app/layout.jsx'].find(
+          (p) => Boolean(project.files[p])
+        ) || null
   )};
   var CACHE = {};
 
@@ -860,6 +904,18 @@ export function buildPreviewDocument(
     var pageNode = (PageComp.constructor && PageComp.constructor.name === 'AsyncFunction')
       ? React.createElement(AsyncBridge, { Comp: PageComp })
       : React.createElement(PageComp, { params: {}, searchParams: {} });
+
+    if (ISOLATE_COMPONENT) {
+      return React.createElement(
+        StudioErrorBoundary,
+        null,
+        React.createElement(
+          'div',
+          { className: 'min-h-screen bg-slate-50 p-8' },
+          pageNode
+        )
+      );
+    }
 
     if (LAYOUT_FILE && ENTRY_FILE !== LAYOUT_FILE) {
       var layoutMod = loadModule(LAYOUT_FILE);

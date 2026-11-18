@@ -50,6 +50,9 @@ export interface StudioElementSnapshot {
   computedStyles: Record<string, string>;
   rect: ElementRect;
   parentStudioId: string | null;
+  parentRect?: ElementRect | null;
+  siblingRects?: ElementRect[];
+  viewportSize?: { width: number; height: number };
   siblingIndex: number;
   siblingCount: number;
   canReorderSiblings: boolean;

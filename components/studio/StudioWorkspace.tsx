@@ -17,6 +17,13 @@ import {
   moveElementSiblingInSource,
 } from '@/lib/studio/source-editor';
 import {
+  createComponentFileTemplate,
+  extractSelectionToComponent,
+  patchJsxPropInSource,
+  scanComponentUsagesInFile,
+  scanProjectComponents,
+} from '@/lib/studio/component-editor';
+import {
   clearAutosaveProgress,
   createDraftSnapshot,
   deleteDraftFromStorage,
@@ -64,6 +71,8 @@ export default function StudioWorkspace() {
   const [compactLeftOpen, setCompactLeftOpen] = useState<boolean>(false);
   const [compactRightOpen, setCompactRightOpen] = useState<boolean>(false);
   const [compactGradientOpen, setCompactGradientOpen] = useState<boolean>(false);
+  const [snapEnabled, setSnapEnabled] = useState<boolean>(true);
+  const [isolatedComponentPath, setIsolatedComponentPath] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const isCompactViewport = React.useSyncExternalStore(
@@ -126,6 +135,39 @@ export default function StudioWorkspace() {
       project.pages[0] || { route: '/', title: 'Home', filePath: 'app/page.tsx' }
     );
   }, [project.pages, activeRoute]);
+
+  const projectComponents = useMemo(
+    () => scanProjectComponents(project.files),
+    [project.files]
+  );
+
+  const activeIsolatedPath =
+    isolatedComponentPath && project.files[isolatedComponentPath]
+      ? isolatedComponentPath
+      : null;
+
+  const canvasTargetPage = useMemo(() => {
+    if (activeIsolatedPath) {
+      const comp = projectComponents.find((c) => c.filePath === activeIsolatedPath);
+      return {
+        route: `component://${activeIsolatedPath}`,
+        title: comp ? `<${comp.name} />` : activeIsolatedPath,
+        filePath: activeIsolatedPath,
+      };
+    }
+    return activePage;
+  }, [activeIsolatedPath, projectComponents, activePage]);
+
+  const componentUsages = useMemo(() => {
+    const targetFile = selected?.filePath || canvasTargetPage.filePath;
+    const code = project.files[targetFile];
+    if (!code) return [];
+    return scanComponentUsagesInFile(
+      code,
+      targetFile,
+      projectComponents.map((c) => c.name)
+    );
+  }, [selected?.filePath, canvasTargetPage.filePath, project.files, projectComponents]);
 
   // Compile real Tailwind CSS whenever project structure or CSS files change
   const cssSignature = useMemo(() => {
@@ -277,11 +319,86 @@ export default function StudioWorkspace() {
         project.pages.find((p) => `/${p.filePath}` === `/${route.replace(/^\/+/, '')}`);
       const targetPage = match || project.pages[0];
       if (!targetPage) return;
+      setIsolatedComponentPath(null);
       setActiveRoute(targetPage.route);
       setSelected(null);
       setCodeDrawerFile(targetPage.filePath);
     },
     [project.pages]
+  );
+
+  const handleSelectComponent = useCallback((filePath: string) => {
+    setIsolatedComponentPath(filePath);
+    setSelected(null);
+    setCodeDrawerFile(filePath);
+  }, []);
+
+  const handleExitComponentIsolation = useCallback(() => {
+    setIsolatedComponentPath(null);
+    setSelected(null);
+    setCodeDrawerFile(activePage.filePath);
+  }, [activePage.filePath]);
+
+  const handleCreateComponent = useCallback(
+    (rawName: string) => {
+      const created = createComponentFileTemplate(rawName);
+      let targetPath = created.filePath;
+      let counter = 2;
+      while (project.files[targetPath]) {
+        targetPath = `components/${created.componentName}${counter}.tsx`;
+        counter += 1;
+      }
+      const nextFiles = { ...project.files, [targetPath]: created.code };
+      commitFilesMutation(nextFiles, targetPath);
+      setIsolatedComponentPath(targetPath);
+      setSelected(null);
+    },
+    [project.files, commitFilesMutation]
+  );
+
+  const handleExtractComponent = useCallback(
+    (filePath: string, elementIndex: number, componentName: string) => {
+      const sourceCode = project.files[filePath];
+      if (!sourceCode) return;
+      let candidateName = componentName.trim();
+      if (!candidateName) return;
+      const baseCreated = createComponentFileTemplate(candidateName);
+      let suffix = 2;
+      while (
+        project.files[`components/${candidateName}.tsx`] ||
+        project.files[`src/components/${candidateName}.tsx`] ||
+        (suffix === 2 && project.files[baseCreated.filePath])
+      ) {
+        candidateName = `${baseCreated.componentName}${suffix}`;
+        suffix += 1;
+      }
+      const extracted = extractSelectionToComponent({
+        pageCode: sourceCode,
+        pagePath: filePath,
+        elementIndex,
+        rawComponentName: candidateName,
+      });
+      if (!extracted) return;
+      const nextFiles = {
+        ...project.files,
+        [extracted.componentPath]: extracted.componentCode,
+        [filePath]: extracted.updatedPageCode,
+      };
+      setSelected(null);
+      commitFilesMutation(nextFiles, extracted.componentPath);
+    },
+    [project.files, commitFilesMutation]
+  );
+
+  const handlePatchComponentProp = useCallback(
+    (filePath: string, elementIndex: number, propName: string, propValue: string) => {
+      const currentCode = project.files[filePath];
+      if (!currentCode) return;
+      const updated = patchJsxPropInSource(currentCode, elementIndex, propName, propValue);
+      if (updated === currentCode) return;
+      commitFilesMutation({ ...project.files, [filePath]: updated }, filePath);
+    },
+    [project.files, commitFilesMutation]
   );
 
   const handleSelectLayer = useCallback((studioId: string) => {
@@ -297,6 +414,7 @@ export default function StudioWorkspace() {
       setProject(nextProj);
       setHistoryPast([]);
       setHistoryFuture([]);
+      setIsolatedComponentPath(null);
       setSelected(null);
       const firstPage = nextProj.pages[0];
       if (firstPage) {
@@ -397,6 +515,7 @@ export default function StudioWorkspace() {
     setProject(restored);
     setHistoryPast([]);
     setHistoryFuture([]);
+    setIsolatedComponentPath(null);
     setSelected(null);
     setViewport(draft.viewport);
     const matchedPage =
@@ -466,6 +585,16 @@ export default function StudioWorkspace() {
                 handleSelectPage(route);
                 if (isCompactViewport) setCompactLeftOpen(false);
               }}
+              components={projectComponents}
+              isolatedComponentPath={activeIsolatedPath}
+              onSelectComponent={(filePath) => {
+                handleSelectComponent(filePath);
+                if (isCompactViewport) setCompactLeftOpen(false);
+              }}
+              onCreateComponent={(name) => {
+                handleCreateComponent(name);
+                if (isCompactViewport) setCompactLeftOpen(false);
+              }}
               layerTree={layerTree}
               selectedStudioId={selected?.studioId || null}
               onSelectLayer={(id) => {
@@ -495,7 +624,7 @@ export default function StudioWorkspace() {
         <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
           <VisualCanvas
             project={project}
-            activePage={activePage}
+            activePage={canvasTargetPage}
             compiledTailwindCss={compiledTailwindCss}
             viewport={viewport}
             interactionMode={interactionMode}
@@ -511,6 +640,10 @@ export default function StudioWorkspace() {
             onDuplicate={handleDuplicate}
             onDelete={handleDelete}
             iframeRef={iframeRef}
+            snapEnabled={snapEnabled}
+            onToggleSnap={() => setSnapEnabled((v) => !v)}
+            isIsolatedComponent={Boolean(activeIsolatedPath)}
+            onExitComponentIsolation={handleExitComponentIsolation}
           />
 
           {/* Multi-Stop Gradient & CSS Panel (docked on desktop) */}
@@ -573,6 +706,12 @@ export default function StudioWorkspace() {
               onDelete={handleDelete}
               onClose={isCompactViewport ? () => setCompactRightOpen(false) : undefined}
               isBottomSheet={isCompactViewport && isPhoneViewport}
+              activePageFilePath={activePage.filePath}
+              components={projectComponents}
+              componentUsages={componentUsages}
+              onIsolateComponent={handleSelectComponent}
+              onExtractComponent={handleExtractComponent}
+              onPatchComponentProp={handlePatchComponentProp}
             />
           </div>
         )}

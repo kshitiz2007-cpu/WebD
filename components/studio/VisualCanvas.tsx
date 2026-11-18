@@ -4,12 +4,21 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as ReactDOMClient from 'react-dom/client';
 import {
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
+  Component,
   Copy,
   GripVertical,
+  Magnet,
   Move,
   Trash2,
 } from 'lucide-react';
+import {
+  AlignmentGuide,
+  SnapCandidate,
+  computeDragSnap,
+  computeResizeSnap,
+} from '@/lib/studio/alignment-snapping';
 import { buildPreviewDocument } from '@/lib/studio/preview-runner';
 import {
   CanvasInteractionMode,
@@ -37,6 +46,10 @@ interface VisualCanvasProps {
   onDuplicate: (filePath: string, elementIndex: number) => void;
   onDelete: (filePath: string, elementIndex: number) => void;
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
+  snapEnabled?: boolean;
+  onToggleSnap?: () => void;
+  isIsolatedComponent?: boolean;
+  onExitComponentIsolation?: () => void;
 }
 
 const VIEWPORT_WIDTHS: Record<ViewportPreset, number> = {
@@ -72,6 +85,10 @@ export default function VisualCanvas({
   onDuplicate,
   onDelete,
   iframeRef,
+  snapEnabled = true,
+  onToggleSnap,
+  isIsolatedComponent = false,
+  onExitComponentIsolation,
 }: VisualCanvasProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const mounted = React.useSyncExternalStore(
@@ -94,6 +111,7 @@ export default function VisualCanvas({
     targetIndex: number;
     rect: ElementRect | null;
   } | null>(null);
+  const [activeGuides, setActiveGuides] = useState<AlignmentGuide[]>([]);
   const dropTargetIdxRef = useRef<number | null>(null);
 
   const liveRect =
@@ -160,9 +178,19 @@ export default function VisualCanvas({
       activePage,
       compiledTailwindCss,
       interactionMode,
-      selected?.studioId || null
+      selected?.studioId || null,
+      { isolateComponent: isIsolatedComponent }
     );
-  }, [mounted, lucideVersion, project, activePage, compiledTailwindCss, interactionMode, selected?.studioId]);
+  }, [
+    mounted,
+    lucideVersion,
+    project,
+    activePage,
+    compiledTailwindCss,
+    interactionMode,
+    selected?.studioId,
+    isIsolatedComponent,
+  ]);
 
   // Listen to designer bridge messages from iframe
   useEffect(() => {
@@ -214,6 +242,24 @@ export default function VisualCanvas({
     );
   }, [interactionMode, iframeRef]);
 
+  const getSnapCandidates = (snap: StudioElementSnapshot): SnapCandidate[] => {
+    const out: SnapCandidate[] = [];
+    if (snap.siblingRects) {
+      for (const r of snap.siblingRects) out.push({ ...r, kind: 'sibling' });
+    }
+    if (snap.parentRect) {
+      out.push({ ...snap.parentRect, kind: 'parent' });
+    }
+    out.push({
+      x: 0,
+      y: 0,
+      width: snap.viewportSize?.width || targetWidth,
+      height: snap.viewportSize?.height || frameHeight,
+      kind: 'viewport',
+    });
+    return out;
+  };
+
   const startResize = (dir: ResizeHandleDir, e: React.PointerEvent) => {
     if (!selected || !liveRect) return;
     e.preventDefault();
@@ -226,30 +272,35 @@ export default function VisualCanvas({
 
     const startX = e.clientX;
     const startY = e.clientY;
+    const initRect = { ...liveRect };
     const initW = Math.max(24, Math.round(liveRect.width));
     const initH = Math.max(20, Math.round(liveRect.height));
     let finalW = initW;
     let finalH = initH;
+    const candidates = snapEnabled ? getSnapCandidates(selected) : [];
 
     const onMove = (ev: PointerEvent) => {
       const dx = (ev.clientX - startX) / scale;
       const dy = (ev.clientY - startY) / scale;
-      const patchStyles: Record<string, string> = {};
+      const snapped = computeResizeSnap({
+        initRect,
+        dir,
+        rawDx: dx,
+        rawDy: dy,
+        candidates,
+        threshold: snapEnabled ? 6 : -1,
+      });
 
-      if (dir.includes('e')) {
-        finalW = Math.max(24, Math.round(initW + dx));
-        patchStyles.width = `${finalW}px`;
-      } else if (dir.includes('w')) {
-        finalW = Math.max(24, Math.round(initW - dx));
+      const patchStyles: Record<string, string> = {};
+      if (dir.includes('e') || dir.includes('w')) {
+        finalW = snapped.width;
         patchStyles.width = `${finalW}px`;
       }
-      if (dir.includes('s')) {
-        finalH = Math.max(20, Math.round(initH + dy));
-        patchStyles.height = `${finalH}px`;
-      } else if (dir.includes('n')) {
-        finalH = Math.max(20, Math.round(initH - dy));
+      if (dir.includes('s') || dir.includes('n')) {
+        finalH = snapped.height;
         patchStyles.height = `${finalH}px`;
       }
+      setActiveGuides(snapped.guides);
 
       iframeRef.current?.contentWindow?.postMessage(
         { type: 'studio:preview-style', studioId: selected.studioId, styles: patchStyles },
@@ -261,6 +312,7 @@ export default function VisualCanvas({
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
+      setActiveGuides([]);
       const committed: Record<string, string> = {};
       if (dir.includes('e') || dir.includes('w')) committed.width = `${finalW}px`;
       if (dir.includes('s') || dir.includes('n')) committed.height = `${finalH}px`;
@@ -313,7 +365,7 @@ export default function VisualCanvas({
   };
 
   const startOffsetDrag = (e: React.PointerEvent) => {
-    if (!selected) return;
+    if (!selected || !liveRect) return;
     e.preventDefault();
     e.stopPropagation();
     try {
@@ -328,12 +380,30 @@ export default function VisualCanvas({
     const match = existingTransform.match(/translate\(\s*(-?\d+(?:\.\d+)?)px\s*,\s*(-?\d+(?:\.\d+)?)px\s*\)/);
     const baseX = match ? parseFloat(match[1]) : 0;
     const baseY = match ? parseFloat(match[2]) : 0;
+    const originRect: ElementRect = {
+      x: liveRect.x - baseX,
+      y: liveRect.y - baseY,
+      width: liveRect.width,
+      height: liveRect.height,
+    };
+    const candidates = snapEnabled ? getSnapCandidates(selected) : [];
     let nextX = Math.round(baseX);
     let nextY = Math.round(baseY);
 
     const onMove = (ev: PointerEvent) => {
-      nextX = Math.round(baseX + (ev.clientX - startX) / scale);
-      nextY = Math.round(baseY + (ev.clientY - startY) / scale);
+      const rawX = Math.round(baseX + (ev.clientX - startX) / scale);
+      const rawY = Math.round(baseY + (ev.clientY - startY) / scale);
+      const snapped = computeDragSnap({
+        originRect,
+        rawOffsetX: rawX,
+        rawOffsetY: rawY,
+        candidates,
+        threshold: snapEnabled ? 6 : -1,
+      });
+      nextX = snapped.snappedX;
+      nextY = snapped.snappedY;
+      setActiveGuides(snapped.guides);
+
       iframeRef.current?.contentWindow?.postMessage(
         {
           type: 'studio:preview-style',
@@ -348,6 +418,7 @@ export default function VisualCanvas({
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
+      setActiveGuides([]);
       onCommitPatch(selected.filePath, selected.elementIndex, {
         styles: { transform: `translate(${nextX}px, ${nextY}px)` },
       });
@@ -382,6 +453,47 @@ export default function VisualCanvas({
       aria-label="Visual design canvas"
       className="studio-canvas-grid relative flex min-w-0 flex-1 flex-col items-center overflow-auto px-2.5 pt-3 pb-20 lg:p-5"
     >
+      {/* Canvas HUD Strip: Isolated Component Banner & Snap Guides Toggle */}
+      <div className="mb-2 flex w-full max-w-5xl flex-wrap items-center justify-between gap-2">
+        {isIsolatedComponent ? (
+          <div className="flex items-center gap-2 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs text-indigo-900">
+            <Component className="h-3.5 w-3.5 text-indigo-600" />
+            <span className="font-medium">
+              Component Isolation: <code className="font-mono text-[11px]">{activePage.filePath}</code>
+            </span>
+            {onExitComponentIsolation && (
+              <button
+                type="button"
+                onClick={onExitComponentIsolation}
+                className="ml-1 inline-flex items-center gap-1 rounded border border-indigo-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100"
+              >
+                <ArrowLeft className="h-3 w-3" />
+                <span>Back to Page</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          <div />
+        )}
+
+        {onToggleSnap && (
+          <button
+            type="button"
+            onClick={onToggleSnap}
+            aria-pressed={snapEnabled}
+            aria-label="Toggle alignment guides and snapping"
+            className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${
+              snapEnabled
+                ? 'border-rose-300 bg-rose-50 text-rose-700'
+                : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Magnet className="h-3 w-3" />
+            <span>Snap {snapEnabled ? 'On' : 'Off'}</span>
+          </button>
+        )}
+      </div>
+
       {/* Compile Error Banner if uploaded project has syntax issue */}
       {bundle.compileErrors.length > 0 && (
         <div className="mb-3 w-full max-w-4xl rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs text-amber-900">
@@ -444,6 +556,32 @@ export default function VisualCanvas({
             }}
           />
         )}
+
+        {/* Smart Alignment & Center/Edge Snap Guides */}
+        {activeGuides.map((g, i) => (
+          <div
+            key={`${g.orientation}-${g.position}-${i}`}
+            data-testid="studio-alignment-guide"
+            className="pointer-events-none absolute z-30"
+            style={
+              g.orientation === 'vertical'
+                ? {
+                    left: Math.round(g.position * scale),
+                    top: Math.round(g.start * scale),
+                    width: 1,
+                    height: Math.max(8, Math.round((g.end - g.start) * scale)),
+                    backgroundColor: g.kind === 'center' ? '#8B5CF6' : '#F43F5E',
+                  }
+                : {
+                    left: Math.round(g.start * scale),
+                    top: Math.round(g.position * scale),
+                    width: Math.max(8, Math.round((g.end - g.start) * scale)),
+                    height: 1,
+                    backgroundColor: g.kind === 'center' ? '#8B5CF6' : '#F43F5E',
+                  }
+            }
+          />
+        ))}
 
         {/* Unscaled Selection Box + 8 Touch-Friendly Resize Handles + Floating Action Toolbar */}
         {interactionMode === 'design' && selected && liveRect && (

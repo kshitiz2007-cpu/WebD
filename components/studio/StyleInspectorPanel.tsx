@@ -7,6 +7,8 @@ import {
   AlignRight,
   ArrowDown,
   ArrowUp,
+  Box,
+  Component,
   Copy,
   Move,
   Palette,
@@ -26,6 +28,21 @@ import {
   elevationLevelToBoxShadow,
   matchShadowPresetLabel,
 } from '@/lib/studio/border-elevation';
+import {
+  ComponentInstanceUsage,
+  ProjectComponentInfo,
+} from '@/lib/studio/component-editor';
+import {
+  HorizontalConstraint,
+  PositionMode,
+  SizeConstraintMode,
+  VerticalConstraint,
+  applyHorizontalConstraintPatch,
+  applySizeConstraintMode,
+  applyVerticalConstraintPatch,
+  detectConstraintState,
+  parseGridColumnCount,
+} from '@/lib/studio/layout-constraints';
 import { normalizeHex, parseGradientCss } from '@/lib/studio/gradient';
 import {
   getLastGradientSnapshot,
@@ -43,6 +60,17 @@ interface StyleInspectorPanelProps {
   onDelete: (filePath: string, elementIndex: number) => void;
   onClose?: () => void;
   isBottomSheet?: boolean;
+  activePageFilePath?: string;
+  components?: ProjectComponentInfo[];
+  componentUsages?: ComponentInstanceUsage[];
+  onIsolateComponent?: (filePath: string) => void;
+  onExtractComponent?: (filePath: string, elementIndex: number, componentName: string) => void;
+  onPatchComponentProp?: (
+    filePath: string,
+    elementIndex: number,
+    propName: string,
+    propValue: string
+  ) => void;
 }
 
 function parsePxNumber(val?: string): string {
@@ -77,8 +105,14 @@ export default function StyleInspectorPanel({
   onDelete,
   onClose,
   isBottomSheet = false,
+  activePageFilePath,
+  components = [],
+  componentUsages = [],
+  onIsolateComponent,
+  onExtractComponent,
+  onPatchComponentProp,
 }: StyleInspectorPanelProps) {
-  const [activeTab, setActiveTab] = useState<'style' | 'layout' | 'type'>('style');
+  const [activeTab, setActiveTab] = useState<'style' | 'layout' | 'type' | 'comp'>('style');
   const [textDraft, setTextDraft] = useState(selected?.textContent || '');
   const [textColorHex, setTextColorHex] = useState('#0F172A');
   const [borderColorHex, setBorderColorHex] = useState('#E2E8F0');
@@ -87,6 +121,10 @@ export default function StyleInspectorPanel({
   const [opacityDraft, setOpacityDraft] = useState('100');
   const [elevationDraft, setElevationDraft] = useState('0');
   const [shadowCssDraft, setShadowCssDraft] = useState('none');
+  const [classDraft, setClassDraft] = useState('');
+  const [hrefDraft, setHrefDraft] = useState('');
+  const [srcDraft, setSrcDraft] = useState('');
+  const [extractCompName, setExtractCompName] = useState('');
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
   const [prevSelectedKey, setPrevSelectedKey] = useState<string | null>(null);
@@ -112,7 +150,7 @@ export default function StyleInspectorPanel({
   const rawElevation = boxShadowToElevationHint(rawBoxShadow);
 
   const selectedSyncKey = selected
-    ? `${selected.studioId}|${selected.textContent}|${selected.computedStyles.color}|${selected.computedStyles.borderColor}|${rawRadius}|${rawBorderWidth}|${rawOpacity}|${rawBoxShadow}|${selected.inlineStyles.transform || selected.computedStyles.transform}`
+    ? `${selected.studioId}|${selected.textContent}|${selected.className}|${selected.href || ''}|${selected.src || ''}|${selected.computedStyles.color}|${selected.computedStyles.borderColor}|${rawRadius}|${rawBorderWidth}|${rawOpacity}|${rawBoxShadow}|${selected.inlineStyles.transform || selected.computedStyles.transform}`
     : null;
 
   if (selectedSyncKey !== prevSelectedKey) {
@@ -126,6 +164,9 @@ export default function StyleInspectorPanel({
       setOpacityDraft(String(rawOpacity));
       setElevationDraft(String(rawElevation));
       setShadowCssDraft(rawBoxShadow);
+      setClassDraft(selected.className || '');
+      setHrefDraft(selected.href || '');
+      setSrcDraft(selected.src || '');
       const offsets = parseTranslateOffsets(
         selected.inlineStyles.transform || selected.computedStyles.transform
       );
@@ -349,7 +390,7 @@ export default function StyleInspectorPanel({
 
         {/* Inspector Section Tabs */}
         <div
-          className="mt-2.5 grid grid-cols-3 rounded-lg border border-slate-200 bg-slate-100 p-0.5"
+          className="mt-2.5 grid grid-cols-4 rounded-lg border border-slate-200 bg-slate-100 p-0.5"
           role="tablist"
           aria-label="Inspector sections"
         >
@@ -394,6 +435,20 @@ export default function StyleInspectorPanel({
           >
             <Type className="h-3 w-3" />
             <span>Text</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'comp'}
+            onClick={() => setActiveTab('comp')}
+            className={`inline-flex items-center justify-center gap-1 rounded-md py-1 text-[11px] font-medium whitespace-nowrap ${
+              activeTab === 'comp'
+                ? 'bg-white text-indigo-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Component className="h-3 w-3" />
+            <span>Comp</span>
           </button>
         </div>
       </div>
@@ -766,182 +821,695 @@ export default function StyleInspectorPanel({
           </>
         )}
 
-        {activeTab === 'layout' && (
-          <>
-            {/* Size Inputs */}
-            <section className="space-y-2.5 border-b border-slate-100 pb-4">
-              <h3 className="text-[11px] font-semibold text-slate-700">Dimensions</h3>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label htmlFor="inspector-width" className="mb-1 block text-[11px] text-slate-600">
-                    Width (px)
-                  </label>
-                  <input
-                    id="inspector-width"
-                    type="text"
-                    defaultValue={currentWidth}
-                    key={`w-${selected.studioId}-${currentWidth}`}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim();
-                      if (!v) return;
-                      commitStyles({ width: /^\d+$/.test(v) ? `${v}px` : v });
-                    }}
-                    className="h-8 w-full rounded-md border border-slate-200 px-2 font-mono text-xs tabular-nums text-slate-800"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="inspector-height" className="mb-1 block text-[11px] text-slate-600">
-                    Height (px)
-                  </label>
-                  <input
-                    id="inspector-height"
-                    type="text"
-                    defaultValue={currentHeight}
-                    key={`h-${selected.studioId}-${currentHeight}`}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim();
-                      if (!v) return;
-                      commitStyles({ height: /^\d+$/.test(v) ? `${v}px` : v });
-                    }}
-                    className="h-8 w-full rounded-md border border-slate-200 px-2 font-mono text-xs tabular-nums text-slate-800"
-                  />
-                </div>
-              </div>
-            </section>
+        {activeTab === 'layout' && (() => {
+          const detectedConstraints = detectConstraintState(ins, cs);
+          const posMode = (ins.position || cs.position || 'static') as PositionMode;
+          const displayMode = ins.display || cs.display || 'block';
+          const isFlex = displayMode === 'flex' || displayMode === 'inline-flex';
+          const isGrid = displayMode === 'grid';
+          const gridCols = parseGridColumnCount(ins['grid-template-columns'] || cs.gridTemplateColumns);
 
-            {/* Padding & Margin */}
-            <section className="space-y-2.5 border-b border-slate-100 pb-4">
-              <h3 className="text-[11px] font-semibold text-slate-700">Padding (px)</h3>
-              <div className="grid grid-cols-4 gap-1.5">
-                {[
-                  { label: 'Top', key: 'paddingTop', val: padTop },
-                  { label: 'Right', key: 'paddingRight', val: padRight },
-                  { label: 'Bot', key: 'paddingBottom', val: padBottom },
-                  { label: 'Left', key: 'paddingLeft', val: padLeft },
-                ].map((item) => (
-                  <div key={item.key}>
-                    <label className="mb-0.5 block text-[10px] text-slate-500">{item.label}</label>
+          const getSizeMode = (rawVal?: string): SizeConstraintMode => {
+            if (!rawVal || rawVal === 'auto') return 'hug';
+            if (rawVal === '100%') return 'fill';
+            return 'fixed';
+          };
+          const widthMode = getSizeMode(ins.width);
+          const heightMode = getSizeMode(ins.height);
+
+          return (
+            <>
+              {/* Size & Responsive Sizing Modes */}
+              <section className="space-y-2.5 border-b border-slate-100 pb-4">
+                <h3 className="text-[11px] font-semibold text-slate-700">Dimensions &amp; Sizing</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label htmlFor="inspector-width" className="text-[11px] text-slate-600">
+                        Width
+                      </label>
+                      <div className="flex items-center gap-0.5">
+                        {(['fixed', 'fill', 'hug'] as const).map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() =>
+                              commitStyles(
+                                applySizeConstraintMode('width', m, selected.rect.width)
+                              )
+                            }
+                            className={`rounded px-1 py-0.5 text-[9px] font-semibold uppercase ${
+                              widthMode === m
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'text-slate-400 hover:text-slate-700'
+                            }`}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <input
-                      type="number"
-                      min={0}
-                      max={200}
-                      defaultValue={item.val}
-                      key={`${item.key}-${selected.studioId}-${item.val}`}
-                      onChange={(e) =>
-                        commitStyles({ [item.key]: `${Math.max(0, Number(e.target.value) || 0)}px` })
-                      }
-                      className="h-7 w-full rounded border border-slate-200 px-1.5 font-mono text-[11px] tabular-nums text-slate-800"
+                      id="inspector-width"
+                      type="text"
+                      defaultValue={currentWidth}
+                      key={`w-${selected.studioId}-${currentWidth}`}
+                      onBlur={(e) => {
+                        const v = e.target.value.trim();
+                        if (!v) return;
+                        commitStyles({ width: /^\d+$/.test(v) ? `${v}px` : v });
+                      }}
+                      className="h-8 w-full rounded-md border border-slate-200 px-2 font-mono text-xs tabular-nums text-slate-800"
                     />
                   </div>
-                ))}
-              </div>
-
-              <h3 className="pt-1 text-[11px] font-semibold text-slate-700">Margin Y (px)</h3>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="mb-0.5 block text-[10px] text-slate-500">Top</label>
-                  <input
-                    type="number"
-                    defaultValue={marTop}
-                    key={`mt-${selected.studioId}-${marTop}`}
-                    onChange={(e) => commitStyles({ marginTop: `${Number(e.target.value) || 0}px` })}
-                    className="h-7 w-full rounded border border-slate-200 px-2 font-mono text-[11px] tabular-nums text-slate-800"
-                  />
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label htmlFor="inspector-height" className="text-[11px] text-slate-600">
+                        Height
+                      </label>
+                      <div className="flex items-center gap-0.5">
+                        {(['fixed', 'fill', 'hug'] as const).map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() =>
+                              commitStyles(
+                                applySizeConstraintMode('height', m, selected.rect.height)
+                              )
+                            }
+                            className={`rounded px-1 py-0.5 text-[9px] font-semibold uppercase ${
+                              heightMode === m
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'text-slate-400 hover:text-slate-700'
+                            }`}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <input
+                      id="inspector-height"
+                      type="text"
+                      defaultValue={currentHeight}
+                      key={`h-${selected.studioId}-${currentHeight}`}
+                      onBlur={(e) => {
+                        const v = e.target.value.trim();
+                        if (!v) return;
+                        commitStyles({ height: /^\d+$/.test(v) ? `${v}px` : v });
+                      }}
+                      className="h-8 w-full rounded-md border border-slate-200 px-2 font-mono text-xs tabular-nums text-slate-800"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="mb-0.5 block text-[10px] text-slate-500">Bottom</label>
-                  <input
-                    type="number"
-                    defaultValue={marBottom}
-                    key={`mb-${selected.studioId}-${marBottom}`}
-                    onChange={(e) => commitStyles({ marginBottom: `${Number(e.target.value) || 0}px` })}
-                    className="h-7 w-full rounded border border-slate-200 px-2 font-mono text-[11px] tabular-nums text-slate-800"
-                  />
+              </section>
+
+              {/* Flexbox & Grid Controls */}
+              <section className="space-y-2.5 border-b border-slate-100 pb-4">
+                <h3 className="text-[11px] font-semibold text-slate-700">Flexbox &amp; Grid</h3>
+                <div className="grid grid-cols-4 gap-1" role="group" aria-label="Display mode">
+                  {(['block', 'flex', 'inline-flex', 'grid'] as const).map((disp) => (
+                    <button
+                      key={disp}
+                      type="button"
+                      onClick={() => commitStyles({ display: disp })}
+                      className={`rounded border py-1 text-[10px] font-semibold capitalize ${
+                        displayMode === disp
+                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      {disp === 'inline-flex' ? 'Inl-Flex' : disp}
+                    </button>
+                  ))}
                 </div>
-              </div>
-            </section>
 
-            {/* Flex / Grid & Position Offset */}
-            <section className="space-y-3">
-              <h3 className="text-[11px] font-semibold text-slate-700">Container &amp; Drag Offset</h3>
-              <div className="grid grid-cols-3 gap-1">
-                {(['block', 'flex', 'grid'] as const).map((disp) => (
-                  <button
-                    key={disp}
-                    type="button"
-                    onClick={() => commitStyles({ display: disp })}
-                    className={`rounded border py-1 text-[11px] font-medium capitalize ${
-                      cs.display === disp
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-slate-200 text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    {disp}
-                  </button>
-                ))}
-              </div>
+                {isFlex && (
+                  <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-2">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div>
+                        <label htmlFor="inspector-flex-dir" className="mb-0.5 block text-[10px] text-slate-500">
+                          Direction
+                        </label>
+                        <select
+                          id="inspector-flex-dir"
+                          aria-label="Flex direction"
+                          value={ins['flex-direction'] || cs.flexDirection || 'row'}
+                          onChange={(e) => commitStyles({ flexDirection: e.target.value })}
+                          className="h-7 w-full rounded border border-slate-200 bg-white px-1.5 text-[11px]"
+                        >
+                          <option value="row">Row →</option>
+                          <option value="column">Column ↓</option>
+                          <option value="row-reverse">Row Rev ←</option>
+                          <option value="column-reverse">Col Rev ↑</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="inspector-flex-wrap" className="mb-0.5 block text-[10px] text-slate-500">
+                          Wrap
+                        </label>
+                        <select
+                          id="inspector-flex-wrap"
+                          aria-label="Flex wrap"
+                          value={ins['flex-wrap'] || cs.flexWrap || 'nowrap'}
+                          onChange={(e) => commitStyles({ flexWrap: e.target.value })}
+                          className="h-7 w-full rounded border border-slate-200 bg-white px-1.5 text-[11px]"
+                        >
+                          <option value="nowrap">No Wrap</option>
+                          <option value="wrap">Wrap</option>
+                          <option value="wrap-reverse">Wrap Rev</option>
+                        </select>
+                      </div>
+                    </div>
 
-              {(cs.display === 'flex' || cs.display === 'grid') && (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div>
+                        <label htmlFor="inspector-justify" className="mb-0.5 block text-[10px] text-slate-500">
+                          Justify Content
+                        </label>
+                        <select
+                          id="inspector-justify"
+                          aria-label="Justify content"
+                          value={ins['justify-content'] || cs.justifyContent || 'flex-start'}
+                          onChange={(e) => commitStyles({ justifyContent: e.target.value })}
+                          className="h-7 w-full rounded border border-slate-200 bg-white px-1.5 text-[11px]"
+                        >
+                          <option value="flex-start">Start</option>
+                          <option value="center">Center</option>
+                          <option value="flex-end">End</option>
+                          <option value="space-between">Between</option>
+                          <option value="space-around">Around</option>
+                          <option value="space-evenly">Evenly</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="inspector-align-items" className="mb-0.5 block text-[10px] text-slate-500">
+                          Align Items
+                        </label>
+                        <select
+                          id="inspector-align-items"
+                          aria-label="Align items"
+                          value={ins['align-items'] || cs.alignItems || 'stretch'}
+                          onChange={(e) => commitStyles({ alignItems: e.target.value })}
+                          className="h-7 w-full rounded border border-slate-200 bg-white px-1.5 text-[11px]"
+                        >
+                          <option value="flex-start">Start</option>
+                          <option value="center">Center</option>
+                          <option value="flex-end">End</option>
+                          <option value="stretch">Stretch</option>
+                          <option value="baseline">Baseline</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {isGrid && (
+                  <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-2">
+                    <div className="flex items-center justify-between gap-1.5">
+                      <span className="text-[10px] font-medium text-slate-600">Grid Columns</span>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4].map((cols) => (
+                          <button
+                            key={cols}
+                            type="button"
+                            onClick={() =>
+                              commitStyles({
+                                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                              })
+                            }
+                            className={`h-6 w-6 rounded border font-mono text-[10px] font-semibold ${
+                              gridCols === cols
+                                ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                : 'border-slate-200 bg-white text-slate-600'
+                            }`}
+                          >
+                            {cols}
+                          </button>
+                        ))}
+                        <input
+                          type="number"
+                          aria-label="Grid columns count"
+                          min={1}
+                          max={12}
+                          defaultValue={gridCols}
+                          key={`gc-${selected.studioId}-${gridCols}`}
+                          onChange={(e) => {
+                            const n = Math.min(12, Math.max(1, Number(e.target.value) || 1));
+                            commitStyles({
+                              gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`,
+                            });
+                          }}
+                          className="h-6 w-11 rounded border border-slate-200 bg-white px-1 text-right font-mono text-[11px] tabular-nums"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div>
+                        <label htmlFor="inspector-grid-rows" className="mb-0.5 block text-[10px] text-slate-500">
+                          Rows Template
+                        </label>
+                        <input
+                          id="inspector-grid-rows"
+                          type="text"
+                          aria-label="Grid rows template"
+                          defaultValue={ins['grid-template-rows'] || 'auto'}
+                          key={`gr-${selected.studioId}-${ins['grid-template-rows'] || ''}`}
+                          onBlur={(e) =>
+                            commitStyles({ gridTemplateRows: e.target.value.trim() || null })
+                          }
+                          placeholder="auto"
+                          className="h-7 w-full rounded border border-slate-200 bg-white px-1.5 font-mono text-[11px]"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="inspector-grid-align" className="mb-0.5 block text-[10px] text-slate-500">
+                          Justify Items
+                        </label>
+                        <select
+                          id="inspector-grid-align"
+                          aria-label="Grid justify items"
+                          value={ins['justify-items'] || cs.justifyItems || 'stretch'}
+                          onChange={(e) => commitStyles({ justifyItems: e.target.value })}
+                          className="h-7 w-full rounded border border-slate-200 bg-white px-1.5 text-[11px]"
+                        >
+                          <option value="stretch">Stretch</option>
+                          <option value="start">Start</option>
+                          <option value="center">Center</option>
+                          <option value="end">End</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {(isFlex || isGrid) && (
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <div>
+                      <label className="mb-0.5 block text-[10px] text-slate-500">Gap (px)</label>
+                      <input
+                        type="number"
+                        aria-label="Container gap"
+                        min={0}
+                        max={96}
+                        defaultValue={parsePxNumber(ins.gap || cs.gap) || '16'}
+                        key={`gap-${selected.studioId}-${ins.gap || cs.gap}`}
+                        onChange={(e) =>
+                          commitStyles({ gap: `${Math.max(0, Number(e.target.value) || 0)}px` })
+                        }
+                        className="h-7 w-full rounded border border-slate-200 px-1.5 font-mono text-[11px] tabular-nums"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-0.5 block text-[10px] text-slate-500">Row Gap</label>
+                      <input
+                        type="number"
+                        aria-label="Row gap"
+                        min={0}
+                        max={96}
+                        defaultValue={parsePxNumber(ins['row-gap'] || cs.rowGap) || '16'}
+                        key={`rgap-${selected.studioId}-${ins['row-gap'] || cs.rowGap}`}
+                        onChange={(e) =>
+                          commitStyles({ rowGap: `${Math.max(0, Number(e.target.value) || 0)}px` })
+                        }
+                        className="h-7 w-full rounded border border-slate-200 px-1.5 font-mono text-[11px] tabular-nums"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-0.5 block text-[10px] text-slate-500">Col Gap</label>
+                      <input
+                        type="number"
+                        aria-label="Column gap"
+                        min={0}
+                        max={96}
+                        defaultValue={parsePxNumber(ins['column-gap'] || cs.columnGap) || '16'}
+                        key={`cgap-${selected.studioId}-${ins['column-gap'] || cs.columnGap}`}
+                        onChange={(e) =>
+                          commitStyles({ columnGap: `${Math.max(0, Number(e.target.value) || 0)}px` })
+                        }
+                        className="h-7 w-full rounded border border-slate-200 px-1.5 font-mono text-[11px] tabular-nums"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div>
+                    <label className="mb-0.5 block text-[10px] text-slate-500">Flex Grow</label>
+                    <div className="grid grid-cols-2 gap-1">
+                      {(['0', '1'] as const).map((fg) => (
+                        <button
+                          key={fg}
+                          type="button"
+                          onClick={() => commitStyles({ flexGrow: fg })}
+                          className={`h-7 rounded border font-mono text-[11px] ${
+                            (ins['flex-grow'] || cs.flexGrow || '0') === fg
+                              ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+                              : 'border-slate-200 text-slate-600'
+                          }`}
+                        >
+                          {fg === '0' ? 'Fixed (0)' : 'Grow (1)'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="inspector-align-self" className="mb-0.5 block text-[10px] text-slate-500">
+                      Align Self
+                    </label>
+                    <select
+                      id="inspector-align-self"
+                      aria-label="Align self"
+                      value={ins['align-self'] || cs.alignSelf || 'auto'}
+                      onChange={(e) => commitStyles({ alignSelf: e.target.value })}
+                      className="h-7 w-full rounded border border-slate-200 bg-white px-1.5 text-[11px]"
+                    >
+                      <option value="auto">Auto</option>
+                      <option value="flex-start">Start</option>
+                      <option value="center">Center</option>
+                      <option value="flex-end">End</option>
+                      <option value="stretch">Stretch</option>
+                    </select>
+                  </div>
+                </div>
+              </section>
+
+              {/* Positioning & Constraints */}
+              <section className="space-y-2.5 border-b border-slate-100 pb-4">
+                <h3 className="text-[11px] font-semibold text-slate-700">
+                  Positioning &amp; Constraints
+                </h3>
+
+                <div className="grid grid-cols-5 gap-1" role="group" aria-label="CSS position mode">
+                  {(['static', 'relative', 'absolute', 'fixed', 'sticky'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => commitStyles({ position: mode })}
+                      className={`rounded border py-1 text-[10px] font-medium capitalize ${
+                        posMode === mode
+                          ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {mode === 'absolute' ? 'Abs' : mode === 'relative' ? 'Rel' : mode}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Constraints Pin Widget */}
+                <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-2 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-medium text-slate-600">
+                      Edge &amp; Center Constraints
+                    </span>
+                    <span className="font-mono text-[10px] text-blue-600">
+                      {detectedConstraints.horizontal} / {detectedConstraints.vertical}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-[1fr_76px] items-center gap-2">
+                    <div className="space-y-1.5">
+                      <div>
+                        <span className="mb-0.5 block text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                          Horizontal Pin
+                        </span>
+                        <div className="grid grid-cols-5 gap-0.5">
+                          {(
+                            [
+                              { id: 'left', label: 'L' },
+                              { id: 'center', label: 'C' },
+                              { id: 'right', label: 'R' },
+                              { id: 'left-right', label: 'L+R' },
+                              { id: 'scale', label: '%' },
+                            ] as Array<{ id: HorizontalConstraint; label: string }>
+                          ).map((hc) => (
+                            <button
+                              key={hc.id}
+                              type="button"
+                              aria-label={`Horizontal constraint ${hc.id}`}
+                              onClick={() =>
+                                commitStyles(
+                                  applyHorizontalConstraintPatch(
+                                    hc.id,
+                                    selected.rect,
+                                    selected.parentRect ?? null,
+                                    posMode
+                                  )
+                                )
+                              }
+                              className={`h-6 rounded border text-[10px] font-semibold ${
+                                detectedConstraints.horizontal === hc.id
+                                  ? 'border-blue-500 bg-blue-600 text-white'
+                                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              {hc.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="mb-0.5 block text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                          Vertical Pin
+                        </span>
+                        <div className="grid grid-cols-5 gap-0.5">
+                          {(
+                            [
+                              { id: 'top', label: 'T' },
+                              { id: 'center', label: 'C' },
+                              { id: 'bottom', label: 'B' },
+                              { id: 'top-bottom', label: 'T+B' },
+                              { id: 'scale', label: '%' },
+                            ] as Array<{ id: VerticalConstraint; label: string }>
+                          ).map((vc) => (
+                            <button
+                              key={vc.id}
+                              type="button"
+                              aria-label={`Vertical constraint ${vc.id}`}
+                              onClick={() =>
+                                commitStyles(
+                                  applyVerticalConstraintPatch(
+                                    vc.id,
+                                    selected.rect,
+                                    selected.parentRect ?? null,
+                                    posMode
+                                  )
+                                )
+                              }
+                              className={`h-6 rounded border text-[10px] font-semibold ${
+                                detectedConstraints.vertical === vc.id
+                                  ? 'border-blue-500 bg-blue-600 text-white'
+                                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              {vc.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Visual Constraint Box Indicator */}
+                    <div
+                      aria-hidden="true"
+                      className="relative flex h-[72px] w-[72px] items-center justify-center rounded-md border border-slate-300 bg-white"
+                    >
+                      <div className="h-7 w-7 rounded border border-dashed border-slate-400 bg-blue-50" />
+                      {/* Left line */}
+                      <span
+                        className={`absolute left-1 top-1/2 h-0.5 w-3.5 -translate-y-1/2 ${
+                          detectedConstraints.horizontal === 'left' ||
+                          detectedConstraints.horizontal === 'left-right'
+                            ? 'bg-blue-600'
+                            : 'bg-slate-200'
+                        }`}
+                      />
+                      {/* Right line */}
+                      <span
+                        className={`absolute right-1 top-1/2 h-0.5 w-3.5 -translate-y-1/2 ${
+                          detectedConstraints.horizontal === 'right' ||
+                          detectedConstraints.horizontal === 'left-right'
+                            ? 'bg-blue-600'
+                            : 'bg-slate-200'
+                        }`}
+                      />
+                      {/* Top line */}
+                      <span
+                        className={`absolute top-1 left-1/2 h-3.5 w-0.5 -translate-x-1/2 ${
+                          detectedConstraints.vertical === 'top' ||
+                          detectedConstraints.vertical === 'top-bottom'
+                            ? 'bg-blue-600'
+                            : 'bg-slate-200'
+                        }`}
+                      />
+                      {/* Bottom line */}
+                      <span
+                        className={`absolute bottom-1 left-1/2 h-3.5 w-0.5 -translate-x-1/2 ${
+                          detectedConstraints.vertical === 'bottom' ||
+                          detectedConstraints.vertical === 'top-bottom'
+                            ? 'bg-blue-600'
+                            : 'bg-slate-200'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Inset Offsets + Z-Index + Overflow */}
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[
+                    { label: 'Top', key: 'top', val: ins.top || '' },
+                    { label: 'Right', key: 'right', val: ins.right || '' },
+                    { label: 'Bot', key: 'bottom', val: ins.bottom || '' },
+                    { label: 'Left', key: 'left', val: ins.left || '' },
+                  ].map((edge) => (
+                    <div key={edge.key}>
+                      <label className="mb-0.5 block text-[10px] text-slate-500">{edge.label}</label>
+                      <input
+                        type="text"
+                        aria-label={`Position ${edge.key}`}
+                        defaultValue={edge.val}
+                        key={`pos-${edge.key}-${selected.studioId}-${edge.val}`}
+                        placeholder="auto"
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          commitStyles({
+                            [edge.key]: !v ? null : /^-?\d+$/.test(v) ? `${v}px` : v,
+                          });
+                        }}
+                        className="h-7 w-full rounded border border-slate-200 px-1.5 font-mono text-[11px] text-slate-800"
+                      />
+                    </div>
+                  ))}
+                </div>
+
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="mb-1 block text-[11px] text-slate-600">Gap (px)</label>
+                    <label htmlFor="inspector-zindex" className="mb-0.5 block text-[10px] text-slate-500">
+                      Z-Index
+                    </label>
                     <input
+                      id="inspector-zindex"
                       type="number"
-                      min={0}
-                      max={96}
-                      defaultValue={parsePxNumber(cs.gap) || '16'}
-                      key={`gap-${selected.studioId}-${cs.gap}`}
-                      onChange={(e) => commitStyles({ gap: `${Number(e.target.value) || 0}px` })}
+                      aria-label="Z-Index"
+                      defaultValue={ins['z-index'] || (cs.zIndex === 'auto' ? '0' : cs.zIndex)}
+                      key={`zi-${selected.studioId}-${ins['z-index'] || cs.zIndex}`}
+                      onChange={(e) =>
+                        commitStyles({ zIndex: e.target.value === '' ? null : String(Number(e.target.value) || 0) })
+                      }
                       className="h-7 w-full rounded border border-slate-200 px-2 font-mono text-xs tabular-nums"
                     />
                   </div>
-                  {cs.display === 'flex' && (
-                    <div>
-                      <label className="mb-1 block text-[11px] text-slate-600">Direction</label>
-                      <select
-                        value={cs.flexDirection === 'column' ? 'column' : 'row'}
-                        onChange={(e) => commitStyles({ flexDirection: e.target.value })}
-                        className="h-7 w-full rounded border border-slate-200 bg-white px-2 text-xs"
-                      >
-                        <option value="row">Row</option>
-                        <option value="column">Column</option>
-                      </select>
-                    </div>
-                  )}
+                  <div>
+                    <label htmlFor="inspector-overflow" className="mb-0.5 block text-[10px] text-slate-500">
+                      Overflow
+                    </label>
+                    <select
+                      id="inspector-overflow"
+                      aria-label="Overflow"
+                      value={ins.overflow || cs.overflow || 'visible'}
+                      onChange={(e) => commitStyles({ overflow: e.target.value })}
+                      className="h-7 w-full rounded border border-slate-200 bg-white px-2 text-xs"
+                    >
+                      <option value="visible">Visible</option>
+                      <option value="hidden">Hidden</option>
+                      <option value="auto">Auto</option>
+                      <option value="scroll">Scroll</option>
+                    </select>
+                  </div>
                 </div>
-              )}
+              </section>
 
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <div>
-                  <label className="mb-1 block text-[11px] text-slate-600">Offset X (px)</label>
-                  <input
-                    type="number"
-                    value={offsetX}
-                    onChange={(e) => {
-                      const nx = Number(e.target.value) || 0;
-                      setOffsetX(nx);
-                      commitStyles({ transform: `translate(${nx}px, ${offsetY}px)` });
-                    }}
-                    className="h-7 w-full rounded border border-slate-200 px-2 font-mono text-xs tabular-nums"
-                  />
+              {/* Padding & Margin */}
+              <section className="space-y-2.5 border-b border-slate-100 pb-4">
+                <h3 className="text-[11px] font-semibold text-slate-700">Padding (px)</h3>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[
+                    { label: 'Top', key: 'paddingTop', val: padTop },
+                    { label: 'Right', key: 'paddingRight', val: padRight },
+                    { label: 'Bot', key: 'paddingBottom', val: padBottom },
+                    { label: 'Left', key: 'paddingLeft', val: padLeft },
+                  ].map((item) => (
+                    <div key={item.key}>
+                      <label className="mb-0.5 block text-[10px] text-slate-500">{item.label}</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={200}
+                        defaultValue={item.val}
+                        key={`${item.key}-${selected.studioId}-${item.val}`}
+                        onChange={(e) =>
+                          commitStyles({ [item.key]: `${Math.max(0, Number(e.target.value) || 0)}px` })
+                        }
+                        className="h-7 w-full rounded border border-slate-200 px-1.5 font-mono text-[11px] tabular-nums text-slate-800"
+                      />
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <label className="mb-1 block text-[11px] text-slate-600">Offset Y (px)</label>
-                  <input
-                    type="number"
-                    value={offsetY}
-                    onChange={(e) => {
-                      const ny = Number(e.target.value) || 0;
-                      setOffsetY(ny);
-                      commitStyles({ transform: `translate(${offsetX}px, ${ny}px)` });
-                    }}
-                    className="h-7 w-full rounded border border-slate-200 px-2 font-mono text-xs tabular-nums"
-                  />
+
+                <h3 className="pt-1 text-[11px] font-semibold text-slate-700">Margin Y (px)</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="mb-0.5 block text-[10px] text-slate-500">Top</label>
+                    <input
+                      type="number"
+                      defaultValue={marTop}
+                      key={`mt-${selected.studioId}-${marTop}`}
+                      onChange={(e) => commitStyles({ marginTop: `${Number(e.target.value) || 0}px` })}
+                      className="h-7 w-full rounded border border-slate-200 px-2 font-mono text-[11px] tabular-nums text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-0.5 block text-[10px] text-slate-500">Bottom</label>
+                    <input
+                      type="number"
+                      defaultValue={marBottom}
+                      key={`mb-${selected.studioId}-${marBottom}`}
+                      onChange={(e) => commitStyles({ marginBottom: `${Number(e.target.value) || 0}px` })}
+                      className="h-7 w-full rounded border border-slate-200 px-2 font-mono text-[11px] tabular-nums text-slate-800"
+                    />
+                  </div>
                 </div>
-              </div>
-            </section>
-          </>
-        )}
+              </section>
+
+              {/* Drag Transform Offset */}
+              <section className="space-y-2">
+                <h3 className="text-[11px] font-semibold text-slate-700">Drag Offset (Translate)</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="mb-1 block text-[11px] text-slate-600">Offset X (px)</label>
+                    <input
+                      type="number"
+                      value={offsetX}
+                      onChange={(e) => {
+                        const nx = Number(e.target.value) || 0;
+                        setOffsetX(nx);
+                        commitStyles({ transform: `translate(${nx}px, ${offsetY}px)` });
+                      }}
+                      className="h-7 w-full rounded border border-slate-200 px-2 font-mono text-xs tabular-nums"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] text-slate-600">Offset Y (px)</label>
+                    <input
+                      type="number"
+                      value={offsetY}
+                      onChange={(e) => {
+                        const ny = Number(e.target.value) || 0;
+                        setOffsetY(ny);
+                        commitStyles({ transform: `translate(${offsetX}px, ${ny}px)` });
+                      }}
+                      className="h-7 w-full rounded border border-slate-200 px-2 font-mono text-xs tabular-nums"
+                    />
+                  </div>
+                </div>
+              </section>
+            </>
+          );
+        })()}
 
         {activeTab === 'type' && (
           <section className="space-y-3.5">
@@ -1078,6 +1646,235 @@ export default function StyleInspectorPanel({
             </div>
           </section>
         )}
+
+        {activeTab === 'comp' && (() => {
+          const ownerComponent = components.find((c) => c.filePath === selected.filePath);
+          const isReactFile = /\.(tsx|jsx)$/i.test(selected.filePath);
+
+          return (
+            <div className="space-y-4">
+              {/* Source Component Context */}
+              <section className="space-y-2 border-b border-slate-100 pb-4">
+                <h3 className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+                  <Box className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>Component Source &amp; Isolation</span>
+                </h3>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs">
+                  <p className="font-mono text-[11px] text-slate-700 truncate">{selected.filePath}</p>
+                  {ownerComponent ? (
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-medium text-indigo-700">
+                        Shared &lt;{ownerComponent.name} /&gt; ({ownerComponent.usageCount}×)
+                      </span>
+                      {onIsolateComponent && (
+                        <button
+                          type="button"
+                          onClick={() => onIsolateComponent(ownerComponent.filePath)}
+                          className="rounded bg-indigo-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-indigo-700"
+                        >
+                          Isolate
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Page-local element{activePageFilePath ? ` in ${activePageFilePath}` : ''}.
+                    </p>
+                  )}
+                </div>
+
+                {isReactFile && !ownerComponent && onExtractComponent && (
+                  <div className="space-y-1.5 pt-1">
+                    <label htmlFor="extract-comp-name" className="block text-[11px] text-slate-600">
+                      Extract Selection to Component
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        id="extract-comp-name"
+                        type="text"
+                        aria-label="Extract component name"
+                        value={extractCompName}
+                        onChange={(e) => setExtractCompName(e.target.value)}
+                        placeholder="HeroBanner..."
+                        className="h-8 min-w-0 flex-1 rounded-md border border-slate-200 px-2 text-xs text-slate-800 focus:border-indigo-500 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        disabled={!extractCompName.trim()}
+                        onClick={() => {
+                          if (!extractCompName.trim()) return;
+                          onExtractComponent(
+                            selected.filePath,
+                            selected.elementIndex,
+                            extractCompName.trim()
+                          );
+                          setExtractCompName('');
+                        }}
+                        className="inline-flex h-8 items-center rounded-md bg-indigo-600 px-2.5 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:opacity-40"
+                      >
+                        Extract
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              {/* Page Component Instances & Props */}
+              <section className="space-y-2 border-b border-slate-100 pb-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[11px] font-semibold text-slate-700">
+                    Component Props on Page
+                  </h3>
+                  <span className="font-mono text-[10px] text-slate-400">
+                    {componentUsages.length}
+                  </span>
+                </div>
+
+                {componentUsages.length === 0 ? (
+                  <p className="text-[11px] text-slate-400">
+                    No nested component instances detected on this file.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {componentUsages.map((usage) => {
+                      const def = components.find((c) => c.name === usage.componentName);
+                      const propKeys = Array.from(
+                        new Set([
+                          ...(def?.props.map((p) => p.name) || []),
+                          ...Object.keys(usage.props),
+                        ])
+                      );
+                      return (
+                        <div
+                          key={`${usage.componentName}-${usage.elementIndex}`}
+                          className="rounded-lg border border-slate-200 bg-slate-50/70 p-2 space-y-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono text-[11px] font-semibold text-indigo-700">
+                              &lt;{usage.componentName} /&gt;
+                            </span>
+                            {def && onIsolateComponent && (
+                              <button
+                                type="button"
+                                onClick={() => onIsolateComponent(def.filePath)}
+                                className="rounded border border-indigo-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 hover:bg-indigo-50"
+                              >
+                                Edit Source
+                              </button>
+                            )}
+                          </div>
+                          {propKeys.map((propName) => {
+                            const val =
+                              usage.props[propName] ??
+                              def?.props.find((p) => p.name === propName)?.defaultValue ??
+                              '';
+                            return (
+                              <div key={propName} className="flex items-center gap-1.5">
+                                <label className="w-16 shrink-0 truncate font-mono text-[10px] text-slate-600">
+                                  {propName}
+                                </label>
+                                <input
+                                  type="text"
+                                  aria-label={`${usage.componentName} prop ${propName}`}
+                                  defaultValue={val}
+                                  key={`prop-${usage.elementIndex}-${propName}-${val}`}
+                                  onBlur={(e) =>
+                                    onPatchComponentProp?.(
+                                      usage.filePath,
+                                      usage.elementIndex,
+                                      propName,
+                                      e.target.value
+                                    )
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      onPatchComponentProp?.(
+                                        usage.filePath,
+                                        usage.elementIndex,
+                                        propName,
+                                        (e.target as HTMLInputElement).value
+                                      );
+                                    }
+                                  }}
+                                  className="h-7 min-w-0 flex-1 rounded border border-slate-200 bg-white px-2 font-mono text-[11px] text-slate-800"
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
+              {/* Direct Element Attributes */}
+              <section className="space-y-2.5">
+                <h3 className="text-[11px] font-semibold text-slate-700">Element Attributes</h3>
+                <div>
+                  <label htmlFor="inspector-class-name" className="mb-1 block text-[11px] text-slate-600">
+                    Classes (Tailwind / CSS)
+                  </label>
+                  <textarea
+                    id="inspector-class-name"
+                    rows={2}
+                    aria-label="Element className"
+                    value={classDraft}
+                    onChange={(e) => setClassDraft(e.target.value)}
+                    onBlur={() => {
+                      if (classDraft !== selected.className) {
+                        onCommitPatch(selected.filePath, selected.elementIndex, {
+                          className: classDraft,
+                        });
+                      }
+                    }}
+                    className="w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 font-mono text-[11px] text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none"
+                  />
+                </div>
+
+                {(selected.href !== undefined || selected.tagName === 'a') && (
+                  <div>
+                    <label htmlFor="inspector-href" className="mb-1 block text-[11px] text-slate-600">
+                      Link Href
+                    </label>
+                    <input
+                      id="inspector-href"
+                      type="text"
+                      value={hrefDraft}
+                      onChange={(e) => setHrefDraft(e.target.value)}
+                      onBlur={() =>
+                        onCommitPatch(selected.filePath, selected.elementIndex, {
+                          href: hrefDraft,
+                        })
+                      }
+                      className="h-8 w-full rounded-md border border-slate-200 px-2 font-mono text-xs text-slate-800"
+                    />
+                  </div>
+                )}
+
+                {(selected.src !== undefined || selected.tagName === 'img') && (
+                  <div>
+                    <label htmlFor="inspector-src" className="mb-1 block text-[11px] text-slate-600">
+                      Image Src
+                    </label>
+                    <input
+                      id="inspector-src"
+                      type="text"
+                      value={srcDraft}
+                      onChange={(e) => setSrcDraft(e.target.value)}
+                      onBlur={() =>
+                        onCommitPatch(selected.filePath, selected.elementIndex, {
+                          src: srcDraft,
+                        })
+                      }
+                      className="h-8 w-full rounded-md border border-slate-200 px-2 font-mono text-xs text-slate-800"
+                    />
+                  </div>
+                )}
+              </section>
+            </div>
+          );
+        })()}
       </div>
     </aside>
   );

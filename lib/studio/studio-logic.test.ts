@@ -350,4 +350,126 @@ test('border-elevation clamps numeric inputs and converts elevation levels clean
   assert.equal(matchShadowPresetLabel(undefined, 'none'), 'None');
 });
 
+import { computeDragSnap, computeResizeSnap } from './alignment-snapping';
+import {
+  applyHorizontalConstraintPatch,
+  applySizeConstraintMode,
+  applyVerticalConstraintPatch,
+  detectConstraintState,
+  parseGridColumnCount,
+} from './layout-constraints';
+import {
+  createComponentFileTemplate,
+  extractSelectionToComponent,
+  patchJsxPropInSource,
+  scanComponentUsagesInFile,
+  scanProjectComponents,
+} from './component-editor';
+
+test('alignment-snapping snaps drag offsets and resize edges to nearby targets and emits guides', () => {
+  const candidates = [
+    { x: 100, y: 50, width: 200, height: 100, kind: 'sibling' as const },
+    { x: 0, y: 0, width: 800, height: 600, kind: 'parent' as const },
+  ];
+  // Drag originRect (x=50, y=54, w=200, h=100) by rawDx=47 -> movingX=97 (within 6px of 100), rawDy=0 -> y=54 (within 6px of 50)
+  const drag = computeDragSnap({
+    originRect: { x: 50, y: 54, width: 200, height: 100 },
+    rawOffsetX: 47,
+    rawOffsetY: 0,
+    candidates,
+    threshold: 6,
+  });
+  assert.equal(drag.snappedX, 50); // 50 + 50 = 100
+  assert.equal(drag.snappedY, -4); // 54 - 4 = 50
+  assert.equal(drag.guides.length, 2);
+
+  // Resize east edge from x=100, width=196 -> rightEdge=296, within 6px of candidate rightEdge=300
+  const resize = computeResizeSnap({
+    initRect: { x: 100, y: 50, width: 196, height: 100 },
+    dir: 'e',
+    rawDx: 0,
+    rawDy: 0,
+    candidates,
+    threshold: 6,
+  });
+  assert.equal(resize.width, 200);
+  assert.equal(resize.guides[0].orientation, 'vertical');
+  assert.equal(resize.guides[0].position, 300);
+});
+
+test('layout-constraints detects constraints, computes pin patches, and parses grid columns', () => {
+  const patchCenter = applyHorizontalConstraintPatch(
+    'center',
+    { x: 100, y: 40, width: 200, height: 80 },
+    { x: 0, y: 0, width: 800, height: 400 },
+    'static'
+  );
+  assert.equal(patchCenter.left, '50%');
+  assert.equal(patchCenter.transform, 'translateX(-50%)');
+
+  const patchBottom = applyVerticalConstraintPatch(
+    'bottom',
+    { x: 100, y: 280, width: 200, height: 80 },
+    { x: 0, y: 0, width: 800, height: 400 },
+    'relative'
+  );
+  assert.equal(patchBottom.bottom, '40px');
+  assert.equal(patchBottom.top, null);
+
+  const detected = detectConstraintState(
+    { left: '12px', right: '12px', top: '50%', transform: 'translateY(-50%)' },
+    {}
+  );
+  assert.equal(detected.horizontal, 'left-right');
+  assert.equal(detected.vertical, 'center');
+
+  assert.deepEqual(applySizeConstraintMode('width', 'fill', 300), { width: '100%' });
+  assert.deepEqual(applySizeConstraintMode('height', 'hug', 120), { height: 'auto' });
+  assert.equal(parseGridColumnCount('repeat(3, minmax(0, 1fr))'), 3);
+  assert.equal(parseGridColumnCount('100px 200px 1fr 1fr'), 4);
+});
+
+test('component-editor scans project components, patches instance props, and extracts selections', () => {
+  const comps = scanProjectComponents(STARTER_NEXTJS_FILES);
+  assert.equal(comps.length, 1);
+  assert.equal(comps[0].name, 'Navbar');
+  assert.equal(comps[0].usageCount, 3);
+  assert.equal(comps[0].props[0].name, 'active');
+
+  const usages = scanComponentUsagesInFile(
+    STARTER_NEXTJS_FILES['app/page.tsx'],
+    'app/page.tsx',
+    ['Navbar']
+  );
+  assert.equal(usages.length, 1);
+  assert.equal(usages[0].props.active, '/');
+
+  const patchedPage = patchJsxPropInSource(
+    STARTER_NEXTJS_FILES['app/page.tsx'],
+    usages[0].elementIndex,
+    'active',
+    '/pricing'
+  );
+  assert.ok(patchedPage.includes('<Navbar active="/pricing" />'));
+
+  const created = createComponentFileTemplate('Alert Banner');
+  assert.equal(created.filePath, 'components/AlertBanner.tsx');
+  assert.ok(created.code.includes('export default function AlertBanner'));
+
+  const extracted = extractSelectionToComponent({
+    pageCode: STARTER_NEXTJS_FILES['app/page.tsx'],
+    pagePath: 'app/page.tsx',
+    elementIndex: 2, // <section ...> hero in app/page.tsx
+    rawComponentName: 'HeroBanner',
+  });
+  assert.ok(extracted !== null);
+  assert.equal(extracted.componentPath, 'components/HeroBanner.tsx');
+  assert.ok(extracted.updatedPageCode.includes("import HeroBanner from '@/components/HeroBanner';"));
+  assert.ok(extracted.updatedPageCode.includes('<HeroBanner />'));
+  assert.ok(extracted.componentCode.includes('export default function HeroBanner'));
+  assert.ok(extracted.componentCode.includes("import Link from 'next/link';"));
+  assert.ok(extracted.componentCode.includes('ArrowRight'));
+});
+
+
 
