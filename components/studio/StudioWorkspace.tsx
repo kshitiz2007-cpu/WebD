@@ -808,7 +808,7 @@ export default function StudioWorkspace() {
       const result = createSharedSiteKit({
         framework: project.framework,
         files: project.files,
-        pagePaths: project.pages.map((page) => page.filePath),
+        pages: project.pages,
       });
       commitFilesMutation(result.files, result.componentPaths[0]);
       setIsolatedComponentPath(null);
