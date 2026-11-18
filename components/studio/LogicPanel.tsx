@@ -3,20 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { GitBranch, Plus, Trash2, X, Zap } from 'lucide-react';
 import type { StudioElementSnapshot } from '@/lib/studio/types';
-
-export type LogicTrigger = 'onClick' | 'onChange' | 'onSubmit' | 'onMouseEnter';
-export type LogicAction = 'show' | 'hide' | 'toggle' | 'setText' | 'navigate' | 'toast';
-
-export interface VisualLogicRule {
-  id: string;
-  componentId: string;
-  componentLabel: string;
-  trigger: LogicTrigger;
-  action: LogicAction;
-  target: string;
-  value: string;
-  enabled: boolean;
-}
+import type { LogicAction, LogicTrigger, VisualLogicRule } from '@/lib/studio/logic-engine';
 
 interface LogicPanelProps {
   selected: StudioElementSnapshot | null;
