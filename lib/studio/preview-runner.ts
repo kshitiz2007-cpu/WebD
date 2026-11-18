@@ -62,6 +62,92 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
   var HOVER_ID = null;
   var EDITING_EL = null;
   var ACTIVE_PREVIEW_RECORDS = [];
+  var LOGIC_RULES = [];
+
+  function resolveLogicTarget(target) {
+    if (!target || typeof target !== 'string') return null;
+    var key = target.trim();
+    if (!key) return null;
+    if (key.charAt(0) === '#') key = key.slice(1);
+    var byId = document.getElementById(key);
+    if (byId) return byId;
+    return findStudioElement(key);
+  }
+
+  function runLogicRule(rule) {
+    if (!rule || rule.enabled === false) return;
+    var target = rule.action === 'toast' || rule.action === 'navigate'
+      ? null
+      : resolveLogicTarget(rule.target);
+    if (rule.action !== 'toast' && rule.action !== 'navigate' && !target) {
+      window.parent.postMessage({ type: 'studio:logic-warning', message: 'Logic target not found: ' + (rule.target || '(empty)') }, '*');
+      return;
+    }
+    if (rule.action === 'show') {
+      if (target.dataset.studioLogicDisplay !== undefined) {
+        target.style.display = target.dataset.studioLogicDisplay;
+        delete target.dataset.studioLogicDisplay;
+      } else target.style.display = '';
+      target.hidden = false;
+    } else if (rule.action === 'hide') {
+      if (target.dataset.studioLogicDisplay === undefined) target.dataset.studioLogicDisplay = target.style.display || '';
+      target.style.display = 'none';
+      target.hidden = true;
+    } else if (rule.action === 'toggle') {
+      var isHidden = target.hidden || window.getComputedStyle(target).display === 'none';
+      if (isHidden) {
+        target.hidden = false;
+        target.style.display = target.dataset.studioLogicDisplay !== undefined ? target.dataset.studioLogicDisplay : '';
+        delete target.dataset.studioLogicDisplay;
+      } else {
+        target.dataset.studioLogicDisplay = target.style.display || '';
+        target.style.display = 'none';
+        target.hidden = true;
+      }
+    } else if (rule.action === 'setText') {
+      target.textContent = typeof rule.value === 'string' ? rule.value : '';
+    } else if (rule.action === 'navigate') {
+      if (typeof rule.target === 'string' && rule.target) window.parent.postMessage({ type: 'studio:navigate', route: rule.target }, '*');
+    } else if (rule.action === 'toast') {
+      var toast = document.createElement('div');
+      toast.textContent = typeof rule.value === 'string' ? rule.value : '';
+      toast.setAttribute('role', 'status');
+      toast.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:2147483000;max-width:min(360px,calc(100vw - 40px));padding:12px 16px;border-radius:10px;background:#0f172a;color:#fff;font:500 13px/1.45 system-ui,sans-serif;box-shadow:0 12px 30px rgba(15,23,42,.25);';
+      document.body.appendChild(toast);
+      window.setTimeout(function() { toast.remove(); }, 2600);
+    }
+  }
+
+  function runLogicForEvent(trigger, event) {
+    if (CURRENT_MODE !== 'interact') return;
+    var node = event.target && event.target.closest ? event.target.closest('[data-studio-id]') : null;
+    if (!node) return;
+    var ids = [];
+    var cursor = node;
+    while (cursor && cursor !== document.documentElement) {
+      var id = cursor.getAttribute && cursor.getAttribute('data-studio-id');
+      if (id) ids.push(id);
+      cursor = cursor.parentElement;
+    }
+    LOGIC_RULES.forEach(function(rule) {
+      if (rule && rule.enabled !== false && rule.trigger === trigger && ids.indexOf(rule.componentId) !== -1) runLogicRule(rule);
+    });
+  }
+
+  document.addEventListener('click', function(event) { runLogicForEvent('onClick', event); }, true);
+  document.addEventListener('change', function(event) { runLogicForEvent('onChange', event); }, true);
+  document.addEventListener('submit', function(event) {
+    var form = event.target;
+    var sid = form && form.getAttribute ? form.getAttribute('data-studio-id') : null;
+    runLogicForEvent('onSubmit', event);
+    if (CURRENT_MODE === 'interact' && sid && LOGIC_RULES.some(function(rule) {
+      return rule && rule.enabled !== false && rule.trigger === 'onSubmit' && rule.componentId === sid;
+    })) event.preventDefault();
+  }, true);
+  document.addEventListener('mouseover', function(event) {
+    if (event.relatedTarget && event.target && event.target.contains && event.target.contains(event.relatedTarget)) return;
+    runLogicForEvent('onMouseEnter', event);
+  }, true);
   var LOCKED_IDS = {};
   var HIDDEN_IDS = {};
   var ACTIVE_PSEUDO_ID = null;
@@ -524,6 +610,10 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
     var msg = ev.data || {};
     if (msg.type === 'studio:set-mode') {
       CURRENT_MODE = msg.mode;
+    } else if (msg.type === 'studio:set-logic-rules') {
+      LOGIC_RULES = Array.isArray(msg.rules) ? msg.rules.filter(function(rule) {
+        return rule && typeof rule.componentId === 'string' && typeof rule.trigger === 'string' && typeof rule.action === 'string';
+      }) : [];
     } else if (msg.type === 'studio:update-css') {
       if (typeof msg.tailwindCss === 'string') {
         var twStyle = document.getElementById('studio-tailwind-css');
