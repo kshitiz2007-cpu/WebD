@@ -1,13 +1,13 @@
 'use client';
 
 import React from 'react';
-import { Columns2, Heading, Image as ImageIcon, LayoutPanelTop, MousePointerClick, Plus, Rows3, Type, X } from 'lucide-react';
+import { Columns2, Heading, Image as ImageIcon, LayoutPanelTop, MousePointerClick, Plus, Rows3, Type, X, type LucideIcon } from 'lucide-react';
 
 export interface LayoutBlock {
   id: string;
   label: string;
   description: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
   snippet: string;
 }
 
