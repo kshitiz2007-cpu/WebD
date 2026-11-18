@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Code2, GitBranch, Layers, Monitor, Palette, SlidersHorizontal, Smartphone, Sparkles, Tablet } from 'lucide-react';
+import { Code2, GitBranch, Layers, LayoutGrid, Monitor, Palette, SlidersHorizontal, Smartphone, Sparkles, Tablet } from 'lucide-react';
 import LogicPanel from './LogicPanel';
 import { normalizeLogicRules, type VisualLogicRule } from '@/lib/studio/logic-engine';
 import TopToolbar from './TopToolbar';
@@ -13,6 +13,7 @@ import GlobalStylesPanel from './GlobalStylesPanel';
 import ImportProjectModal from './ImportProjectModal';
 import DraftsModal from './DraftsModal';
 import ReactLibraryModal from './ReactLibraryModal';
+import LayoutBuilderPanel from './LayoutBuilderPanel';
 import SmartAlignerPanel from './SmartAlignerPanel';
 import CodeDrawer from './CodeDrawer';
 import {
@@ -137,6 +138,7 @@ export default function StudioWorkspace() {
   const [snapEnabled, setSnapEnabled] = useState<boolean>(true);
   const [isolatedComponentPath, setIsolatedComponentPath] = useState<string | null>(null);
   const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
+  const [isLayoutBuilderOpen, setIsLayoutBuilderOpen] = useState(false);
   const [externalLibVersion, setExternalLibVersion] = useState(0);
   const [pendingSelectStudioId, setPendingSelectStudioId] = useState<string | null>(null);
   const [lastPageTarget, setLastPageTarget] = useState<{
@@ -545,6 +547,45 @@ export default function StudioWorkspace() {
     },
     [project.files, commitFilesMutation]
   );
+
+  const handleInsertLayoutBlock = useCallback((snippet: string, targetStudioId?: string | null) => {
+    const parsedTarget = typeof targetStudioId === 'string' && targetStudioId.includes('::')
+      ? (() => {
+          const splitAt = targetStudioId.lastIndexOf('::');
+          const index = Number(targetStudioId.slice(splitAt + 2));
+          return Number.isFinite(index) ? { filePath: targetStudioId.slice(0, splitAt), elementIndex: index } : null;
+        })()
+      : null;
+    const filePath = parsedTarget?.filePath || selected?.filePath || canvasTargetPage.filePath;
+    const targetCode = project.files[filePath];
+    if (!targetCode) return;
+    const targetElementIndex = parsedTarget?.elementIndex ??
+      (selected?.filePath === filePath ? selected.elementIndex : 0);
+    const isHtml = /\\.html?$/i.test(filePath);
+    const compatibleSnippet = isHtml ? snippet.replace(/\\bclassName=/g, 'class=') : snippet;
+    const updated = insertJsxSnippetIntoSource({
+      targetCode,
+      targetElementIndex,
+      position: 'after',
+      jsxSnippet: compatibleSnippet,
+    });
+    if (!updated || updated === targetCode) return;
+    setSelected(null);
+    setMultiSelected([]);
+    commitFilesMutation({ ...project.files, [filePath]: updated }, filePath);
+  }, [project.files, selected, canvasTargetPage.filePath, commitFilesMutation]);
+
+  useEffect(() => {
+    const handleLayoutDrop = (event: MessageEvent) => {
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      const message = event.data || {};
+      if (message.type !== 'studio:layout-drop' || typeof message.snippet !== 'string') return;
+      handleInsertLayoutBlock(message.snippet, typeof message.studioId === 'string' ? message.studioId : null);
+      setIsLayoutBuilderOpen(false);
+    };
+    window.addEventListener('message', handleLayoutDrop);
+    return () => window.removeEventListener('message', handleLayoutDrop);
+  }, [handleInsertLayoutBlock]);
 
   const handleClearPendingSelect = useCallback(() => {
     setPendingSelectStudioId(null);
@@ -1593,6 +1634,23 @@ export default function StudioWorkspace() {
           )}
 
         <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setIsLayoutBuilderOpen((open) => !open)}
+            aria-pressed={isLayoutBuilderOpen}
+            className={`absolute right-3 top-3 z-20 inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold shadow-sm transition-colors ${isLayoutBuilderOpen ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white/95 text-slate-700 hover:bg-white'}`}
+          >
+            <LayoutGrid className="h-4 w-4" /> Layout
+          </button>
+          {isLayoutBuilderOpen && (
+            <LayoutBuilderPanel
+              onClose={() => setIsLayoutBuilderOpen(false)}
+              onInsert={(snippet) => {
+                handleInsertLayoutBlock(snippet);
+                setIsLayoutBuilderOpen(false);
+              }}
+            />
+          )}
           <VisualCanvas
             project={project}
             logicRules={logicRules}
