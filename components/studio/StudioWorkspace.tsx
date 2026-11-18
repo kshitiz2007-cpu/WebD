@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Code2, GitBranch, Layers, Monitor, Palette, SlidersHorizontal, Smartphone, Sparkles, Tablet } from 'lucide-react';
-import LogicPanel, { VisualLogicRule } from './LogicPanel';
+import LogicPanel, { type VisualLogicRule } from './LogicPanel';
 import TopToolbar from './TopToolbar';
 import PagesLayersPanel from './PagesLayersPanel';
 import VisualCanvas from './VisualCanvas';
@@ -302,10 +302,6 @@ export default function StudioWorkspace() {
     }
   }, [project.files]);
 
-  const handleLogicRulesChange = useCallback((nextRules: VisualLogicRule[]) => {
-    commitFilesMutation({ ...project.files, 'webd.logic.json': JSON.stringify(nextRules, null, 2) });
-  }, [project.files, commitFilesMutation]);
-
   const packageDependencies = useMemo(
     () => parsePackageDependencies(project.files),
     [project.files]
@@ -411,6 +407,10 @@ export default function StudioWorkspace() {
     },
     [project.files]
   );
+
+  const handleLogicRulesChange = useCallback((nextRules: VisualLogicRule[]) => {
+    commitFilesMutation({ ...project.files, 'webd.logic.json': JSON.stringify(nextRules, null, 2) });
+  }, [project.files, commitFilesMutation]);
 
   const handleUpdateFileContent = useCallback(
     (filePath: string, content: string) => {
