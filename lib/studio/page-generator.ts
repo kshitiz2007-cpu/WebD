@@ -118,9 +118,11 @@ function htmlPageSource(title: string, template: Exclude<PageTemplatePreset, 'cu
 
 function stripTemplateCodeFence(value: string): string {
   const trimmed = value.trim();
-  const tick = String.fromCharCode(96).repeat(3);
-  const match = trimmed.match(new RegExp('^' + tick + '(?:tsx|jsx|ts|js|html|xml)?\\s*\\n([\\s\\S]*?)\\n' + tick + '$', 'i'));
-  return (match ? match[1] : trimmed).trim();
+  const fence = String.fromCharCode(96).repeat(3);
+  if (!trimmed.startsWith(fence) || !trimmed.endsWith(fence)) return trimmed;
+  const firstLineEnd = trimmed.indexOf('\n');
+  if (firstLineEnd < 0) return trimmed.slice(fence.length, -fence.length).trim();
+  return trimmed.slice(firstLineEnd + 1, -fence.length).trim();
 }
 
 function applyTemplatePlaceholders(source: string, title: string, slug: string, html: boolean): string {
@@ -129,16 +131,17 @@ function applyTemplatePlaceholders(source: string, title: string, slug: string, 
     : title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const safeSlug = html ? escapeHtml(slug) : slug;
   return source
-    .replace(/\{\{\s*TITLE\s*\}\}/gi, safeTitle)
-    .replace(/\{\{\s*SLUG\s*\}\}/gi, safeSlug);
+    .split('{{TITLE}}').join(safeTitle)
+    .split('{{title}}').join(safeTitle)
+    .split('{{SLUG}}').join(safeSlug)
+    .split('{{slug}}').join(safeSlug);
 }
 
 function customReactPageSource(title: string, slug: string, rawCode: string): string {
   const source = applyTemplatePlaceholders(stripTemplateCodeFence(rawCode), title, slug, false);
   if (!source) throw new Error('Paste a React component or JSX layout before creating the page.');
-  const hasDefaultExport =
-    /export\s+default\s+(?:async\s+)?(?:function|class|[A-Za-z_$][\w$]*|\()/m.test(source) ||
-    /export\s*\{[^}]*\bas\s+default\b[^}]*\}/m.test(source);
+  const hasDefaultExport = source.includes('export default') ||
+    (source.includes('export {') && source.includes(' as default'));
   if (hasDefaultExport) return source;
   if (!source.includes('<') || !source.includes('>')) {
     throw new Error('Custom React template must contain JSX or a default-exported React page component.');
@@ -161,7 +164,8 @@ function customReactPageSource(title: string, slug: string, rawCode: string): st
 function customHtmlPageSource(title: string, slug: string, rawCode: string): string {
   const source = applyTemplatePlaceholders(stripTemplateCodeFence(rawCode), title, slug, true);
   if (!source) throw new Error('Paste an HTML page or layout before creating the page.');
-  if (/<html[\s>]/i.test(source) || /<!doctype\s+html/i.test(source)) return source;
+  const lowerSource = source.trimStart().toLowerCase();
+  if (lowerSource.startsWith('<html') || lowerSource.startsWith('<!doctype html')) return source;
   return [
     '<!doctype html>',
     '<html lang="en">',
