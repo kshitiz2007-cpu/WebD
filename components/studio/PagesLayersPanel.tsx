@@ -26,7 +26,8 @@ interface PagesLayersPanelProps {
   pages: ProjectPage[];
   activeRoute: string;
   onSelectPage: (route: string) => void;
-  onCreatePage?: (title: string, slug: string, template: PageTemplatePreset) => boolean;
+  onCreatePage?: (title: string, slug: string, template: PageTemplatePreset, customTemplateCode?: string) => boolean;
+  isHtmlProject?: boolean;
   onCreateSiteKit?: () => boolean;
   components?: ProjectComponentInfo[];
   isolatedComponentPath?: string | null;
@@ -52,6 +53,7 @@ export default function PagesLayersPanel({
   activeRoute,
   onSelectPage,
   onCreatePage,
+  isHtmlProject = false,
   onCreateSiteKit,
   components = [],
   isolatedComponentPath = null,
@@ -79,6 +81,9 @@ export default function PagesLayersPanel({
   const [newPageTitle, setNewPageTitle] = useState('New Page');
   const [newPageSlug, setNewPageSlug] = useState('new-page');
   const [pageTemplate, setPageTemplate] = useState<PageTemplatePreset>('landing');
+  const [customTemplateCode, setCustomTemplateCode] = useState(isHtmlProject
+    ? '<main class="mx-auto max-w-6xl px-6 py-16"><h1>{{TITLE}}</h1><p>Build your custom page layout here.</p></main>'
+    : '<main className="mx-auto max-w-6xl px-6 py-16"><h1 className="text-4xl font-bold">{{TITLE}}</h1><p className="mt-4 text-slate-600">Build your custom page layout here.</p></main>');
   const [pageError, setPageError] = useState('');
   const [siteKitError, setSiteKitError] = useState('');
   const [siteKitApplied, setSiteKitApplied] = useState(false);
@@ -251,9 +256,9 @@ export default function PagesLayersPanel({
                 {showNewPage && (
                   <form className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5" onSubmit={(event) => {
                     event.preventDefault();
-                    const created = onCreatePage(newPageTitle, newPageSlug, pageTemplate);
+                    const created = onCreatePage(newPageTitle, newPageSlug, pageTemplate, pageTemplate === 'custom' ? customTemplateCode : undefined);
                     if (created) {
-                      setShowNewPage(false); setPageError(''); setNewPageTitle('New Page'); setNewPageSlug('new-page');
+                      setShowNewPage(false); setPageError(''); setNewPageTitle('New Page'); setNewPageSlug('new-page'); setPageTemplate('landing');
                     } else {
                       setPageError('This route already exists or the page name is invalid.');
                     }
@@ -269,9 +274,29 @@ export default function PagesLayersPanel({
                     </label>
                     <label className="block text-[10px] font-semibold text-slate-600">Start from
                       <select value={pageTemplate} onChange={(event) => setPageTemplate(event.target.value as PageTemplatePreset)} className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800">
-                        <option value="landing">Landing page</option><option value="blank">Blank canvas</option><option value="about">About page</option><option value="contact">Contact page</option><option value="pricing">Pricing page</option>
+                        <option value="landing">Landing page</option><option value="blank">Blank canvas</option><option value="about">About page</option><option value="contact">Contact page</option><option value="pricing">Pricing page</option><option value="custom">Custom template (paste code)</option>
                       </select>
                     </label>
+                    {pageTemplate === 'custom' && (
+                      <label className="block text-[10px] font-semibold text-slate-600">
+                        Custom {isHtmlProject ? 'HTML' : 'React / TSX'} layout code
+                        <textarea
+                          value={customTemplateCode}
+                          onChange={(event) => setCustomTemplateCode(event.target.value)}
+                          rows={9}
+                          spellCheck={false}
+                          className="mt-1 w-full resize-y rounded-md border border-slate-200 bg-slate-950 p-2.5 font-mono text-[10px] leading-5 text-slate-100 outline-none focus:border-indigo-500"
+                          placeholder={isHtmlProject ? '<main>...</main>' : '<main className="...">...</main>'}
+                          required
+                        />
+                        <span className="mt-1 block text-[10px] font-normal leading-4 text-slate-500">
+                          {isHtmlProject
+                            ? 'Paste a full HTML document or an HTML fragment. Fragments receive a basic HTML document wrapper.'
+                            : 'Paste a full default-exported React page component or a JSX layout fragment. Fragments are wrapped in a page component.'}
+                          {' '}Optional placeholders: {'{{TITLE}}'} and {'{{SLUG}}'}.
+                        </span>
+                      </label>
+                    )}
                     {pageError && <p role="alert" className="text-[10px] text-rose-600">{pageError}</p>}
                     <div className="flex gap-1.5">
                       <button type="button" onClick={() => setShowNewPage(false)} className="h-8 flex-1 rounded-md border border-slate-200 bg-white text-xs font-medium text-slate-600">Cancel</button>
