@@ -200,6 +200,23 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       LOGIC_EXECUTING = false;
     }
   }
+  // Receive layout blocks dragged from the parent builder palette into the preview iframe.
+  document.addEventListener('dragover', function(event) {
+    var types = event.dataTransfer && Array.from(event.dataTransfer.types || []);
+    if (types && types.indexOf('application/x-webd-layout-block') !== -1) {
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    }
+  }, true);
+  document.addEventListener('drop', function(event) {
+    var transfer = event.dataTransfer;
+    var snippet = transfer && (transfer.getData('application/x-webd-layout-block') || transfer.getData('text/plain'));
+    if (!snippet || snippet.indexOf('<') === -1 || snippet.length > 12000) return;
+    event.preventDefault();
+    var target = event.target && event.target.closest ? event.target.closest('[data-studio-id]') : null;
+    var studioId = target && target.getAttribute('data-studio-id');
+    window.parent.postMessage({ type: 'studio:layout-drop', snippet: snippet, studioId: studioId || null }, '*');
+  }, true);
   document.addEventListener('focusin', function(event) { runLogicForEvent('onFocus', event); }, true);
   document.addEventListener('focusout', function(event) { runLogicForEvent('onBlur', event); }, true);
   document.addEventListener('input', function(event) { runLogicForEvent('onInput', event); }, true);
