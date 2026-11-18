@@ -1,0 +1,156 @@
+'use client';
+
+import React, { useMemo, useState } from 'react';
+import { GitBranch, Plus, Trash2, X, Zap } from 'lucide-react';
+import type { StudioElementSnapshot } from '@/lib/studio/types';
+
+export type LogicTrigger = 'onClick' | 'onChange' | 'onSubmit' | 'onMouseEnter';
+export type LogicAction = 'show' | 'hide' | 'toggle' | 'setText' | 'navigate' | 'toast';
+
+export interface VisualLogicRule {
+  id: string;
+  componentId: string;
+  componentLabel: string;
+  trigger: LogicTrigger;
+  action: LogicAction;
+  target: string;
+  value: string;
+  enabled: boolean;
+}
+
+interface LogicPanelProps {
+  selected: StudioElementSnapshot | null;
+  rules: VisualLogicRule[];
+  onChange: (rules: VisualLogicRule[]) => void;
+  onClose: () => void;
+  isBottomSheet?: boolean;
+}
+
+const TRIGGERS: { value: LogicTrigger; label: string }[] = [
+  { value: 'onClick', label: 'On click' },
+  { value: 'onChange', label: 'On change' },
+  { value: 'onSubmit', label: 'On submit' },
+  { value: 'onMouseEnter', label: 'On hover' },
+];
+
+const ACTIONS: { value: LogicAction; label: string }[] = [
+  { value: 'show', label: 'Show element' },
+  { value: 'hide', label: 'Hide element' },
+  { value: 'toggle', label: 'Toggle element' },
+  { value: 'setText', label: 'Set text' },
+  { value: 'navigate', label: 'Navigate to route' },
+  { value: 'toast', label: 'Show toast' },
+];
+
+const inputClass = 'h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
+const labelClass = 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500';
+
+function createRule(selected: StudioElementSnapshot | null): VisualLogicRule {
+  return {
+    id: `logic-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    componentId: selected?.studioId || '',
+    componentLabel: selected ? `<${selected.tagName.toLowerCase()}>` : 'Select a component',
+    trigger: 'onClick',
+    action: 'show',
+    target: '',
+    value: '',
+    enabled: true,
+  };
+}
+
+export default function LogicPanel({ selected, rules, onChange, onClose, isBottomSheet = false }: LogicPanelProps) {
+  const [mode, setMode] = useState<'basic' | 'flow'>('basic');
+  const selectedRules = useMemo(
+    () => selected ? rules.filter((rule) => rule.componentId === selected.studioId) : rules,
+    [rules, selected]
+  );
+
+  const updateRule = (id: string, patch: Partial<VisualLogicRule>) => {
+    onChange(rules.map((rule) => rule.id === id ? { ...rule, ...patch } : rule));
+  };
+
+  const addRule = () => {
+    if (!selected) return;
+    onChange([...rules, createRule(selected)]);
+  };
+
+  const removeRule = (id: string) => onChange(rules.filter((rule) => rule.id !== id));
+
+  return (
+    <aside className={`flex h-full w-full flex-col border-l border-slate-200 bg-white shadow-xl ${isBottomSheet ? 'rounded-t-2xl' : 'max-w-[360px]'}`}>
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-50 text-violet-700"><GitBranch className="h-4 w-4" /></span>
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Logic Builder</h2>
+            <p className="text-[11px] text-slate-500">Create interactions visually</p>
+          </div>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Close logic builder" className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+      </div>
+
+      <div className="flex gap-1 border-b border-slate-100 px-4 py-2">
+        <button type="button" onClick={() => setMode('basic')} className={`rounded-md px-3 py-1.5 text-xs font-medium ${mode === 'basic' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>Basic mode</button>
+        <button type="button" onClick={() => setMode('flow')} className={`rounded-md px-3 py-1.5 text-xs font-medium ${mode === 'flow' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>Flow view</button>
+      </div>
+
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+        <section className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <p className={labelClass}>Selected component</p>
+          {selected ? (
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900">{selected.label || selected.tagName}</p>
+                <p className="truncate font-mono text-[10px] text-slate-500">{selected.filePath} · {selected.studioId}</p>
+              </div>
+              <span className="rounded-md bg-white px-2 py-1 text-[10px] font-semibold text-slate-600">{selected.tagName}</span>
+            </div>
+          ) : <p className="text-xs text-slate-500">Select an element on the canvas to add logic to it.</p>}
+        </section>
+
+        <div className="flex items-center justify-between">
+          <div><h3 className="text-sm font-semibold text-slate-900">Interactions</h3><p className="text-[11px] text-slate-500">{selectedRules.length} rule(s) for this component</p></div>
+          <button type="button" onClick={addRule} disabled={!selected} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"><Plus className="h-3.5 w-3.5" /> Add rule</button>
+        </div>
+
+        {selectedRules.length === 0 && (
+          <div className="rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center">
+            <Zap className="mx-auto mb-2 h-6 w-6 text-slate-400" />
+            <p className="text-sm font-medium text-slate-700">No logic yet</p>
+            <p className="mt-1 text-xs text-slate-500">Add a trigger and action to define this component's behaviour.</p>
+          </div>
+        )}
+
+        {selectedRules.map((rule, index) => (
+          <article key={rule.id} className="overflow-hidden rounded-xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-3 py-2">
+              <div className="flex items-center gap-2"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-100 text-[10px] font-bold text-violet-700">{index + 1}</span><span className="text-xs font-semibold text-slate-700">Interaction rule</span></div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => updateRule(rule.id, { enabled: !rule.enabled })} className={`rounded-full px-2 py-1 text-[10px] font-semibold ${rule.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>{rule.enabled ? 'Enabled' : 'Disabled'}</button>
+                <button type="button" onClick={() => removeRule(rule.id)} aria-label="Delete rule" className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+              </div>
+            </div>
+
+            {mode === 'basic' ? (
+              <div className="space-y-3 p-3">
+                <div><label className={labelClass}>When</label><select value={rule.trigger} onChange={(e) => updateRule(rule.id, { trigger: e.target.value as LogicTrigger })} className={inputClass}>{TRIGGERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></div>
+                <div className="flex justify-center"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">THEN</span></div>
+                <div><label className={labelClass}>Action</label><select value={rule.action} onChange={(e) => updateRule(rule.id, { action: e.target.value as LogicAction })} className={inputClass}>{ACTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></div>
+                {rule.action !== 'toast' && <div><label className={labelClass}>{rule.action === 'navigate' ? 'Route' : 'Target element ID'}</label><input value={rule.target} onChange={(e) => updateRule(rule.id, { target: e.target.value })} placeholder={rule.action === 'navigate' ? '/about' : 'e.g. settings-panel'} className={inputClass} /></div>}
+                {(rule.action === 'setText' || rule.action === 'toast') && <div><label className={labelClass}>{rule.action === 'toast' ? 'Message' : 'New text'}</label><input value={rule.value} onChange={(e) => updateRule(rule.id, { value: e.target.value })} placeholder="Enter a value" className={inputClass} /></div>}
+              </div>
+            ) : (
+              <div className="space-y-2 bg-slate-950 p-3 text-center text-white">
+                <div className="rounded-lg border border-blue-400/40 bg-blue-500/15 p-3"><p className="text-[10px] uppercase tracking-widest text-blue-200">Trigger</p><p className="mt-1 text-sm font-semibold">{TRIGGERS.find((item) => item.value === rule.trigger)?.label}</p></div>
+                <div className="text-slate-400">↓</div>
+                <div className="rounded-lg border border-emerald-400/40 bg-emerald-500/15 p-3"><p className="text-[10px] uppercase tracking-widest text-emerald-200">Action</p><p className="mt-1 text-sm font-semibold">{ACTIONS.find((item) => item.value === rule.action)?.label}</p>{rule.target && <p className="mt-1 truncate text-[10px] text-slate-300">{rule.target}</p>}</div>
+              </div>
+            )}
+          </article>
+        ))}
+
+        <p className="rounded-lg bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-800">Logic rules are stored in the project as structured configuration. Runtime execution is being introduced incrementally; unsupported actions will not run until their runtime adapter is available.</p>
+      </div>
+    </aside>
+  );
+}
