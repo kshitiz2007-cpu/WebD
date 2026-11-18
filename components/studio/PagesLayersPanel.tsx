@@ -286,7 +286,7 @@ export default function PagesLayersPanel({
                 <div className="flex items-center gap-1.5 text-[11px] font-semibold text-violet-900">
                   <Layers className="h-3.5 w-3.5" /> Shared site design
                 </div>
-                <p className="text-[10px] leading-4 text-violet-800/80">Add one reusable header, footer and layout across every page. Edit them once in Components to update the whole site.</p>
+                <p className="text-[10px] leading-4 text-violet-800/80">Add a reusable header, footer and layout. React pages share editable components; HTML pages receive matching shared markup.</p>
                 <button type="button" onClick={() => {
                   const created = onCreateSiteKit();
                   setSiteKitApplied(created);
@@ -294,7 +294,7 @@ export default function PagesLayersPanel({
                 }} className="w-full rounded-md bg-violet-600 px-2.5 py-2 text-[11px] font-semibold text-white hover:bg-violet-700">
                   Generate shared site kit
                 </button>
-                {siteKitApplied && <p role="status" className="text-[10px] leading-4 text-emerald-700">Shared header, footer and layout applied. Edit SiteHeader or SiteFooter in Components to update every connected page.</p>}
+                {siteKitApplied && <p role="status" className="text-[10px] leading-4 text-emerald-700">Shared site layout applied. Edit SiteHeader or SiteFooter in Components to update connected React pages.</p>}
                 {siteKitError && <p role="alert" className="text-[10px] text-rose-600">{siteKitError}</p>}
               </div>
             )}
