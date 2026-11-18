@@ -2,6 +2,11 @@
 
 import React, { useRef, useState } from 'react';
 import { FileArchive, GitBranch, Layers, Loader2, Upload, X } from 'lucide-react';
+import {
+  importGitHubRepoFromBrowser,
+  parseGitHubRepoUrl,
+  safeReadJsonResponse,
+} from '@/lib/studio/github-import';
 import { normalizeProjectFiles } from '@/lib/studio/project-scanner';
 import { STARTER_HTML_FILES, STARTER_NEXTJS_FILES } from '@/lib/studio/sample-project';
 
@@ -69,27 +74,68 @@ export default function ImportProjectModal({
 
   const handleGitHubImport = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!githubUrl.trim()) {
+    const trimmedUrl = githubUrl.trim();
+    if (!trimmedUrl) {
       setError('Please enter a GitHub repository URL.');
       return;
     }
+    if (!parseGitHubRepoUrl(trimmedUrl)) {
+      setError('Please enter a valid GitHub repository URL (for example https://github.com/owner/repo).');
+      return;
+    }
+
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch('/api/import-github', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: githubUrl.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'GitHub import failed.');
+      let imported: { name: string; files: Record<string, string> } | null = null;
+      let shouldFallbackToBrowser = false;
+      let serverError: string | null = null;
+
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 16_000);
+        try {
+          const res = await fetch('/api/import-github', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: trimmedUrl }),
+            signal: controller.signal,
+          });
+          const parsed = await safeReadJsonResponse<{
+            name?: string;
+            files?: Record<string, string>;
+            error?: string;
+          }>(res);
+          if (parsed.ok && parsed.data?.files) {
+            imported = {
+              name: parsed.data.name || 'GitHub Project',
+              files: parsed.data.files,
+            };
+          } else if (!parsed.ok) {
+            serverError = parsed.error;
+            if (parsed.isHtml || parsed.status >= 500 || parsed.status === 404) {
+              shouldFallbackToBrowser = true;
+            }
+          }
+        } finally {
+          clearTimeout(timer);
+        }
+      } catch {
+        shouldFallbackToBrowser = true;
       }
-      const normalized = normalizeProjectFiles(data.files || {});
+
+      if (!imported && shouldFallbackToBrowser) {
+        const direct = await importGitHubRepoFromBrowser(trimmedUrl);
+        imported = { name: direct.name, files: direct.files };
+      } else if (!imported) {
+        throw new Error(serverError || 'GitHub import failed.');
+      }
+
+      const normalized = normalizeProjectFiles(imported.files || {});
       if (Object.keys(normalized).length === 0) {
         throw new Error('No supported web source files found in this repository.');
       }
-      onLoadProject(normalized, `GitHub: ${data.name}`, data.name);
+      onLoadProject(normalized, `GitHub: ${imported.name}`, imported.name);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to import repository.');

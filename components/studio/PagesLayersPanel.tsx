@@ -5,10 +5,14 @@ import {
   ChevronDown,
   ChevronRight,
   Component,
+  Eye,
+  EyeOff,
   FileCode2,
   Layers,
+  Lock,
   PackagePlus,
   Plus,
+  Unlock,
   X,
 } from 'lucide-react';
 import {
@@ -30,6 +34,11 @@ interface PagesLayersPanelProps {
   onOpenLibraryModal?: () => void;
   layerTree: LayerTreeNode[];
   selectedStudioId: string | null;
+  multiSelectedIds?: string[];
+  lockedIds?: string[];
+  hiddenIds?: string[];
+  onToggleLockLayer?: (studioId: string) => void;
+  onToggleHideLayer?: (studioId: string) => void;
   onSelectLayer: (studioId: string) => void;
   onClose?: () => void;
   isBottomSheet?: boolean;
@@ -48,6 +57,11 @@ export default function PagesLayersPanel({
   onOpenLibraryModal,
   layerTree,
   selectedStudioId,
+  multiSelectedIds = [],
+  lockedIds = [],
+  hiddenIds = [],
+  onToggleLockLayer,
+  onToggleHideLayer,
   onSelectLayer,
   onClose,
   isBottomSheet = false,
@@ -62,18 +76,20 @@ export default function PagesLayersPanel({
   };
 
   const renderLayerNode = (node: LayerTreeNode, depth = 0, idx = 0) => {
-    const isSelected = node.studioId === selectedStudioId;
+    const isSelected = node.studioId === selectedStudioId || multiSelectedIds.includes(node.studioId);
     const hasChildren = node.children.length > 0;
     const isCollapsed = Boolean(collapsed[node.studioId]);
+    const isLocked = lockedIds.includes(node.studioId);
+    const isHidden = hiddenIds.includes(node.studioId);
 
     return (
       <div key={`${node.studioId}-${depth}-${idx}`}>
         <div
-          className={`flex items-center gap-1 rounded-md pr-2 text-xs transition-colors ${
+          className={`group flex items-center gap-1 rounded-md pr-1.5 text-xs transition-colors ${
             isSelected
               ? 'bg-blue-50 text-blue-700 font-medium'
               : 'text-slate-700 hover:bg-slate-100'
-          }`}
+          } ${isHidden ? 'opacity-50' : ''}`}
           style={{ paddingLeft: `${8 + depth * 12}px` }}
         >
           {hasChildren ? (
@@ -95,11 +111,53 @@ export default function PagesLayersPanel({
 
           <button
             type="button"
+            disabled={isLocked || isHidden}
             onClick={() => onSelectLayer(node.studioId)}
-            className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-left"
+            className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-left disabled:cursor-not-allowed"
           >
             <span className="truncate">{node.label}</span>
           </button>
+
+          {(onToggleLockLayer || onToggleHideLayer) && (
+            <div
+              className={`flex shrink-0 items-center gap-0.5 transition-opacity ${
+                isLocked || isHidden ? 'opacity-100' : 'opacity-55 group-hover:opacity-100 focus-within:opacity-100'
+              }`}
+            >
+              {onToggleLockLayer && (
+                <button
+                  type="button"
+                  title={isLocked ? `Unlock ${node.label}` : `Lock ${node.label}`}
+                  aria-label={isLocked ? `Unlock layer ${node.label}` : `Lock layer ${node.label}`}
+                  aria-pressed={isLocked}
+                  onClick={() => onToggleLockLayer(node.studioId)}
+                  className={`inline-flex h-5 w-5 items-center justify-center rounded ${
+                    isLocked
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'text-slate-400 hover:bg-slate-200 hover:text-slate-700'
+                  }`}
+                >
+                  {isLocked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
+                </button>
+              )}
+              {onToggleHideLayer && (
+                <button
+                  type="button"
+                  title={isHidden ? `Show ${node.label}` : `Hide ${node.label}`}
+                  aria-label={isHidden ? `Show layer ${node.label}` : `Hide layer ${node.label}`}
+                  aria-pressed={isHidden}
+                  onClick={() => onToggleHideLayer(node.studioId)}
+                  className={`inline-flex h-5 w-5 items-center justify-center rounded ${
+                    isHidden
+                      ? 'bg-slate-200 text-slate-700'
+                      : 'text-slate-400 hover:bg-slate-200 hover:text-slate-700'
+                  }`}
+                >
+                  {isHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {hasChildren && !isCollapsed && (

@@ -899,7 +899,7 @@ import {
   computeReorderDropTarget,
   parseElementTranslateOffsets,
 } from './layout-constraints';
-import { compileReactPreviewPayload } from './preview-runner';
+import { buildPreviewDocument, compileReactPreviewPayload } from './preview-runner';
 
 test('parseElementTranslateOffsets reads CSS translate (Tailwind v4), transform translate/matrix, and combined values', () => {
   assert.deepEqual(
@@ -997,6 +997,14 @@ test('compileReactPreviewPayload and sibling reorder index resolution stay consi
   const gridAfter = elsAfter[cardGrid.index];
   const newMovedIdx = gridAfter.childIndices[2];
   assert.ok(movedCode.slice(elsAfter[newMovedIdx].openStart, elsAfter[newMovedIdx].closeEnd).includes('Precision Load Analysis') || newMovedIdx > firstCardIdx);
+
+  // Validate generated iframe HTML script tags parse with zero JS SyntaxErrors
+  const docBundle = buildPreviewDocument(proj, proj.pages[0], '', 'design', null);
+  const scriptMatches = Array.from(docBundle.html.matchAll(/<script>([\s\S]*?)<\/script>/g));
+  assert.equal(scriptMatches.length >= 2, true);
+  for (const sm of scriptMatches) {
+    assert.doesNotThrow(() => new Function(sm[1]));
+  }
 });
 import {
   applyGlobalThemePreset,
@@ -1133,4 +1141,228 @@ test('global-styles deduplicates repeated CSS variable keys across blocks and re
     false
   );
 });
+
+import {
+  applyBatchElementPatches,
+  wrapElementsInContainer,
+} from './source-editor';
+import {
+  clampZoomScale,
+  computeContrastReport,
+  computeMultiAlignPatches,
+  computeNudgeOffsets,
+  computeRedlineMeasurements,
+  parseBoxSpacingPx,
+  resolveEffectiveBgColor,
+  stepZoomScale,
+} from './visual-refinement';
+
+test('visual-refinement computes redline gaps, parent insets, box spacing, nudge offsets, and zoom steps', () => {
+  // Disjoint siblings -> horizontal gap
+  const gapSegments = computeRedlineMeasurements(
+    { x: 100, y: 50, width: 120, height: 60 },
+    { x: 256, y: 60, width: 100, height: 60 }
+  );
+  assert.equal(gapSegments.length, 1);
+  assert.equal(gapSegments[0].kind, 'gap');
+  assert.equal(gapSegments[0].distance, 36);
+  assert.equal(gapSegments[0].label, '36px');
+
+  // Child inside parent -> 4 inset segments
+  const insetSegments = computeRedlineMeasurements(
+    { x: 140, y: 120, width: 200, height: 80 },
+    { x: 100, y: 100, width: 400, height: 200 }
+  );
+  assert.equal(insetSegments.length, 4);
+  assert.equal(insetSegments.find((s) => s.id === 'inset-left')?.distance, 40);
+  assert.equal(insetSegments.find((s) => s.id === 'inset-right')?.distance, 160);
+  assert.equal(insetSegments.find((s) => s.id === 'inset-top')?.distance, 20);
+  assert.equal(insetSegments.find((s) => s.id === 'inset-bottom')?.distance, 100);
+
+  const spacing = parseBoxSpacingPx({
+    paddingTop: '16px',
+    paddingRight: '24px',
+    paddingBottom: '16px',
+    paddingLeft: '24px',
+    marginTop: '8px',
+    marginBottom: '12px',
+  });
+  assert.deepEqual(spacing.padding, { top: 16, right: 24, bottom: 16, left: 24 });
+  assert.deepEqual(spacing.margin, { top: 8, right: 0, bottom: 12, left: 0 });
+
+  assert.deepEqual(
+    computeNudgeOffsets({ baseX: 10, baseY: -4, key: 'ArrowRight', step: 8 }),
+    { nextX: 18, nextY: -4, dx: 8, dy: 0 }
+  );
+  assert.deepEqual(
+    computeNudgeOffsets({ baseX: 10, baseY: 12, key: 'ArrowUp', step: 1 }),
+    { nextX: 10, nextY: 11, dx: 0, dy: -1 }
+  );
+
+  assert.equal(clampZoomScale(3), 2);
+  assert.equal(clampZoomScale(0.2), 0.5);
+  assert.equal(stepZoomScale(1, 'in'), 1.25);
+  assert.equal(stepZoomScale(1, 'out'), 0.75);
+});
+
+test('visual-refinement computes multi-select alignment, distribution, size matching, and WCAG contrast', () => {
+  const items = [
+    {
+      studioId: 'a::1',
+      filePath: 'app/page.tsx',
+      elementIndex: 1,
+      rect: { x: 40, y: 20, width: 100, height: 50 },
+      baseX: 0,
+      baseY: 0,
+    },
+    {
+      studioId: 'a::2',
+      filePath: 'app/page.tsx',
+      elementIndex: 2,
+      rect: { x: 180, y: 60, width: 80, height: 70 },
+      baseX: 10,
+      baseY: -5,
+    },
+    {
+      studioId: 'a::3',
+      filePath: 'app/page.tsx',
+      elementIndex: 3,
+      rect: { x: 340, y: 40, width: 100, height: 50 },
+      baseX: 0,
+      baseY: 0,
+    },
+  ];
+
+  const alignLeft = computeMultiAlignPatches(items, 'left');
+  assert.equal(alignLeft[0].patch.styles?.transform, 'translate(0px, 0px)');
+  assert.equal(alignLeft[1].patch.styles?.transform, 'translate(-130px, -5px)');
+  assert.equal(alignLeft[2].patch.styles?.transform, 'translate(-300px, 0px)');
+
+  const distH = computeMultiAlignPatches(items, 'distribute-h');
+  // Total span = 440 - 40 = 400; total widths = 280; equal gap = 60 -> item 2 target x = 40 + 100 + 60 = 200 -> deltaX = +20 -> baseX 10 + 20 = 30
+  assert.equal(distH[1].patch.styles?.transform, 'translate(30px, -5px)');
+
+  const matchWidth = computeMultiAlignPatches(items, 'match-width');
+  assert.equal(matchWidth[1].patch.styles?.width, '100px');
+
+  const aaa = computeContrastReport('#0F172A', '#FFFFFF');
+  assert.equal(aaa.grade, 'AAA');
+  assert.equal(aaa.passesAA, true);
+
+  const fail = computeContrastReport('#CBD5E1', '#FFFFFF');
+  assert.equal(fail.grade, 'Fail');
+  assert.equal(fail.passesAA, false);
+
+  const bgResolved = resolveEffectiveBgColor({ backgroundColor: 'rgba(15, 23, 42, 0.5)' }, '#FFFFFF');
+  assert.ok(bgResolved.startsWith('rgb('));
+});
+
+test('source-editor applies descending batch patches and wraps contiguous or non-contiguous siblings cleanly', () => {
+  const tsx = `
+export default function Page() {
+  return (
+    <section className="p-6">
+      <div className="box-a">A</div>
+      <div className="box-b">B</div>
+      <div className="box-c">C</div>
+    </section>
+  );
+}`;
+
+  const batched = applyBatchElementPatches(tsx, false, [
+    { elementIndex: 1, patch: { styles: { width: '200px' } } },
+    { elementIndex: 3, patch: { styles: { width: '200px' } } },
+  ]);
+  assert.ok(batched.includes(`<div className="box-a" style={{ width: '200px' }}>A</div>`));
+  assert.ok(batched.includes(`<div className="box-b">B</div>`));
+  assert.ok(batched.includes(`<div className="box-c" style={{ width: '200px' }}>C</div>`));
+
+  const wrappedRow = wrapElementsInContainer(tsx, false, [1, 2], 'row');
+  assert.ok(wrappedRow.includes(`flexDirection: 'row'`));
+  assert.ok(wrappedRow.includes(`<div className="box-a">A</div>`));
+  assert.ok(wrappedRow.includes(`<div className="box-b">B</div>`));
+
+  const wrappedGridNonContig = wrapElementsInContainer(tsx, false, [1, 3], 'grid-2');
+  assert.ok(wrappedGridNonContig.includes(`repeat(2, minmax(0, 1fr))`));
+  assert.ok(wrappedGridNonContig.includes(`<div className="box-a">A</div>`));
+  assert.ok(wrappedGridNonContig.includes(`<div className="box-c">C</div>`));
+});
+
+import {
+  importGitHubRepoFromBrowser,
+  parseGitHubRepoUrl,
+  safeReadJsonResponse,
+} from './github-import';
+
+test('github-import parses repo URLs, detects HTML proxy errors safely, and falls back to CORS GitHub APIs', async () => {
+  assert.deepEqual(parseGitHubRepoUrl('https://github.com/kshitiz2007-cpu/Civil'), {
+    owner: 'kshitiz2007-cpu',
+    repo: 'Civil',
+  });
+  assert.deepEqual(
+    parseGitHubRepoUrl('https://github.com/kshitiz2007-cpu/Civil/tree/recovery/original-full-app'),
+    {
+      owner: 'kshitiz2007-cpu',
+      repo: 'Civil',
+      branch: 'recovery/original-full-app',
+    }
+  );
+  assert.equal(parseGitHubRepoUrl('https://example.com/foo/bar'), null);
+
+  const htmlRes = new Response('<!doctype html><html><body>504 Gateway Timeout</body></html>', {
+    status: 504,
+    headers: { 'content-type': 'text/html; charset=utf-8' },
+  });
+  const htmlParsed = await safeReadJsonResponse(htmlRes);
+  assert.equal(htmlParsed.ok, false);
+  if (!htmlParsed.ok) {
+    assert.equal(htmlParsed.isHtml, true);
+    assert.ok(htmlParsed.error.includes('HTML'));
+  }
+
+  const okRes = new Response(JSON.stringify({ name: 'owner/repo', fileCount: 2 }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+  const okParsed = await safeReadJsonResponse<{ name: string; fileCount: number }>(okRes);
+  assert.equal(okParsed.ok, true);
+  if (okParsed.ok) {
+    assert.equal(okParsed.data.name, 'owner/repo');
+    assert.equal(okParsed.data.fileCount, 2);
+  }
+
+  const mockFetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('/git/trees/')) {
+      return new Response(
+        JSON.stringify({
+          tree: [
+            { path: 'app/page.tsx', type: 'blob', size: 120 },
+            { path: 'node_modules/pkg/index.js', type: 'blob', size: 120 },
+            { path: 'package-lock.json', type: 'blob', size: 5000 },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+    }
+    if (url.includes('raw.githubusercontent.com') && url.endsWith('/app/page.tsx')) {
+      return new Response('export default function Page() { return <main>Hi</main>; }', {
+        status: 200,
+        headers: { 'content-type': 'text/plain' },
+      });
+    }
+    return new Response('Not Found', { status: 404 });
+  }) as typeof fetch;
+
+  const imported = await importGitHubRepoFromBrowser(
+    'https://github.com/kshitiz2007-cpu/Civil/tree/recovery/original-full-app',
+    mockFetch
+  );
+  assert.equal(imported.name, 'kshitiz2007-cpu/Civil');
+  assert.equal(imported.branch, 'recovery/original-full-app');
+  assert.equal(imported.fileCount, 1);
+  assert.ok(imported.files['Civil-recovery-original-full-app/app/page.tsx']?.includes('<main>Hi</main>'));
+});
+
+
 

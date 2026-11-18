@@ -6,16 +6,25 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  BoxSelect,
+  ChevronRight,
+  Columns2,
   Component,
   Copy,
+  Grid3x3,
   GripVertical,
   Magnet,
   Move,
   PackagePlus,
   Plus,
+  Ruler,
   Trash2,
   Wand2,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
+import MultiAlignBar from './MultiAlignBar';
+import SplitMobileTwin from './SplitMobileTwin';
 import {
   AlignmentGuide,
   SnapCandidate,
@@ -32,6 +41,16 @@ import {
   compileHtmlBodyPayload,
   compileReactPreviewPayload,
 } from '@/lib/studio/preview-runner';
+import { WrapContainerLayout } from '@/lib/studio/source-editor';
+import {
+  MultiAlignAction,
+  NUDGE_GRID_STEPS,
+  clampZoomScale,
+  computeNudgeOffsets,
+  computeRedlineMeasurements,
+  parseBoxSpacingPx,
+  stepZoomScale,
+} from '@/lib/studio/visual-refinement';
 import {
   CanvasInteractionMode,
   ElementRect,
@@ -50,9 +69,16 @@ interface VisualCanvasProps {
   viewport: ViewportPreset;
   interactionMode: CanvasInteractionMode;
   selected: StudioElementSnapshot | null;
+  multiSelected?: StudioElementSnapshot[];
+  onUpdateMultiSelected?: (items: StudioElementSnapshot[]) => void;
+  onMultiAlignAction?: (action: MultiAlignAction) => void;
+  onWrapMultiSelected?: (layout: WrapContainerLayout) => void;
+  lockedIds?: string[];
+  hiddenIds?: string[];
+  pseudoState?: 'default' | 'hover' | 'focus';
   pendingSelectStudioId?: string | null;
   onClearPendingSelect?: () => void;
-  onSelectElement: (snapshot: StudioElementSnapshot) => void;
+  onSelectElement: (snapshot: StudioElementSnapshot, shiftKey?: boolean, preserveMulti?: boolean) => void;
   onUpdateLayerTree: (tree: LayerTreeNode[]) => void;
   onNavigateRoute: (route: string) => void;
   onCommitPatch: (filePath: string, elementIndex: number, patch: ElementSourcePatch) => void;
@@ -106,6 +132,13 @@ export default function VisualCanvas({
   viewport,
   interactionMode,
   selected,
+  multiSelected = [],
+  onUpdateMultiSelected,
+  onMultiAlignAction,
+  onWrapMultiSelected,
+  lockedIds = [],
+  hiddenIds = [],
+  pseudoState = 'default',
   pendingSelectStudioId = null,
   onClearPendingSelect,
   onSelectElement,
@@ -153,6 +186,30 @@ export default function VisualCanvas({
     useState<ComponentInsertPosition>('after');
   const dropTargetIdxRef = useRef<number | null>(null);
 
+  // Phase 1, 2 & 3 Visual Refinement States
+  const [specsMode, setSpecsMode] = useState(false);
+  const [altPressed, setAltPressed] = useState(false);
+  const [gridOverlay, setGridOverlay] = useState<'off' | '12col' | '8px' | 'both'>('off');
+  const [zoomMode, setZoomMode] = useState<'fit' | number>('fit');
+  const [nudgeStep, setNudgeStep] = useState<number>(8);
+  const [nudgeHud, setNudgeHud] = useState<{ x: number; y: number } | null>(null);
+  const [paddingScrubHud, setPaddingScrubHud] = useState<{ side: string; px: number } | null>(null);
+  const [marqueeMode, setMarqueeMode] = useState(false);
+  const [marqueeBox, setMarqueeBox] = useState<ElementRect | null>(null);
+  const [spacePanActive, setSpacePanActive] = useState(false);
+  const [splitView, setSplitView] = useState(false);
+
+  const nudgeTimerRef = useRef<number | null>(null);
+  const nudgePendingRef = useRef<{
+    studioId: string;
+    filePath: string;
+    elementIndex: number;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const showSpecs = specsMode || altPressed;
+
   const liveRect =
     selected && rectOverride?.studioId === selected.studioId
       ? rectOverride.rect
@@ -197,13 +254,15 @@ export default function VisualCanvas({
   }, []);
 
   const targetWidth = VIEWPORT_WIDTHS[viewport];
-  const scale = useMemo(() => {
+  const fitScale = useMemo(() => {
     const gutter = stageWidth < 640 ? 20 : 48;
-    const usable = Math.max(280, stageWidth - gutter);
+    const splitAllowance = splitView && stageWidth >= 820 ? 248 : 0;
+    const usable = Math.max(260, stageWidth - gutter - splitAllowance);
     return Math.min(1, Number((usable / targetWidth).toFixed(4)));
-  }, [stageWidth, targetWidth]);
+  }, [stageWidth, targetWidth, splitView]);
 
-  const frameHeight = Math.max(540, Math.round((stageHeight - 40) / scale));
+  const scale = zoomMode === 'fit' ? fitScale : clampZoomScale(zoomMode);
+  const frameHeight = Math.max(540, Math.round((stageHeight - 72) / Math.min(1, fitScale)));
 
   const docKey = mounted
     ? `${project.framework}:${activePage.filePath}:${isIsolatedComponent ? 1 : 0}`
@@ -266,6 +325,7 @@ export default function VisualCanvas({
   const callbacksRef = useRef({
     onUpdateLayerTree,
     onSelectElement,
+    onUpdateMultiSelected,
     onCommitPatch,
     onNavigateRoute,
     onClearPendingSelect,
@@ -292,6 +352,7 @@ export default function VisualCanvas({
     callbacksRef.current = {
       onUpdateLayerTree,
       onSelectElement,
+      onUpdateMultiSelected,
       onCommitPatch,
       onNavigateRoute,
       onClearPendingSelect,
@@ -402,7 +463,15 @@ export default function VisualCanvas({
         setHoverInfo(null);
         if (msg.element) {
           setRectOverride({ studioId: msg.element.studioId, rect: msg.element.rect });
-          callbacksRef.current.onSelectElement(msg.element);
+          callbacksRef.current.onSelectElement(
+            msg.element,
+            Boolean(msg.shiftKey),
+            Boolean(msg.preserveMulti)
+          );
+        }
+      } else if (msg.type === 'studio:marquee-result' || msg.type === 'studio:multi-rects') {
+        if (Array.isArray(msg.elements)) {
+          callbacksRef.current.onUpdateMultiSelected?.(msg.elements);
         }
       } else if (msg.type === 'studio:selected-rect') {
         if (selectedIdRef.current && msg.studioId === selectedIdRef.current) {
@@ -431,6 +500,22 @@ export default function VisualCanvas({
     return () => window.removeEventListener('message', handleMessage);
   }, [iframeRef]);
 
+  // Sync locked & hidden layers to iframe without source mutation
+  useEffect(() => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: 'studio:set-layer-locks', lockedIds, hiddenIds },
+      '*'
+    );
+  }, [lockedIds, hiddenIds, docKey, iframeRef]);
+
+  // Sync pseudo-state preview (:hover / :focus) to iframe
+  useEffect(() => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: 'studio:set-pseudo-state', studioId: selected?.studioId || null, pseudo: pseudoState },
+      '*'
+    );
+  }, [pseudoState, selected?.studioId, docKey, iframeRef]);
+
   // Sync mode switches without full rebuild
   useEffect(() => {
     iframeRef.current?.contentWindow?.postMessage(
@@ -439,18 +524,152 @@ export default function VisualCanvas({
     );
   }, [interactionMode, iframeRef]);
 
-  // Refresh selected element snapshot after viewport width changes without scrolling
+  // Refresh selected element snapshot only when viewport preset changes without scrolling
+  const prevViewportRef = useRef<ViewportPreset>(viewport);
   useEffect(() => {
-    const studioId = selected?.studioId;
+    if (prevViewportRef.current === viewport) return;
+    prevViewportRef.current = viewport;
+    const studioId = selectedIdRef.current;
     if (!studioId) return;
     const timer = window.setTimeout(() => {
       iframeRef.current?.contentWindow?.postMessage(
-        { type: 'studio:select-by-id', studioId, scroll: false },
+        { type: 'studio:select-by-id', studioId, scroll: false, preserveMulti: true },
         '*'
       );
     }, 90);
     return () => window.clearTimeout(timer);
-  }, [viewport, selected?.studioId, iframeRef]);
+  }, [viewport, iframeRef]);
+
+  // Alt-key live redlines, Space-pan, and Arrow-key 1px/step micro-nudge
+  useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      if (!el) return false;
+      return Boolean(
+        el.tagName === 'INPUT' ||
+          el.tagName === 'TEXTAREA' ||
+          el.tagName === 'SELECT' ||
+          el.isContentEditable ||
+          el.closest?.('.monaco-editor')
+      );
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') {
+        setAltPressed(true);
+      }
+      if (e.code === 'Space' && !isTypingTarget(e.target)) {
+        setSpacePanActive(true);
+      }
+      if (
+        interactionMode === 'design' &&
+        selected &&
+        !isTypingTarget(e.target) &&
+        (e.key === 'ArrowLeft' ||
+          e.key === 'ArrowRight' ||
+          e.key === 'ArrowUp' ||
+          e.key === 'ArrowDown')
+      ) {
+        e.preventDefault();
+        const curPending = nudgePendingRef.current;
+        const base =
+          curPending && curPending.studioId === selected.studioId
+            ? { x: curPending.x, y: curPending.y }
+            : parseElementTranslateOffsets(selected.inlineStyles, selected.computedStyles);
+
+        const step = e.shiftKey ? nudgeStep : 1;
+        const nudged = computeNudgeOffsets({
+          baseX: base.x,
+          baseY: base.y,
+          key: e.key,
+          step,
+        });
+
+        nudgePendingRef.current = {
+          studioId: selected.studioId,
+          filePath: selected.filePath,
+          elementIndex: selected.elementIndex,
+          x: nudged.nextX,
+          y: nudged.nextY,
+        };
+        setNudgeHud({ x: nudged.nextX, y: nudged.nextY });
+
+        iframeRef.current?.contentWindow?.postMessage(
+          {
+            type: 'studio:preview-style',
+            studioId: selected.studioId,
+            styles: { translate: `${nudged.nextX}px ${nudged.nextY}px`, transform: 'none' },
+          },
+          '*'
+        );
+
+        if (nudgeTimerRef.current) window.clearTimeout(nudgeTimerRef.current);
+        nudgeTimerRef.current = window.setTimeout(() => {
+          const pending = nudgePendingRef.current;
+          nudgePendingRef.current = null;
+          setNudgeHud(null);
+          if (pending) {
+            onCommitPatch(pending.filePath, pending.elementIndex, {
+              styles: { transform: `translate(${pending.x}px, ${pending.y}px)` },
+            });
+          }
+        }, 260);
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') setAltPressed(false);
+      if (e.code === 'Space') setSpacePanActive(false);
+    };
+
+    const onBlur = () => {
+      setAltPressed(false);
+      setSpacePanActive(false);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [interactionMode, selected, nudgeStep, iframeRef, onCommitPatch]);
+
+  // Ctrl/Cmd + Wheel zoom on stage
+  const handleStageWheel = (e: React.WheelEvent<HTMLElement>) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    const cur = scale;
+    const next = stepZoomScale(cur, e.deltaY < 0 ? 'in' : 'out');
+    setZoomMode(next);
+  };
+
+  // Space+Drag canvas panning
+  const startStagePan = (e: React.PointerEvent<HTMLElement>) => {
+    if (!spacePanActive) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const initLeft = stage.scrollLeft;
+    const initTop = stage.scrollTop;
+
+    const onMove = (ev: PointerEvent) => {
+      stage.scrollLeft = initLeft - (ev.clientX - startX);
+      stage.scrollTop = initTop - (ev.clientY - startY);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
 
   const getSnapCandidates = (snap: StudioElementSnapshot): SnapCandidate[] => {
     const out: SnapCandidate[] = [];
@@ -665,6 +884,108 @@ export default function VisualCanvas({
     window.addEventListener('pointercancel', onUp);
   };
 
+  const startPaddingScrub = (
+    side: 'top' | 'right' | 'bottom' | 'left',
+    initPx: number,
+    e: React.PointerEvent
+  ) => {
+    if (!selected) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore
+    }
+    const propMap = {
+      top: 'paddingTop',
+      right: 'paddingRight',
+      bottom: 'paddingBottom',
+      left: 'paddingLeft',
+    } as const;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let latestPx = initPx;
+    let didMove = false;
+
+    const onMove = (ev: PointerEvent) => {
+      const dx = (ev.clientX - startX) / scale;
+      const dy = (ev.clientY - startY) / scale;
+      if (!didMove && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 3) return;
+      didMove = true;
+      const delta =
+        side === 'top' ? dy : side === 'bottom' ? -dy : side === 'left' ? dx : -dx;
+      latestPx = Math.max(0, Math.round(initPx + delta));
+      setPaddingScrubHud({ side, px: latestPx });
+      iframeRef.current?.contentWindow?.postMessage(
+        {
+          type: 'studio:preview-style',
+          studioId: selected.studioId,
+          styles: { [propMap[side]]: `${latestPx}px` },
+        },
+        '*'
+      );
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      setPaddingScrubHud(null);
+      if (!didMove) return;
+      onCommitPatch(selected.filePath, selected.elementIndex, {
+        styles: { [propMap[side]]: `${latestPx}px` },
+      });
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
+
+  const startMarqueeDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!marqueeMode || interactionMode !== 'design') return;
+    const frame = iframeRef.current;
+    if (!frame) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const fr = frame.getBoundingClientRect();
+    const startX = (e.clientX - fr.left) / scale;
+    const startY = (e.clientY - fr.top) / scale;
+    let curRect: ElementRect = { x: startX, y: startY, width: 0, height: 0 };
+    setMarqueeBox(curRect);
+
+    const onMove = (ev: PointerEvent) => {
+      const curX = (ev.clientX - fr.left) / scale;
+      const curY = (ev.clientY - fr.top) / scale;
+      curRect = {
+        x: Math.min(startX, curX),
+        y: Math.min(startY, curY),
+        width: Math.abs(curX - startX),
+        height: Math.abs(curY - startY),
+      };
+      setMarqueeBox(curRect);
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      setMarqueeBox(null);
+      setMarqueeMode(false);
+      if (curRect.width >= 8 && curRect.height >= 8) {
+        frame.contentWindow?.postMessage(
+          { type: 'studio:query-marquee', rect: curRect },
+          '*'
+        );
+      }
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
+
   const handles: Array<{ dir: ResizeHandleDir; style: React.CSSProperties; cursor: string }> = [
     { dir: 'nw', style: { top: -8, left: -8 }, cursor: 'nwse-resize' },
     { dir: 'n', style: { top: -8, left: '50%', transform: 'translateX(-50%)' }, cursor: 'ns-resize' },
@@ -683,14 +1004,44 @@ export default function VisualCanvas({
   const selWidth = liveRect ? liveRect.width * scale : 0;
   const selHeight = liveRect ? liveRect.height * scale : 0;
 
+  const boxSpacing = useMemo(
+    () => (selected ? parseBoxSpacingPx(selected.computedStyles) : null),
+    [selected]
+  );
+
+  const redlineTargetRect = useMemo(() => {
+    if (!showSpecs || !selected || !liveRect) return null;
+    if (hoverInfo && hoverInfo.studioId !== selected.studioId) return hoverInfo.rect;
+    return selected.parentRect || null;
+  }, [showSpecs, selected, liveRect, hoverInfo]);
+
+  const redlineSegments = useMemo(() => {
+    if (!showSpecs || !liveRect || !redlineTargetRect) return [];
+    return computeRedlineMeasurements(liveRect, redlineTargetRect);
+  }, [showSpecs, liveRect, redlineTargetRect]);
+
+  const canWrapMultiSelected = useMemo(() => {
+    if (multiSelected.length < 2) return false;
+    const fp = multiSelected[0].filePath;
+    const psid = multiSelected[0].parentStudioId;
+    return Boolean(
+      psid && multiSelected.every((item) => item.filePath === fp && item.parentStudioId === psid)
+    );
+  }, [multiSelected]);
+
   return (
     <main
       ref={stageRef}
       aria-label="Visual design canvas"
-      className="studio-canvas-grid relative flex min-w-0 flex-1 flex-col items-center overflow-auto px-2.5 pt-3 pb-20 lg:p-5"
+      onWheel={handleStageWheel}
+      onPointerDown={startStagePan}
+      className={`studio-canvas-grid relative flex min-w-0 flex-1 flex-col items-stretch overflow-auto px-2.5 pt-0 pb-20 lg:px-5 lg:pb-5 ${
+        spacePanActive ? 'cursor-grab active:cursor-grabbing' : ''
+      }`}
     >
-      {/* Canvas HUD Strip: Isolated Component Banner & Snap Guides Toggle */}
-      <div className="mb-2 flex w-full max-w-5xl flex-wrap items-center justify-between gap-2">
+      {/* Sticky Canvas HUD Strip + Multi-Align Bar */}
+      <div className="sticky top-0 left-0 z-30 -mx-2.5 mb-2 flex flex-col items-center bg-slate-100/85 px-2.5 pt-2.5 pb-1.5 backdrop-blur-xs lg:-mx-5 lg:px-5">
+      <div className="flex w-full max-w-6xl flex-wrap items-center justify-between gap-2">
         {isIsolatedComponent ? (
           <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs text-indigo-900">
             <Component className="h-3.5 w-3.5 text-indigo-600" />
@@ -733,11 +1084,148 @@ export default function VisualCanvas({
               </button>
             )}
           </div>
+        ) : selected?.ancestry && selected.ancestry.length > 0 ? (
+          <nav
+            aria-label="Selected element ancestry"
+            data-testid="studio-ancestry-breadcrumbs"
+            className="flex max-w-full flex-wrap items-center gap-0.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] shadow-xs"
+          >
+            {selected.ancestry.slice(-5).map((crumb, idx, arr) => {
+              const isCurrent = crumb.studioId === selected.studioId;
+              return (
+                <React.Fragment key={`${crumb.studioId}-${idx}`}>
+                  {idx > 0 && <ChevronRight className="h-3 w-3 shrink-0 text-slate-300" />}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      iframeRef.current?.contentWindow?.postMessage(
+                        { type: 'studio:select-by-id', studioId: crumb.studioId, scroll: false },
+                        '*'
+                      )
+                    }
+                    title={`Select ${crumb.label}`}
+                    className={`rounded px-1 py-0.5 font-mono transition-colors whitespace-nowrap ${
+                      isCurrent
+                        ? 'bg-blue-50 font-semibold text-blue-700'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    {crumb.tagName}
+                  </button>
+                </React.Fragment>
+              );
+            })}
+          </nav>
         ) : (
           <div />
         )}
 
         <div className="flex flex-wrap items-center gap-1.5">
+          {/* Specs / Redline Measurements Toggle */}
+          <button
+            type="button"
+            onClick={() => setSpecsMode((v) => !v)}
+            aria-pressed={showSpecs}
+            title="Show redline distance measurements, margin/padding boxes, and direct padding handles (or hold Alt)"
+            aria-label="Toggle spacing specs and redlines"
+            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
+              showSpecs
+                ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <Ruler className="h-3 w-3" />
+            <span>Specs</span>
+          </button>
+
+          {/* Layout Grid Overlay Selector */}
+          <div className="inline-flex items-center rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px]">
+            <Grid3x3 className="mr-1 h-3 w-3 text-slate-500" />
+            <select
+              aria-label="Canvas layout grid overlay"
+              value={gridOverlay}
+              onChange={(e) =>
+                setGridOverlay(e.target.value as 'off' | '12col' | '8px' | 'both')
+              }
+              className="bg-transparent py-0.5 text-[11px] font-medium text-slate-700 focus:outline-none"
+            >
+              <option value="off">Grid: Off</option>
+              <option value="12col">12-Col</option>
+              <option value="8px">8px Grid</option>
+              <option value="both">12-Col + 8px</option>
+            </select>
+          </div>
+
+          {/* Marquee Multi-Select Toggle */}
+          <button
+            type="button"
+            onClick={() => setMarqueeMode((v) => !v)}
+            aria-pressed={marqueeMode}
+            title="Drag a selection box across multiple elements (or Shift+Click elements)"
+            aria-label="Toggle marquee multi-select"
+            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
+              marqueeMode
+                ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <BoxSelect className="h-3 w-3" />
+            <span className="hidden sm:inline">Marquee</span>
+          </button>
+
+          {/* Zoom Controls */}
+          <div className="inline-flex items-center rounded-md border border-slate-200 bg-white p-0.5 text-[11px]">
+            <button
+              type="button"
+              aria-label="Zoom out canvas"
+              onClick={() => setZoomMode(stepZoomScale(scale, 'out'))}
+              className="rounded p-1 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            >
+              <ZoomOut className="h-3 w-3" />
+            </button>
+            <select
+              aria-label="Canvas zoom level"
+              value={zoomMode === 'fit' ? 'fit' : String(zoomMode)}
+              onChange={(e) =>
+                setZoomMode(e.target.value === 'fit' ? 'fit' : Number(e.target.value))
+              }
+              className="bg-transparent px-1 font-mono text-[11px] font-medium tabular-nums text-slate-700 focus:outline-none"
+            >
+              <option value="fit">Fit ({Math.round(fitScale * 100)}%)</option>
+              <option value="0.5">50%</option>
+              <option value="0.75">75%</option>
+              <option value="1">100%</option>
+              <option value="1.25">125%</option>
+              <option value="1.5">150%</option>
+              <option value="2">200%</option>
+            </select>
+            <button
+              type="button"
+              aria-label="Zoom in canvas"
+              onClick={() => setZoomMode(stepZoomScale(scale, 'in'))}
+              className="rounded p-1 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            >
+              <ZoomIn className="h-3 w-3" />
+            </button>
+          </div>
+
+          {/* Desktop + Mobile Split View Toggle */}
+          <button
+            type="button"
+            onClick={() => setSplitView((v) => !v)}
+            aria-pressed={splitView}
+            title="Show live Mobile 390px mirror beside Desktop canvas"
+            aria-label="Toggle side-by-side mobile split view"
+            className={`hidden lg:inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
+              splitView
+                ? 'border-blue-600 bg-blue-50 text-blue-700'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <Columns2 className="h-3 w-3" />
+            <span>Split</span>
+          </button>
+
           {onToggleSmartAligner && (
             <button
               type="button"
@@ -766,31 +1254,60 @@ export default function VisualCanvas({
             </button>
           )}
           {onToggleSnap && (
-            <button
-              type="button"
-              onClick={onToggleSnap}
-              aria-pressed={snapEnabled}
-              aria-label="Toggle alignment guides and snapping"
-              className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
-                snapEnabled
-                  ? 'border-rose-300 bg-rose-50 text-rose-700'
-                  : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Magnet className="h-3 w-3" />
-              <span>Snap {snapEnabled ? 'On' : 'Off'}</span>
-            </button>
+            <div className="inline-flex items-center rounded-md border border-slate-200 bg-white">
+              <button
+                type="button"
+                onClick={onToggleSnap}
+                aria-pressed={snapEnabled}
+                aria-label="Toggle alignment guides and snapping"
+                className={`inline-flex items-center gap-1 rounded-l-md px-2 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
+                  snapEnabled
+                    ? 'bg-rose-50 text-rose-700'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Magnet className="h-3 w-3" />
+                <span>Snap {snapEnabled ? 'On' : 'Off'}</span>
+              </button>
+              <select
+                aria-label="Shift-Arrow nudge step"
+                title="Shift + Arrow key nudge step"
+                value={nudgeStep}
+                onChange={(e) => setNudgeStep(Number(e.target.value))}
+                className="border-l border-slate-200 bg-transparent px-1 py-1 font-mono text-[10px] font-medium text-slate-600 focus:outline-none"
+              >
+                {NUDGE_GRID_STEPS.map((st) => (
+                  <option key={st} value={st}>
+                    {st}px
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
         </div>
       </div>
 
+      {/* Multi-Select Alignment & Distribution Bar */}
+      {onMultiAlignAction && onWrapMultiSelected && onUpdateMultiSelected && (
+        <MultiAlignBar
+          count={multiSelected.length}
+          canWrapInContainer={canWrapMultiSelected}
+          onAlignAction={onMultiAlignAction}
+          onWrapContainer={onWrapMultiSelected}
+          onClear={() => onUpdateMultiSelected([])}
+        />
+      )}
+      </div>
+
       {/* Compile Error Banner if uploaded project has syntax issue */}
       {activeCompileErrors.length > 0 && (
-        <div className="mb-3 w-full max-w-4xl rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs text-amber-900">
+        <div className="mx-auto mb-3 w-full max-w-4xl rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs text-amber-900">
           <strong className="font-semibold">Notice compiling module:</strong> {activeCompileErrors[0]}
         </div>
       )}
 
+      {/* Stage Artboards Container (supports Split Desktop + Mobile Mirror) */}
+      <div className="mx-auto flex w-fit items-start gap-4">
       {/* Viewport Frame Wrapper */}
       <div
         className="relative shrink-0"
@@ -815,7 +1332,56 @@ export default function VisualCanvas({
             sandbox="allow-scripts allow-same-origin"
             className="h-full w-full border-0 bg-white"
           />
+
+          {/* Phase 2: Toggleable 12-Column & 8px Baseline Grid Overlays */}
+          {(gridOverlay === '8px' || gridOverlay === 'both') && (
+            <div
+              data-testid="studio-grid-8px"
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 z-10"
+              style={{
+                backgroundImage:
+                  'linear-gradient(to right, rgba(37,99,235,0.08) 1px, transparent 1px), linear-gradient(to bottom, rgba(37,99,235,0.08) 1px, transparent 1px)',
+                backgroundSize: '8px 8px',
+              }}
+            />
+          )}
+          {(gridOverlay === '12col' || gridOverlay === 'both') && (
+            <div
+              data-testid="studio-grid-12col"
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 z-10 mx-auto grid max-w-[1200px] grid-cols-12 gap-4 px-6"
+            >
+              {Array.from({ length: 12 }).map((_, colIdx) => (
+                <div
+                  key={colIdx}
+                  className="h-full border-x border-rose-400/20 bg-rose-500/[0.05]"
+                />
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* Marquee Drag Overlay */}
+        {marqueeMode && interactionMode === 'design' && (
+          <div
+            data-testid="studio-marquee-overlay"
+            onPointerDown={startMarqueeDrag}
+            className="absolute inset-0 z-40 cursor-crosshair bg-indigo-500/[0.03]"
+          >
+            {marqueeBox && (
+              <div
+                className="pointer-events-none absolute border border-indigo-600 bg-indigo-500/15"
+                style={{
+                  left: marqueeBox.x * scale,
+                  top: marqueeBox.y * scale,
+                  width: marqueeBox.width * scale,
+                  height: marqueeBox.height * scale,
+                }}
+              />
+            )}
+          </div>
+        )}
 
         {/* Unscaled Hover Outline Overlay so border and label stay sharp at any zoom */}
         {interactionMode === 'design' && hoverInfo && (
@@ -991,8 +1557,198 @@ export default function VisualCanvas({
                 <span className="h-2.5 w-2.5 rounded-xs border border-blue-600 bg-white shadow-xs" />
               </button>
             ))}
+
+            {/* Phase 1: Visual Margin (amber) & Padding (emerald) Box Overlays + Direct Drag Ticks */}
+            {showSpecs && boxSpacing && (
+              <>
+                {boxSpacing.margin.top > 0 && (
+                  <div
+                    className="pointer-events-none absolute left-0 right-0 bg-amber-400/20 border-t border-dashed border-amber-500/70"
+                    style={{
+                      top: -boxSpacing.margin.top * scale,
+                      height: boxSpacing.margin.top * scale,
+                    }}
+                  />
+                )}
+                {boxSpacing.margin.bottom > 0 && (
+                  <div
+                    className="pointer-events-none absolute left-0 right-0 bg-amber-400/20 border-b border-dashed border-amber-500/70"
+                    style={{
+                      bottom: -boxSpacing.margin.bottom * scale,
+                      height: boxSpacing.margin.bottom * scale,
+                    }}
+                  />
+                )}
+                {boxSpacing.margin.left > 0 && (
+                  <div
+                    className="pointer-events-none absolute top-0 bottom-0 bg-amber-400/20 border-l border-dashed border-amber-500/70"
+                    style={{
+                      left: -boxSpacing.margin.left * scale,
+                      width: boxSpacing.margin.left * scale,
+                    }}
+                  />
+                )}
+                {boxSpacing.margin.right > 0 && (
+                  <div
+                    className="pointer-events-none absolute top-0 bottom-0 bg-amber-400/20 border-r border-dashed border-amber-500/70"
+                    style={{
+                      right: -boxSpacing.margin.right * scale,
+                      width: boxSpacing.margin.right * scale,
+                    }}
+                  />
+                )}
+
+                {boxSpacing.padding.top > 0 && (
+                  <div
+                    className="pointer-events-none absolute left-0 right-0 top-0 bg-emerald-400/20"
+                    style={{ height: Math.min(selHeight / 2, boxSpacing.padding.top * scale) }}
+                  />
+                )}
+                {boxSpacing.padding.bottom > 0 && (
+                  <div
+                    className="pointer-events-none absolute bottom-0 left-0 right-0 bg-emerald-400/20"
+                    style={{ height: Math.min(selHeight / 2, boxSpacing.padding.bottom * scale) }}
+                  />
+                )}
+                {boxSpacing.padding.left > 0 && (
+                  <div
+                    className="pointer-events-none absolute bottom-0 left-0 top-0 bg-emerald-400/20"
+                    style={{ width: Math.min(selWidth / 2, boxSpacing.padding.left * scale) }}
+                  />
+                )}
+                {boxSpacing.padding.right > 0 && (
+                  <div
+                    className="pointer-events-none absolute bottom-0 right-0 top-0 bg-emerald-400/20"
+                    style={{ width: Math.min(selWidth / 2, boxSpacing.padding.right * scale) }}
+                  />
+                )}
+
+                {/* Direct On-Canvas Padding Drag Ticks (offset from n/w resize handles) */}
+                <button
+                  type="button"
+                  title={`Drag top padding (${boxSpacing.padding.top}px)`}
+                  aria-label="Drag top padding"
+                  onPointerDown={(e) => startPaddingScrub('top', boxSpacing.padding.top, e)}
+                  className="pointer-events-auto touch-none absolute left-[26%] -translate-x-1/2 cursor-ns-resize rounded-full bg-emerald-600 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-white shadow-xs"
+                  style={{ top: Math.min(selHeight - 16, Math.max(8, Math.round(boxSpacing.padding.top * scale * 0.5))) }}
+                >
+                  {boxSpacing.padding.top}
+                </button>
+                <button
+                  type="button"
+                  title={`Drag left padding (${boxSpacing.padding.left}px)`}
+                  aria-label="Drag left padding"
+                  onPointerDown={(e) => startPaddingScrub('left', boxSpacing.padding.left, e)}
+                  className="pointer-events-auto touch-none absolute top-[74%] -translate-y-1/2 cursor-ew-resize rounded-full bg-emerald-600 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-white shadow-xs"
+                  style={{ left: Math.min(selWidth - 22, Math.max(8, Math.round(boxSpacing.padding.left * scale * 0.5))) }}
+                >
+                  {boxSpacing.padding.left}
+                </button>
+              </>
+            )}
           </div>
         )}
+
+        {/* Phase 2: Multi-Select Bounding Outlines */}
+        {interactionMode === 'design' &&
+          multiSelected.length >= 2 &&
+          multiSelected.map((item) => (
+            <div
+              key={item.studioId}
+              className="pointer-events-none absolute z-20 border-2 border-dashed border-indigo-600 bg-indigo-500/[0.04]"
+              style={{
+                left: item.rect.x * scale,
+                top: item.rect.y * scale,
+                width: item.rect.width * scale,
+                height: item.rect.height * scale,
+              }}
+            >
+              <span className="absolute -top-4 left-0 rounded bg-indigo-600 px-1 font-mono text-[9px] font-semibold text-white">
+                {item.tagName}
+              </span>
+            </div>
+          ))}
+
+        {/* Phase 1: Figma-style Redline Distance Lines */}
+        {interactionMode === 'design' &&
+          redlineSegments.map((seg) => {
+            const x1 = seg.x1 * scale;
+            const y1 = seg.y1 * scale;
+            const x2 = seg.x2 * scale;
+            const y2 = seg.y2 * scale;
+            const isHoriz = seg.orientation === 'horizontal';
+            const left = Math.min(x1, x2);
+            const top = Math.min(y1, y2);
+            const length = isHoriz ? Math.abs(x2 - x1) : Math.abs(y2 - y1);
+            const midX = (x1 + x2) / 2;
+            const midY = (y1 + y2) / 2;
+            const color = seg.kind === 'inset' ? '#6366F1' : '#F43F5E';
+
+            return (
+              <div
+                key={seg.id}
+                data-testid="studio-redline-segment"
+                className="pointer-events-none absolute z-30"
+              >
+                <div
+                  style={
+                    isHoriz
+                      ? {
+                          position: 'absolute',
+                          left,
+                          top: y1,
+                          width: Math.max(1, length),
+                          height: 1,
+                          backgroundColor: color,
+                        }
+                      : {
+                          position: 'absolute',
+                          left: x1,
+                          top,
+                          width: 1,
+                          height: Math.max(1, length),
+                          backgroundColor: color,
+                        }
+                  }
+                />
+                <span
+                  className="absolute -translate-x-1/2 -translate-y-1/2 rounded px-1 py-0.5 font-mono text-[9px] font-semibold tabular-nums text-white shadow-xs"
+                  style={{ left: midX, top: midY, backgroundColor: color }}
+                >
+                  {seg.label}
+                </span>
+              </div>
+            );
+          })}
+
+        {/* Floating Keyboard Nudge / Padding Scrub Live Feedback Pill */}
+        {(nudgeHud || paddingScrubHud) && (
+          <div className="pointer-events-none absolute bottom-3 left-1/2 z-40 -translate-x-1/2 rounded-md bg-slate-900/95 px-2.5 py-1 font-mono text-[11px] font-semibold tabular-nums text-white shadow-lg">
+            {paddingScrubHud
+              ? `padding-${paddingScrubHud.side}: ${paddingScrubHud.px}px`
+              : nudgeHud
+                ? `Offset X: ${nudgeHud.x}px · Y: ${nudgeHud.y}px`
+                : ''}
+          </div>
+        )}
+      </div>
+
+      {/* Phase 3: Side-by-Side Live Mobile Twin Preview (Desktop Split Mode) */}
+      {splitView && stageWidth >= 820 && (
+        <SplitMobileTwin
+          project={project}
+          activePage={activePage}
+          compiledTailwindCss={compiledTailwindCss}
+          isIsolatedComponent={isIsolatedComponent}
+          isHtmlPage={isHtmlPage}
+          reactPayload={reactPayload}
+          htmlPayload={htmlPayload}
+          lucideVersion={lucideVersion}
+          externalLibVersion={externalLibVersion}
+          frameHeight={frameHeight}
+          twinScale={0.56}
+        />
+      )}
       </div>
     </main>
   );

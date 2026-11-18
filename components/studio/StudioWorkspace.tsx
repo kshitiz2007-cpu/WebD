@@ -14,13 +14,23 @@ import ReactLibraryModal from './ReactLibraryModal';
 import SmartAlignerPanel from './SmartAlignerPanel';
 import CodeDrawer from './CodeDrawer';
 import {
+  WrapContainerLayout,
+  applyBatchElementPatches,
   applyElementPatchToSource,
   deleteElementInSource,
   duplicateElementInSource,
   moveElementSiblingInSource,
   readElementMeta,
   scanElements,
+  wrapElementsInContainer,
 } from '@/lib/studio/source-editor';
+import { parseElementTranslateOffsets } from '@/lib/studio/layout-constraints';
+import { safeReadJsonResponse } from '@/lib/studio/github-import';
+import {
+  MultiAlignAction,
+  MultiSelectAlignItem,
+  computeMultiAlignPatches,
+} from '@/lib/studio/visual-refinement';
 import {
   AlignBreakpointScope,
   AutoAlignMode,
@@ -91,6 +101,10 @@ export default function StudioWorkspace() {
   const [viewport, setViewport] = useState<ViewportPreset>('desktop');
   const [interactionMode, setInteractionMode] = useState<CanvasInteractionMode>('design');
   const [selected, setSelected] = useState<StudioElementSnapshot | null>(null);
+  const [multiSelected, setMultiSelected] = useState<StudioElementSnapshot[]>([]);
+  const [lockedIds, setLockedIds] = useState<string[]>([]);
+  const [hiddenIds, setHiddenIds] = useState<string[]>([]);
+  const [pseudoState, setPseudoState] = useState<'default' | 'hover' | 'focus'>('default');
   const [layerTree, setLayerTree] = useState<LayerTreeNode[]>([]);
   const [isCodeDrawerOpen, setIsCodeDrawerOpen] = useState(false);
   const [codeDrawerFile, setCodeDrawerFile] = useState<string>('app/page.tsx');
@@ -341,10 +355,10 @@ export default function StudioWorkspace() {
             sources: [cssSignature.sourceText],
           }),
         });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!controller.signal.aborted && typeof data.css === 'string') {
-          setCompiledTailwindCss(data.css);
+        const parsed = await safeReadJsonResponse<{ css?: string }>(res);
+        if (!parsed.ok) return;
+        if (!controller.signal.aborted && typeof parsed.data.css === 'string') {
+          setCompiledTailwindCss(parsed.data.css);
         }
       } catch {
         // Keep previous compiled CSS on abort or transient errors
@@ -494,8 +508,29 @@ export default function StudioWorkspace() {
   }, []);
 
   const handleSelectElement = useCallback(
-    (snap: StudioElementSnapshot) => {
-      setSelected(snap);
+    (snap: StudioElementSnapshot, shiftKey?: boolean, preserveMulti?: boolean) => {
+      if (shiftKey) {
+        setMultiSelected((prev) => {
+          const baseList =
+            prev.length > 0
+              ? prev
+              : selected && selected.studioId !== snap.studioId
+              ? [selected]
+              : [];
+          const exists = baseList.some((item) => item.studioId === snap.studioId);
+          return exists
+            ? baseList.filter((item) => item.studioId !== snap.studioId)
+            : [...baseList, snap];
+        });
+      } else if (!preserveMulti) {
+        setMultiSelected([]);
+      }
+      setSelected((prev) => {
+        if (prev?.studioId !== snap.studioId) {
+          setPseudoState('default');
+        }
+        return snap;
+      });
       if (snap?.filePath) setCodeDrawerFile(snap.filePath);
       if (snap && !activeIsolatedPath && snap.filePath === activePage.filePath) {
         setLastPageTarget({
@@ -506,7 +541,132 @@ export default function StudioWorkspace() {
         });
       }
     },
-    [activeIsolatedPath, activePage.filePath, activePage.route]
+    [activeIsolatedPath, activePage.filePath, activePage.route, selected]
+  );
+
+  const handleToggleLockLayer = useCallback((studioId: string) => {
+    setLockedIds((prev) => {
+      const nextLocked = prev.includes(studioId)
+        ? prev.filter((id) => id !== studioId)
+        : [...prev, studioId];
+      if (nextLocked.includes(studioId)) {
+        setSelected((cur) => (cur?.studioId === studioId ? null : cur));
+        setMultiSelected((cur) => cur.filter((item) => item.studioId !== studioId));
+      }
+      return nextLocked;
+    });
+  }, []);
+
+  const handleToggleHideLayer = useCallback((studioId: string) => {
+    setHiddenIds((prev) => {
+      const nextHidden = prev.includes(studioId)
+        ? prev.filter((id) => id !== studioId)
+        : [...prev, studioId];
+      if (nextHidden.includes(studioId)) {
+        setSelected((cur) => (cur?.studioId === studioId ? null : cur));
+        setMultiSelected((cur) => cur.filter((item) => item.studioId !== studioId));
+      }
+      return nextHidden;
+    });
+  }, []);
+
+  const handleChangePseudoState = useCallback(
+    (studioId: string, nextPseudo: 'default' | 'hover' | 'focus') => {
+      setPseudoState(nextPseudo);
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: 'studio:set-pseudo-state', studioId, pseudo: nextPseudo },
+        '*'
+      );
+    },
+    []
+  );
+
+  const handleMultiAlignAction = useCallback(
+    (action: MultiAlignAction) => {
+      if (multiSelected.length < 2) return;
+      const items: MultiSelectAlignItem[] = multiSelected.map((item) => {
+        const offsets = parseElementTranslateOffsets(item.inlineStyles, item.computedStyles);
+        return {
+          studioId: item.studioId,
+          filePath: item.filePath,
+          elementIndex: item.elementIndex,
+          rect: item.rect,
+          baseX: offsets.x,
+          baseY: offsets.y,
+        };
+      });
+
+      const results = computeMultiAlignPatches(items, action);
+      if (results.length === 0) return;
+
+      const byFile = new Map<string, Array<{ elementIndex: number; patch: ElementSourcePatch }>>();
+      for (const res of results) {
+        const code = project.files[res.filePath];
+        if (!code) continue;
+        const isHtml = /\.html?$/i.test(res.filePath);
+        const effectiveBp = resolveEffectiveBreakpoint(alignBreakpointScope, viewport);
+        const scopedPatch = scopeElementPatchToBreakpoint({
+          code,
+          elementIndex: res.elementIndex,
+          isHtml,
+          patch: res.patch,
+          breakpoint: effectiveBp,
+        });
+        const list = byFile.get(res.filePath) || [];
+        list.push({ elementIndex: res.elementIndex, patch: scopedPatch });
+        byFile.set(res.filePath, list);
+      }
+
+      const nextFiles = { ...project.files };
+      let firstTouched: string | undefined;
+      for (const [fp, updates] of byFile.entries()) {
+        const code = project.files[fp];
+        if (!code) continue;
+        const isHtml = /\.html?$/i.test(fp);
+        const updated = applyBatchElementPatches(code, isHtml, updates);
+        if (updated !== code) {
+          nextFiles[fp] = updated;
+          if (!firstTouched) firstTouched = fp;
+        }
+      }
+
+      if (!firstTouched) return;
+      commitFilesMutation(nextFiles, firstTouched);
+      const ids = multiSelected.map((m) => m.studioId);
+      window.setTimeout(() => {
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: 'studio:multi-rects-request', studioIds: ids },
+          '*'
+        );
+      }, 90);
+    },
+    [multiSelected, project.files, alignBreakpointScope, viewport, commitFilesMutation]
+  );
+
+  const handleWrapMultiSelected = useCallback(
+    (layout: WrapContainerLayout) => {
+      if (multiSelected.length < 2) return;
+      const targetFile = multiSelected[0].filePath;
+      const parentStudioId = multiSelected[0].parentStudioId;
+      if (
+        !parentStudioId ||
+        !multiSelected.every(
+          (item) => item.filePath === targetFile && item.parentStudioId === parentStudioId
+        )
+      ) {
+        return;
+      }
+      const code = project.files[targetFile];
+      if (!code) return;
+      const isHtml = /\.html?$/i.test(targetFile);
+      const indices = multiSelected.map((item) => item.elementIndex);
+      const updated = wrapElementsInContainer(code, isHtml, indices, layout);
+      if (updated === code) return;
+      setMultiSelected([]);
+      setSelected(null);
+      commitFilesMutation({ ...project.files, [targetFile]: updated }, targetFile);
+    },
+    [multiSelected, project.files, commitFilesMutation]
   );
 
   const handleDuplicate = useCallback(
@@ -529,6 +689,8 @@ export default function StudioWorkspace() {
       const updatedCode = deleteElementInSource(currentCode, elementIndex, isHtml);
       if (updatedCode === currentCode) return;
       setSelected(null);
+      setMultiSelected([]);
+      setPseudoState('default');
       commitFilesMutation({ ...project.files, [filePath]: updatedCode }, filePath);
     },
     [project.files, commitFilesMutation]
@@ -545,6 +707,10 @@ export default function StudioWorkspace() {
       setIsolatedComponentPath(null);
       setActiveRoute(targetPage.route);
       setSelected(null);
+      setMultiSelected([]);
+      setLockedIds([]);
+      setHiddenIds([]);
+      setPseudoState('default');
       setCodeDrawerFile(targetPage.filePath);
     },
     [project.pages]
@@ -553,12 +719,16 @@ export default function StudioWorkspace() {
   const handleSelectComponent = useCallback((filePath: string) => {
     setIsolatedComponentPath(filePath);
     setSelected(null);
+    setMultiSelected([]);
+    setPseudoState('default');
     setCodeDrawerFile(filePath);
   }, []);
 
   const handleExitComponentIsolation = useCallback(() => {
     setIsolatedComponentPath(null);
     setSelected(null);
+    setMultiSelected([]);
+    setPseudoState('default');
     setCodeDrawerFile(activePage.filePath);
   }, [activePage.filePath]);
 
@@ -983,6 +1153,10 @@ export default function StudioWorkspace() {
       setHistoryFuture([]);
       setIsolatedComponentPath(null);
       setSelected(null);
+      setMultiSelected([]);
+      setLockedIds([]);
+      setHiddenIds([]);
+      setPseudoState('default');
       const firstPage = nextProj.pages[0];
       if (firstPage) {
         setActiveRoute(firstPage.route);
@@ -1084,6 +1258,10 @@ export default function StudioWorkspace() {
     setHistoryFuture([]);
     setIsolatedComponentPath(null);
     setSelected(null);
+    setMultiSelected([]);
+    setLockedIds([]);
+    setHiddenIds([]);
+    setPseudoState('default');
     setViewport(draft.viewport);
     const matchedPage =
       restored.pages.find((p) => p.route === draft.activeRoute) || restored.pages[0];
@@ -1172,6 +1350,11 @@ export default function StudioWorkspace() {
               onOpenLibraryModal={() => setIsLibraryModalOpen(true)}
               layerTree={layerTree}
               selectedStudioId={selected?.studioId || null}
+              multiSelectedIds={multiSelected.map((m) => m.studioId)}
+              lockedIds={lockedIds}
+              hiddenIds={hiddenIds}
+              onToggleLockLayer={handleToggleLockLayer}
+              onToggleHideLayer={handleToggleHideLayer}
               onSelectLayer={(id) => {
                 handleSelectLayer(id);
                 if (isCompactViewport) setCompactLeftOpen(false);
@@ -1211,6 +1394,13 @@ export default function StudioWorkspace() {
             viewport={viewport}
             interactionMode={interactionMode}
             selected={selected}
+            multiSelected={multiSelected}
+            onUpdateMultiSelected={setMultiSelected}
+            onMultiAlignAction={handleMultiAlignAction}
+            onWrapMultiSelected={handleWrapMultiSelected}
+            lockedIds={lockedIds}
+            hiddenIds={hiddenIds}
+            pseudoState={pseudoState}
             pendingSelectStudioId={pendingSelectStudioId}
             onClearPendingSelect={handleClearPendingSelect}
             onSelectElement={handleSelectElement}
@@ -1398,6 +1588,8 @@ export default function StudioWorkspace() {
               onSmartAutoAlign={handleAutoAlign}
               onSmartAlignElement={handleSmartAlignElement}
               onSmartRedesignBlock={handleRedesignBlock}
+              pseudoState={pseudoState}
+              onChangePseudoState={handleChangePseudoState}
               onOpenSmartAligner={() => {
                 if (isCompactViewport) {
                   setCompactRightOpen(false);

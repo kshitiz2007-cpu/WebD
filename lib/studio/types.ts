@@ -57,6 +57,7 @@ export interface StudioElementSnapshot {
   siblingIndex: number;
   siblingCount: number;
   canReorderSiblings: boolean;
+  ancestry?: Array<{ studioId: string; tagName: string; label: string }>;
   href?: string;
   src?: string;
 }

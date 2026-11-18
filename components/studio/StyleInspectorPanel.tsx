@@ -66,11 +66,83 @@ import {
   resolveEffectiveBreakpoint,
 } from '@/lib/studio/smart-aligner';
 import {
+  computeContrastReport,
+  resolveEffectiveBgColor,
+} from '@/lib/studio/visual-refinement';
+import {
   ElementSourcePatch,
   GradientConfig,
   StudioElementSnapshot,
   ViewportPreset,
 } from '@/lib/studio/types';
+
+function ScrubLabel({
+  htmlFor,
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  onScrubPreview,
+  onScrubCommit,
+}: {
+  htmlFor?: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  onScrubPreview: (next: number) => void;
+  onScrubCommit: (next: number) => void;
+}) {
+  const handlePointerDown = (e: React.PointerEvent<HTMLLabelElement>) => {
+    if (e.button !== 0) return;
+    const startX = e.clientX;
+    const startVal = Number.isFinite(value) ? value : min;
+    let latestVal = startVal;
+    let dragged = false;
+
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore if pointer capture unavailable
+    }
+
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      if (!dragged && Math.abs(dx) < 3) return;
+      dragged = true;
+      const mult = ev.shiftKey ? 5 : 1;
+      const raw = startVal + Math.round((dx / 3) * step * mult);
+      latestVal = Math.min(max, Math.max(min, raw));
+      onScrubPreview(latestVal);
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      if (dragged) {
+        onScrubCommit(latestVal);
+      }
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
+
+  return (
+    <label
+      htmlFor={htmlFor}
+      title="Drag horizontally to scrub value (Shift for 5× step)"
+      onPointerDown={handlePointerDown}
+      className="inline-flex cursor-ew-resize select-none items-center gap-1 text-[11px] text-slate-600 underline decoration-dotted decoration-slate-300 underline-offset-2 hover:text-blue-700 hover:decoration-blue-400"
+    >
+      {label}
+    </label>
+  );
+}
 
 interface StyleInspectorPanelProps {
   selected: StudioElementSnapshot | null;
@@ -122,6 +194,8 @@ interface StyleInspectorPanelProps {
     pattern: BlockRedesignPattern
   ) => void;
   onOpenSmartAligner?: () => void;
+  pseudoState?: 'default' | 'hover' | 'focus';
+  onChangePseudoState?: (studioId: string, pseudo: 'default' | 'hover' | 'focus') => void;
 }
 
 function parsePxNumber(val?: string): string {
@@ -166,6 +240,8 @@ export default function StyleInspectorPanel({
   onSmartAlignElement,
   onSmartRedesignBlock,
   onOpenSmartAligner,
+  pseudoState = 'default',
+  onChangePseudoState,
 }: StyleInspectorPanelProps) {
   const [activeTab, setActiveTab] = useState<'style' | 'layout' | 'type' | 'comp'>('style');
   const [textDraft, setTextDraft] = useState(selected?.textContent || '');
@@ -523,6 +599,55 @@ export default function StyleInspectorPanel({
             <span>Comp</span>
           </button>
         </div>
+
+        {/* Interactive Pseudo-State & WCAG Contrast Bar */}
+        {(() => {
+          const contrastBg = resolveEffectiveBgColor(selected.computedStyles, '#FFFFFF');
+          const contrastReport = computeContrastReport(
+            selected.computedStyles.color || textColorHex,
+            contrastBg
+          );
+          return (
+            <div className="mt-2 flex items-center justify-between gap-2 text-[10px]">
+              {onChangePseudoState && (
+                <div
+                  className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 p-0.5"
+                  role="group"
+                  aria-label="Preview element state"
+                >
+                  {(['default', 'hover', 'focus'] as const).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => onChangePseudoState(selected.studioId, st)}
+                      className={`rounded px-1.5 py-0.5 font-medium capitalize transition-colors ${
+                        pseudoState === st
+                          ? 'bg-white text-slate-900 shadow-xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {st === 'default' ? 'Default' : `:${st}`}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div
+                title={`Text vs surface contrast ratio: ${contrastReport.ratioLabel} (${contrastReport.grade})`}
+                className={`ml-auto inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono font-semibold tabular-nums ${
+                  contrastReport.passesAA
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : contrastReport.passesAALarge
+                      ? 'border-amber-200 bg-amber-50 text-amber-700'
+                      : 'border-rose-200 bg-rose-50 text-rose-700'
+                }`}
+              >
+                <span>{contrastReport.grade}</span>
+                <span>{contrastReport.ratioLabel}</span>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Scrollable Inspector Body */}
@@ -588,9 +713,21 @@ export default function StyleInspectorPanel({
 
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <label htmlFor="inspector-radius-input" className="text-[11px] text-slate-600">
-                    Corner Radius
-                  </label>
+                  <ScrubLabel
+                    htmlFor="inspector-radius-input"
+                    label="Corner Radius"
+                    value={sliderRadius}
+                    min={0}
+                    max={200}
+                    onScrubPreview={(val) => {
+                      setRadiusDraft(String(val));
+                      onPreviewStyles(selected.studioId, { borderRadius: `${val}px` });
+                    }}
+                    onScrubCommit={(val) => {
+                      setRadiusDraft(String(val));
+                      commitStyles({ borderRadius: `${val}px` });
+                    }}
+                  />
                   <div className="flex items-center gap-1">
                     <input
                       id="inspector-radius-input"
@@ -656,9 +793,31 @@ export default function StyleInspectorPanel({
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label htmlFor="inspector-border-width" className="mb-1 block text-[11px] text-slate-600">
-                    Border Width
-                  </label>
+                  <div className="mb-1">
+                    <ScrubLabel
+                      htmlFor="inspector-border-width"
+                      label="Border Width"
+                      value={Number(borderWidthDraft) || 0}
+                      min={0}
+                      max={24}
+                      onScrubPreview={(val) => {
+                        setBorderWidthDraft(String(val));
+                        onPreviewStyles(selected.studioId, {
+                          borderWidth: `${val}px`,
+                          borderStyle: val === 0 ? 'none' : 'solid',
+                          borderColor: borderColorHex,
+                        });
+                      }}
+                      onScrubCommit={(val) => {
+                        setBorderWidthDraft(String(val));
+                        commitStyles({
+                          borderWidth: `${val}px`,
+                          borderStyle: val === 0 ? 'none' : 'solid',
+                          borderColor: borderColorHex,
+                        });
+                      }}
+                    />
+                  </div>
                   <div className="flex items-center gap-1">
                     <input
                       id="inspector-border-width"
@@ -727,9 +886,21 @@ export default function StyleInspectorPanel({
 
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <label htmlFor="inspector-opacity-input" className="text-[11px] text-slate-600">
-                    Opacity
-                  </label>
+                  <ScrubLabel
+                    htmlFor="inspector-opacity-input"
+                    label="Opacity"
+                    value={sliderOpacity}
+                    min={0}
+                    max={100}
+                    onScrubPreview={(val) => {
+                      setOpacityDraft(String(val));
+                      onPreviewStyles(selected.studioId, { opacity: String(val / 100) });
+                    }}
+                    onScrubCommit={(val) => {
+                      setOpacityDraft(String(val));
+                      commitStyles({ opacity: String(val / 100) });
+                    }}
+                  />
                   <div className="flex items-center gap-1">
                     <input
                       id="inspector-opacity-input"
@@ -1725,7 +1896,25 @@ export default function StyleInspectorPanel({
                 <h3 className="text-[11px] font-semibold text-slate-700">Drag Offset (Translate)</h3>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="mb-1 block text-[11px] text-slate-600">Offset X (px)</label>
+                    <div className="mb-1">
+                      <ScrubLabel
+                        label="Offset X (px)"
+                        value={offsetX}
+                        min={-400}
+                        max={400}
+                        onScrubPreview={(nx) => {
+                          setOffsetX(nx);
+                          onPreviewStyles(selected.studioId, {
+                            translate: `${nx}px ${offsetY}px`,
+                            transform: 'none',
+                          });
+                        }}
+                        onScrubCommit={(nx) => {
+                          setOffsetX(nx);
+                          commitStyles({ transform: `translate(${nx}px, ${offsetY}px)` });
+                        }}
+                      />
+                    </div>
                     <input
                       type="number"
                       value={offsetX}
@@ -1738,7 +1927,25 @@ export default function StyleInspectorPanel({
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[11px] text-slate-600">Offset Y (px)</label>
+                    <div className="mb-1">
+                      <ScrubLabel
+                        label="Offset Y (px)"
+                        value={offsetY}
+                        min={-400}
+                        max={400}
+                        onScrubPreview={(ny) => {
+                          setOffsetY(ny);
+                          onPreviewStyles(selected.studioId, {
+                            translate: `${offsetX}px ${ny}px`,
+                            transform: 'none',
+                          });
+                        }}
+                        onScrubCommit={(ny) => {
+                          setOffsetY(ny);
+                          commitStyles({ transform: `translate(${offsetX}px, ${ny}px)` });
+                        }}
+                      />
+                    </div>
                     <input
                       type="number"
                       value={offsetY}
@@ -1762,9 +1969,19 @@ export default function StyleInspectorPanel({
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label htmlFor="inspector-font-size" className="mb-1 block text-[11px] text-slate-600">
-                  Size (px)
-                </label>
+                <div className="mb-1">
+                  <ScrubLabel
+                    htmlFor="inspector-font-size"
+                    label="Size (px)"
+                    value={Number(fontSize) || 16}
+                    min={10}
+                    max={120}
+                    onScrubPreview={(val) =>
+                      onPreviewStyles(selected.studioId, { fontSize: `${val}px` })
+                    }
+                    onScrubCommit={(val) => commitStyles({ fontSize: `${val}px` })}
+                  />
+                </div>
                 <input
                   id="inspector-font-size"
                   type="number"
@@ -1887,6 +2104,35 @@ export default function StyleInspectorPanel({
                   onBlur={(e) => commitStyles({ letterSpacing: e.target.value.trim() || null })}
                   className="h-8 w-full rounded-md border border-slate-200 px-2 font-mono text-xs tabular-nums text-slate-800"
                 />
+              </div>
+            </div>
+
+            <div>
+              <span className="mb-1 block text-[11px] text-slate-600">Optical Text Wrap</span>
+              <div className="grid grid-cols-3 gap-1">
+                {(
+                  [
+                    { val: 'wrap', label: 'Wrap' },
+                    { val: 'balance', label: 'Balance' },
+                    { val: 'pretty', label: 'Pretty' },
+                  ] as const
+                ).map((opt) => {
+                  const active = (selected.inlineStyles['text-wrap'] || cs.textWrap || 'wrap') === opt.val;
+                  return (
+                    <button
+                      key={opt.val}
+                      type="button"
+                      onClick={() => commitStyles({ textWrap: opt.val })}
+                      className={`rounded border py-1 text-[11px] font-medium transition-colors ${
+                        active
+                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </section>

@@ -808,3 +808,90 @@ export function readElementMeta(
   };
 }
 
+export function applyBatchElementPatches(
+  code: string,
+  isHtml: boolean,
+  updates: Array<{ elementIndex: number; patch: ElementSourcePatch }>
+): string {
+  if (updates.length === 0) return code;
+  const elements = scanElements(code, isHtml);
+  const valid = updates
+    .filter((u) => elements[u.elementIndex])
+    .map((u) => ({ ...u, openStart: elements[u.elementIndex].openStart }))
+    .sort((a, b) => b.openStart - a.openStart);
+
+  let next = code;
+  for (const item of valid) {
+    next = applyElementPatchToSource(next, item.elementIndex, isHtml, item.patch);
+  }
+  return next;
+}
+
+export type WrapContainerLayout = 'row' | 'col' | 'grid-2' | 'grid-3';
+
+export function wrapElementsInContainer(
+  code: string,
+  isHtml: boolean,
+  elementIndices: number[],
+  layout: WrapContainerLayout
+): string {
+  const uniqueIndices = Array.from(new Set(elementIndices));
+  if (uniqueIndices.length === 0) return code;
+  const elements = scanElements(code, isHtml);
+  const targets = uniqueIndices
+    .map((idx) => elements[idx])
+    .filter((el): el is ParsedElement => Boolean(el && el.parentIndex >= 0))
+    .sort((a, b) => a.openStart - b.openStart);
+
+  if (targets.length === 0) return code;
+  const parentIdx = targets[0].parentIndex;
+  if (!targets.every((t) => t.parentIndex === parentIdx)) {
+    return code;
+  }
+
+  const jsxStyleByLayout: Record<WrapContainerLayout, string> = {
+    row: "style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: '16px' }}",
+    col: "style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}",
+    'grid-2': "style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px' }}",
+    'grid-3': "style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px' }}",
+  };
+  const htmlStyleByLayout: Record<WrapContainerLayout, string> = {
+    row: 'style="display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 16px;"',
+    col: 'style="display: flex; flex-direction: column; gap: 16px;"',
+    'grid-2': 'style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;"',
+    'grid-3': 'style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;"',
+  };
+
+  const parent = elements[parentIdx];
+  const siblingPositions = targets.map((t) => parent.childIndices.indexOf(t.index));
+  const isContiguous =
+    siblingPositions.every((pos) => pos >= 0) &&
+    siblingPositions.every((pos, i) => i === 0 || pos === siblingPositions[i - 1] + 1);
+
+  const openTag = `<div ${isHtml ? htmlStyleByLayout[layout] : jsxStyleByLayout[layout]}>`;
+
+  if (isContiguous) {
+    const first = targets[0];
+    const last = targets[targets.length - 1];
+    const inner = code.slice(first.openStart, last.closeEnd);
+    return (
+      code.slice(0, first.openStart) +
+      `${openTag}\n${inner}\n</div>` +
+      code.slice(last.closeEnd)
+    );
+  }
+
+  const slices = targets.map((t) => code.slice(t.openStart, t.closeEnd));
+  let updated = code;
+  for (let i = targets.length - 1; i >= 1; i--) {
+    updated = updated.slice(0, targets[i].openStart) + updated.slice(targets[i].closeEnd);
+  }
+  const first = targets[0];
+  return (
+    updated.slice(0, first.openStart) +
+    `${openTag}\n${slices.join('\n')}\n</div>` +
+    updated.slice(first.closeEnd)
+  );
+}
+
+

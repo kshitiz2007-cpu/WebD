@@ -62,7 +62,72 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
   var HOVER_ID = null;
   var EDITING_EL = null;
   var ACTIVE_PREVIEW_RECORDS = [];
+  var LOCKED_IDS = {};
+  var HIDDEN_IDS = {};
+  var ACTIVE_PSEUDO_ID = null;
+  var ACTIVE_PSEUDO_MODE = 'default';
   window.__STUDIO_REACT_OWNED_STYLES__ = window.__STUDIO_REACT_OWNED_STYLES__ || {};
+
+  function getOrCreateStyleTag(id) {
+    var existing = document.getElementById(id);
+    if (existing) return existing;
+    var el = document.createElement('style');
+    el.id = id;
+    (document.head || document.documentElement).appendChild(el);
+    return el;
+  }
+
+  function applyLayerStateCss() {
+    var rules = [];
+    Object.keys(HIDDEN_IDS).forEach(function(sid) {
+      if (HIDDEN_IDS[sid]) {
+        rules.push('[data-studio-id="' + CSS.escape(sid) + '"] { visibility: hidden !important; pointer-events: none !important; }');
+      }
+    });
+    var tag = getOrCreateStyleTag('studio-layer-state-css');
+    tag.textContent = rules.join('\\n');
+  }
+
+  function applyPseudoPreview(sid, mode) {
+    var prev = document.querySelectorAll('[data-studio-pseudo]');
+    for (var i = 0; i < prev.length; i++) {
+      prev[i].removeAttribute('data-studio-pseudo');
+    }
+    ACTIVE_PSEUDO_ID = sid || null;
+    ACTIVE_PSEUDO_MODE = mode || 'default';
+    var pseudoTag = getOrCreateStyleTag('studio-pseudo-css');
+    if (!sid || !mode || mode === 'default') {
+      pseudoTag.textContent = '';
+      return;
+    }
+    var targetEl = findStudioElement(sid);
+    if (targetEl) {
+      targetEl.setAttribute('data-studio-pseudo', mode);
+    }
+    var twCss = (document.getElementById('studio-tailwind-css') || {}).textContent || '';
+    var userCss = (document.getElementById('studio-user-css') || {}).textContent || '';
+    var combined = twCss + '\\n' + userCss;
+    var out = [];
+    var re = new RegExp('([^{}\\\\n]+:' + mode + '(?:\\\\([^)]*\\\\))?[^{}]*)\\\\{([^}]+)\\\\}', 'g');
+    var m;
+    while ((m = re.exec(combined)) !== null && out.length < 180) {
+      var rewrittenSel = m[1].replace(new RegExp(':' + mode + '(?!\\\\w)', 'g'), '[data-studio-pseudo="' + mode + '"]');
+      out.push(rewrittenSel + ' {' + m[2] + '}');
+    }
+    pseudoTag.textContent = out.join('\\n');
+  }
+
+  function findSelectableTarget(node) {
+    var cur = node && node.closest ? node.closest('[data-studio-id]') : null;
+    while (cur) {
+      var sid = cur.getAttribute('data-studio-id');
+      if (sid && !LOCKED_IDS[sid] && !HIDDEN_IDS[sid]) {
+        return cur;
+      }
+      cur = cur.parentElement ? cur.parentElement.closest('[data-studio-id]') : null;
+    }
+    return null;
+  }
 
   function clearTrackedPreviewStyles() {
     if (!ACTIVE_PREVIEW_RECORDS.length) return;
@@ -209,6 +274,19 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
     }
     var siblingIdx = siblingReorderIds.indexOf(ownReorderId);
     var textMeta = getDirectText(el);
+    var ancestry = [];
+    var ancNode = el;
+    while (ancNode && ancNode.nodeType === 1) {
+      var ancSid = ancNode.getAttribute && ancNode.getAttribute('data-studio-id');
+      if (ancSid) {
+        ancestry.unshift({
+          studioId: ancSid,
+          tagName: ancNode.tagName.toLowerCase(),
+          label: getFriendlyLabel(ancNode)
+        });
+      }
+      ancNode = ancNode.parentElement;
+    }
 
     return {
       studioId: sid,
@@ -231,6 +309,7 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
         lineHeight: cs.lineHeight,
         letterSpacing: cs.letterSpacing,
         textAlign: cs.textAlign,
+        textWrap: cs.textWrap || '',
         width: cs.width,
         height: cs.height,
         minWidth: cs.minWidth,
@@ -291,6 +370,7 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
         ownReorderParsed &&
         parentParsed.filePath === ownReorderParsed.filePath
       ),
+      ancestry: ancestry,
       href: el.getAttribute('href') || undefined,
       src: el.getAttribute('src') || undefined
     };
@@ -331,7 +411,7 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
 
   document.addEventListener('mouseover', function(e) {
     if (CURRENT_MODE !== 'design') return;
-    var target = e.target && e.target.closest ? e.target.closest('[data-studio-id]') : null;
+    var target = findSelectableTarget(e.target);
     if (!target) {
       if (HOVER_ID) {
         HOVER_ID = null;
@@ -376,7 +456,7 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       return;
     }
 
-    var target = e.target && e.target.closest ? e.target.closest('[data-studio-id]') : null;
+    var target = findSelectableTarget(e.target);
     if (!target) return;
     e.preventDefault();
     e.stopPropagation();
@@ -384,7 +464,8 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
     SELECTED_ID = target.getAttribute('data-studio-id');
     window.parent.postMessage({
       type: 'studio:select',
-      element: extractSnapshot(target)
+      element: extractSnapshot(target),
+      shiftKey: Boolean(e.shiftKey)
     }, '*');
   }, true);
 
@@ -459,7 +540,8 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
         if (updatedSel) {
           window.parent.postMessage({
             type: 'studio:select',
-            element: extractSnapshot(updatedSel)
+            element: extractSnapshot(updatedSel),
+            preserveMulti: true
           }, '*');
         }
       }
@@ -470,10 +552,12 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
         if (msg.scroll !== false) {
           el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
+        var preserveM = Boolean(msg.preserveMulti);
         setTimeout(function() {
           window.parent.postMessage({
             type: 'studio:select',
-            element: extractSnapshot(el)
+            element: extractSnapshot(el),
+            preserveMulti: preserveM
           }, '*');
         }, 25);
       }
@@ -588,22 +672,79 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
           SELECTED_ID = selHtml.getAttribute('data-studio-id') || SELECTED_ID;
           window.parent.postMessage({
             type: 'studio:select',
-            element: extractSnapshot(selHtml)
+            element: extractSnapshot(selHtml),
+            preserveMulti: true
           }, '*');
         }
       }
+    } else if (msg.type === 'studio:set-layer-locks') {
+      LOCKED_IDS = {};
+      HIDDEN_IDS = {};
+      if (Array.isArray(msg.lockedIds)) {
+        msg.lockedIds.forEach(function(id) { LOCKED_IDS[id] = true; });
+      }
+      if (Array.isArray(msg.hiddenIds)) {
+        msg.hiddenIds.forEach(function(id) { HIDDEN_IDS[id] = true; });
+      }
+      applyLayerStateCss();
+    } else if (msg.type === 'studio:set-pseudo-state') {
+      applyPseudoPreview(msg.studioId, msg.pseudo);
+    } else if (msg.type === 'studio:multi-rects-request') {
+      var reqIds = Array.isArray(msg.studioIds) ? msg.studioIds : [];
+      var multiItems = [];
+      reqIds.forEach(function(id) {
+        var mel = findStudioElement(id);
+        if (mel) multiItems.push(extractSnapshot(mel));
+      });
+      window.parent.postMessage({
+        type: 'studio:multi-rects',
+        elements: multiItems
+      }, '*');
+    } else if (msg.type === 'studio:query-marquee') {
+      var mq = msg.rect || { x: 0, y: 0, width: 0, height: 0 };
+      var mRight = mq.x + mq.width;
+      var mBottom = mq.y + mq.height;
+      var allNodes = document.querySelectorAll('[data-studio-id]');
+      var matched = [];
+      for (var mi = 0; mi < allNodes.length; mi++) {
+        var node = allNodes[mi];
+        var sid = node.getAttribute('data-studio-id');
+        if (!sid || LOCKED_IDS[sid] || HIDDEN_IDS[sid]) continue;
+        var nr = node.getBoundingClientRect();
+        if (nr.width < 4 || nr.height < 4) continue;
+        // Skip root wrapper that spans almost the entire viewport
+        if (nr.width >= window.innerWidth - 8 && nr.height >= window.innerHeight - 8) continue;
+        var intersects = !(nr.right < mq.x || nr.left > mRight || nr.bottom < mq.y || nr.top > mBottom);
+        if (intersects) matched.push(node);
+      }
+      // Keep leaf-most intersecting nodes (drop parents whose intersecting child is also matched)
+      var leafMatched = matched.filter(function(cand) {
+        return !matched.some(function(other) {
+          return other !== cand && cand.contains(other);
+        });
+      });
+      var finalNodes = leafMatched.slice(0, 12);
+      window.parent.postMessage({
+        type: 'studio:marquee-result',
+        elements: finalNodes.map(function(n) { return extractSnapshot(n); })
+      }, '*');
     } else if (msg.type === 'studio:ping-tree') {
       if (msg.selectStudioId) {
         SELECTED_ID = msg.selectStudioId;
       }
       postTree();
+      applyLayerStateCss();
+      if (ACTIVE_PSEUDO_ID && ACTIVE_PSEUDO_MODE !== 'default') {
+        applyPseudoPreview(ACTIVE_PSEUDO_ID, ACTIVE_PSEUDO_MODE);
+      }
       if (SELECTED_ID) {
         var sel = findStudioElement(SELECTED_ID);
         if (sel) {
           SELECTED_ID = sel.getAttribute('data-studio-id') || SELECTED_ID;
           window.parent.postMessage({
             type: 'studio:select',
-            element: extractSnapshot(sel)
+            element: extractSnapshot(sel),
+            preserveMulti: true
           }, '*');
         }
       }
