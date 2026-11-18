@@ -8,6 +8,7 @@ import type { LogicAction, LogicTrigger, VisualLogicRule } from '@/lib/studio/lo
 interface LogicPanelProps {
   selected: StudioElementSnapshot | null;
   rules: VisualLogicRule[];
+  availableTargets?: Array<{ id: string; label: string }>;
   onChange: (rules: VisualLogicRule[]) => void;
   onClose: () => void;
   isBottomSheet?: boolean;
@@ -45,7 +46,7 @@ function createRule(selected: StudioElementSnapshot | null): VisualLogicRule {
   };
 }
 
-export default function LogicPanel({ selected, rules, onChange, onClose, isBottomSheet = false }: LogicPanelProps) {
+export default function LogicPanel({ selected, rules, availableTargets = [], onChange, onClose, isBottomSheet = false }: LogicPanelProps) {
   const [mode, setMode] = useState<'basic' | 'flow'>('basic');
   const selectedRules = useMemo(
     () => selected ? rules.filter((rule) => rule.componentId === selected.studioId) : rules,
@@ -123,7 +124,7 @@ export default function LogicPanel({ selected, rules, onChange, onClose, isBotto
                 <div><label className={labelClass}>When</label><select value={rule.trigger} onChange={(e) => updateRule(rule.id, { trigger: e.target.value as LogicTrigger })} className={inputClass}>{TRIGGERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></div>
                 <div className="flex justify-center"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">THEN</span></div>
                 <div><label className={labelClass}>Action</label><select value={rule.action} onChange={(e) => updateRule(rule.id, { action: e.target.value as LogicAction })} className={inputClass}>{ACTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></div>
-                {rule.action !== 'toast' && <div><label className={labelClass}>{rule.action === 'navigate' ? 'Route' : 'Target element ID'}</label><input value={rule.target} onChange={(e) => updateRule(rule.id, { target: e.target.value })} placeholder={rule.action === 'navigate' ? '/about' : 'e.g. settings-panel'} className={inputClass} /></div>}
+                {rule.action !== 'toast' && <div><label className={labelClass}>{rule.action === 'navigate' ? 'Route' : 'Target element'}</label><input list={rule.action === 'navigate' ? undefined : 'webd-logic-targets'} value={rule.target} onChange={(e) => updateRule(rule.id, { target: e.target.value })} placeholder={rule.action === 'navigate' ? '/about' : 'Choose an element or enter its ID'} className={inputClass} />{rule.action !== 'navigate' && <datalist id="webd-logic-targets">{availableTargets.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</datalist>}</div>}
                 {(rule.action === 'setText' || rule.action === 'toast') && <div><label className={labelClass}>{rule.action === 'toast' ? 'Message' : 'New text'}</label><input value={rule.value} onChange={(e) => updateRule(rule.id, { value: e.target.value })} placeholder="Enter a value" className={inputClass} /></div>}
               </div>
             ) : (
@@ -136,7 +137,7 @@ export default function LogicPanel({ selected, rules, onChange, onClose, isBotto
           </article>
         ))}
 
-        <p className="rounded-lg bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-800">Logic rules are stored in the project as structured configuration. Runtime execution is being introduced incrementally; unsupported actions will not run until their runtime adapter is available.</p>
+        <p className="rounded-lg bg-emerald-50 p-3 text-[11px] leading-relaxed text-emerald-800">Rules execute in Preview mode. Supported actions: show, hide, toggle, set text, navigate and toast. Choose a target from the element list or enter its HTML ID.</p>
       </div>
     </aside>
   );
