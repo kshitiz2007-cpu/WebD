@@ -48,6 +48,8 @@ export function normalizePageSlug(value: string): string {
 
 function reactPageSource(title: string, template: PageTemplatePreset): string {
   const safeTitle = escapeJsx(title);
+  const rawComponentName = toTitleCase(title).replace(/[^A-Za-z0-9]/g, '') || 'New';
+  const componentName = /^[A-Za-z_]/.test(rawComponentName) ? rawComponentName : `Page${rawComponentName}`;
   const contentByTemplate: Record<PageTemplatePreset, string> = {
     blank: `<section className="mx-auto w-full max-w-5xl px-6 py-20"><p className="text-sm font-semibold uppercase tracking-[0.2em] text-indigo-600">New page</p><h1 className="mt-3 text-4xl font-bold tracking-tight text-slate-950">{'${safeTitle}'}</h1><p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">Start designing this page visually. Every change is written back to this React page source.</p></section>`,
     landing: `<><section className="relative overflow-hidden bg-slate-950 px-6 py-24 text-white sm:py-32"><div className="mx-auto max-w-6xl"><span className="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide text-indigo-200">BUILT FOR WHAT'S NEXT</span><h1 className="mt-7 max-w-3xl text-4xl font-bold tracking-tight sm:text-6xl">{'${safeTitle}'}</h1><p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">A clear message, confident design and focused actions help visitors understand your value.</p><div className="mt-9 flex flex-wrap gap-3"><a href="#features" className="rounded-xl bg-indigo-500 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-400">Explore features</a><a href="#contact" className="rounded-xl border border-white/20 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10">Get in touch</a></div></div></section><section id="features" className="mx-auto grid max-w-6xl gap-5 px-6 py-16 md:grid-cols-3">{['Thoughtful design','Flexible building blocks','Ready to grow'].map((item, index) => <article key={item} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><span className="text-xs font-bold text-indigo-600">0{index + 1}</span><h2 className="mt-3 text-lg font-semibold text-slate-900">{item}</h2><p className="mt-2 text-sm leading-6 text-slate-600">A reusable section that you can select, edit and restyle directly on the visual canvas.</p></article>)}</section><section id="contact" className="mx-auto max-w-6xl px-6 pb-16"><div className="rounded-3xl bg-indigo-50 p-8 sm:p-12"><h2 className="text-2xl font-bold text-slate-950">Make the next step simple.</h2><p className="mt-2 text-sm text-slate-600">Replace this copy and connect the action to your workflow.</p><a href="mailto:hello@example.com" className="mt-5 inline-flex rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Contact us</a></div></section></>`,
@@ -59,7 +61,7 @@ function reactPageSource(title: string, template: PageTemplatePreset): string {
   return `'use client';
 import React from 'react';
 
-export default function ${toTitleCase(title).replace(/[^A-Za-z0-9]/g, '') || 'New'}Page() {
+export default function ${componentName}Page() {
   return (
     <div className="min-h-screen bg-white text-slate-900">
       <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
