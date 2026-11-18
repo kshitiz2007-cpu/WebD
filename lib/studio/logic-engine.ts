@@ -1,5 +1,35 @@
-export type LogicTrigger = 'onClick' | 'onChange' | 'onSubmit' | 'onMouseEnter';
-export type LogicAction = 'show' | 'hide' | 'toggle' | 'setText' | 'navigate' | 'toast';
+export type LogicTrigger =
+  | 'onClick'
+  | 'onChange'
+  | 'onInput'
+  | 'onSubmit'
+  | 'onMouseEnter'
+  | 'onFocus'
+  | 'onBlur';
+
+export type LogicAction =
+  | 'show'
+  | 'hide'
+  | 'toggle'
+  | 'setText'
+  | 'setTextFromValue'
+  | 'setValue'
+  | 'increment'
+  | 'decrement'
+  | 'navigate'
+  | 'toast';
+
+export type LogicConditionOperator =
+  | 'always'
+  | 'equals'
+  | 'notEquals'
+  | 'contains'
+  | 'greaterThan'
+  | 'lessThan'
+  | 'isEmpty'
+  | 'isNotEmpty';
+
+export type LogicValueSource = 'literal' | 'eventValue' | 'eventText';
 
 export interface VisualLogicRule {
   id: string;
@@ -10,10 +40,25 @@ export interface VisualLogicRule {
   target: string;
   value: string;
   enabled: boolean;
+  /** Optional v2 condition. Missing means always run (legacy compatibility). */
+  conditionOperator?: LogicConditionOperator;
+  conditionValue?: string;
+  /** Whether an action uses the typed value or the triggering control's value/text. */
+  valueSource?: LogicValueSource;
 }
 
-const TRIGGERS = new Set<LogicTrigger>(['onClick', 'onChange', 'onSubmit', 'onMouseEnter']);
-const ACTIONS = new Set<LogicAction>(['show', 'hide', 'toggle', 'setText', 'navigate', 'toast']);
+const TRIGGERS = new Set<LogicTrigger>([
+  'onClick', 'onChange', 'onInput', 'onSubmit', 'onMouseEnter', 'onFocus', 'onBlur',
+]);
+const ACTIONS = new Set<LogicAction>([
+  'show', 'hide', 'toggle', 'setText', 'setTextFromValue', 'setValue',
+  'increment', 'decrement', 'navigate', 'toast',
+]);
+const CONDITIONS = new Set<LogicConditionOperator>([
+  'always', 'equals', 'notEquals', 'contains', 'greaterThan',
+  'lessThan', 'isEmpty', 'isNotEmpty',
+]);
+const VALUE_SOURCES = new Set<LogicValueSource>(['literal', 'eventValue', 'eventText']);
 
 /** Validate persisted project data before sending it into the preview iframe. */
 export function normalizeLogicRules(value: unknown): VisualLogicRule[] {
@@ -27,6 +72,12 @@ export function normalizeLogicRules(value: unknown): VisualLogicRule[] {
       !TRIGGERS.has(rule.trigger as LogicTrigger) ||
       !ACTIONS.has(rule.action as LogicAction)
     ) return [];
+    const conditionOperator = CONDITIONS.has(rule.conditionOperator as LogicConditionOperator)
+      ? rule.conditionOperator as LogicConditionOperator
+      : 'always';
+    const valueSource = VALUE_SOURCES.has(rule.valueSource as LogicValueSource)
+      ? rule.valueSource as LogicValueSource
+      : 'literal';
     return [{
       id: rule.id.slice(0, 160),
       componentId: rule.componentId.slice(0, 512),
@@ -36,6 +87,9 @@ export function normalizeLogicRules(value: unknown): VisualLogicRule[] {
       target: typeof rule.target === 'string' ? rule.target.slice(0, 512) : '',
       value: typeof rule.value === 'string' ? rule.value.slice(0, 4000) : '',
       enabled: rule.enabled !== false,
+      conditionOperator,
+      conditionValue: typeof rule.conditionValue === 'string' ? rule.conditionValue.slice(0, 1000) : '',
+      valueSource,
     }];
   });
 }
