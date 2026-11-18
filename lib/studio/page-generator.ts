@@ -122,7 +122,6 @@ export function createPageFile(params: {
 }): GeneratedPageFile {
   const title = params.title.trim() || toTitleCase(params.slug);
   const slug = normalizePageSlug(params.slug || title.toLowerCase().replace(/\s+/g, '-'));
-  const segments = slug.split('/').filter(Boolean);
   const route = slug ? `/${slug}` : '/';
   let filePath: string;
 
