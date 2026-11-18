@@ -344,6 +344,23 @@ export default function StyleInspectorPanel({
     return parsed;
   }, [selected, persistedLast]);
 
+  const textGradientValue = useMemo(() => {
+    if (!selected) {
+      return { ...(persistedLast || parseGradientCss()), target: 'text' as const };
+    }
+    const bgImg =
+      selected.inlineStyles['background-image'] ||
+      selected.computedStyles.backgroundImage;
+    const clip =
+      selected.inlineStyles['-webkit-background-clip'] ||
+      selected.inlineStyles['background-clip'] ||
+      selected.computedStyles.backgroundClip;
+    if (clip === 'text' && bgImg && bgImg !== 'none') {
+      return { ...parseGradientCss(bgImg, undefined, selected.computedStyles.color, 'text'), target: 'text' as const };
+    }
+    return { ...parseGradientCss(undefined, undefined, textColorHex, 'text'), target: 'text' as const };
+  }, [selected, textColorHex, persistedLast]);
+
   if (!selected) {
     return (
       <aside
@@ -2055,6 +2072,36 @@ export default function StyleInspectorPanel({
                 />
               </div>
             </div>
+
+            <section className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-2.5">
+              <div>
+                <h4 className="text-[11px] font-semibold text-slate-700">Text Color Gradient</h4>
+                <p className="mt-0.5 text-[10px] leading-4 text-slate-500">
+                  Apply solid HEX color or build a 2, 3 or 4-stop gradient using individual HEX values.
+                </p>
+              </div>
+              <GradientEditor
+                selectionKey={selected.studioId + ':text-color'}
+                value={textGradientValue}
+                onPreview={(cfg, css) => {
+                  if (cfg.type === 'solid') setTextColorHex(cfg.stops[0]?.color || textColorHex);
+                  handleGradientApply({ ...cfg, target: 'text' }, css, false);
+                }}
+                onCommit={(cfg, css) => {
+                  if (cfg.type === 'solid') setTextColorHex(cfg.stops[0]?.color || textColorHex);
+                  handleGradientApply({ ...cfg, target: 'text' }, css, true);
+                }}
+                onClearFill={() => {
+                  commitStyles({
+                    color: textColorHex,
+                    backgroundImage: null,
+                    backgroundClip: null,
+                    WebkitBackgroundClip: null,
+                    WebkitTextFillColor: null,
+                  });
+                }}
+              />
+            </section>
 
             <div>
               <span className="mb-1 block text-[11px] text-slate-600">Alignment</span>
