@@ -63,6 +63,7 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
   var EDITING_EL = null;
   var ACTIVE_PREVIEW_RECORDS = [];
   var LOGIC_RULES = [];
+  var LOGIC_EXECUTING = false;
 
   function resolveLogicTarget(target) {
     if (!target || typeof target !== 'string') return null;
@@ -169,7 +170,7 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
     }
   }
   function runLogicForEvent(trigger, event) {
-    if (CURRENT_MODE !== 'interact') return;
+    if (CURRENT_MODE !== 'interact' || LOGIC_EXECUTING) return;
     var seeds = [event.target];
     if (trigger === 'onSubmit' && event.submitter) seeds.push(event.submitter);
     var matched = [];
@@ -185,13 +186,18 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       }
     });
     if (!matched.length) return;
-    LOGIC_RULES.forEach(function(rule) {
-      if (!rule || rule.enabled === false || rule.trigger !== trigger) return;
-      var owner = matched.find(function(entry) { return entry.id === rule.componentId; });
-      if (!owner) return;
-      if (trigger === 'onMouseEnter' && event.relatedTarget && owner.node.contains(event.relatedTarget)) return;
-      runLogicRule(rule, event);
-    });
+    LOGIC_EXECUTING = true;
+    try {
+      LOGIC_RULES.forEach(function(rule) {
+        if (!rule || rule.enabled === false || rule.trigger !== trigger) return;
+        var owner = matched.find(function(entry) { return entry.id === rule.componentId; });
+        if (!owner) return;
+        if (trigger === 'onMouseEnter' && event.relatedTarget && owner.node.contains(event.relatedTarget)) return;
+        runLogicRule(rule, event);
+      });
+    } finally {
+      LOGIC_EXECUTING = false;
+    }
   }
   document.addEventListener('focusin', function(event) { runLogicForEvent('onFocus', event); }, true);
   document.addEventListener('focusout', function(event) { runLogicForEvent('onBlur', event); }, true);
@@ -213,7 +219,7 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
         formCursor = formCursor.parentElement;
       }
       if (LOGIC_RULES.some(function(rule) {
-        return rule && rule.enabled !== false && rule.trigger === 'onSubmit' && formIds.indexOf(rule.componentId) !== -1;
+        return rule && rule.enabled !== false && rule.trigger === 'onSubmit' && formIds.indexOf(rule.componentId) !== -1 && conditionMatches(rule, event);
       })) event.preventDefault();
     }
   }, true);
