@@ -87,6 +87,8 @@ import {
   subscribeDraftStorage,
 } from '@/lib/studio/draft-storage';
 import { createProjectFromFiles, STARTER_NEXTJS_FILES } from '@/lib/studio/sample-project';
+import { scanProjectStructure } from '@/lib/studio/project-scanner';
+import { createPageFile, type PageTemplatePreset } from '@/lib/studio/page-generator';
 import {
   CanvasInteractionMode,
   ElementSourcePatch,
@@ -393,13 +395,13 @@ export default function StudioWorkspace() {
     (nextFiles: Record<string, string>, touchedFile?: string) => {
       setHistoryPast((prev) => [...prev.slice(-49), project.files]);
       setHistoryFuture([]);
-      const nextCssPaths = Object.keys(nextFiles)
-        .filter((p) => /\.css$/i.test(p))
-        .sort();
+      const scanned = scanProjectStructure(nextFiles);
       setProject((prev) => ({
         ...prev,
         files: nextFiles,
-        globalCssPaths: nextCssPaths,
+        pages: scanned.pages,
+        framework: scanned.framework,
+        globalCssPaths: scanned.globalCssPaths,
       }));
       if (touchedFile) {
         setCodeDrawerFile(touchedFile);
@@ -763,6 +765,35 @@ export default function StudioWorkspace() {
     setPseudoState('default');
     setCodeDrawerFile(activePage.filePath);
   }, [activePage.filePath]);
+
+  const handleCreatePage = useCallback(
+    (title: string, slug: string, template: PageTemplatePreset): boolean => {
+      try {
+        const generated = createPageFile({
+          framework: project.framework,
+          title,
+          slug,
+          template,
+          files: project.files,
+        });
+        if (project.pages.some((page) => page.route === generated.route)) return false;
+        const nextFiles = { ...project.files, [generated.filePath]: generated.code };
+        commitFilesMutation(nextFiles, generated.filePath);
+        setIsolatedComponentPath(null);
+        setActiveRoute(generated.route);
+        setSelected(null);
+        setMultiSelected([]);
+        setLockedIds([]);
+        setHiddenIds([]);
+        setPseudoState('default');
+        setInteractionMode('design');
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [project.framework, project.files, project.pages, commitFilesMutation]
+  );
 
   const handleCreateComponent = useCallback(
     (rawName: string, preset: ComponentTemplatePreset = 'card') => {
@@ -1470,6 +1501,11 @@ export default function StudioWorkspace() {
               onSelectPage={(route) => {
                 handleSelectPage(route);
                 if (isCompactViewport) setCompactLeftOpen(false);
+              }}
+              onCreatePage={(title, slug, template) => {
+                const created = handleCreatePage(title, slug, template);
+                if (created && isCompactViewport) setCompactLeftOpen(false);
+                return created;
               }}
               components={projectComponents}
               isolatedComponentPath={activeIsolatedPath}
