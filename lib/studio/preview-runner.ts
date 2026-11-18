@@ -74,15 +74,54 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
     return findStudioElement(key);
   }
 
-  function runLogicRule(rule) {
-    if (!rule || rule.enabled === false) return;
-    var target = rule.action === 'toast' || rule.action === 'navigate'
-      ? null
-      : resolveLogicTarget(rule.target);
-    if (rule.action !== 'toast' && rule.action !== 'navigate' && !target) {
+  function getEventValue(event) {
+    var el = event && event.target;
+    if (!el) return '';
+    if (el.value !== undefined) return String(el.value);
+    return String(el.textContent || '').trim();
+  }
+  function getEventText(event) {
+    var el = event && event.target;
+    return el ? String(el.textContent || '').trim() : '';
+  }
+  function conditionMatches(rule, event) {
+    var op = rule.conditionOperator || 'always';
+    if (op === 'always') return true;
+    var actual = getEventValue(event);
+    var expected = typeof rule.conditionValue === 'string' ? rule.conditionValue : '';
+    if (op === 'isEmpty') return actual.trim() === '';
+    if (op === 'isNotEmpty') return actual.trim() !== '';
+    if (op === 'equals') return actual === expected;
+    if (op === 'notEquals') return actual !== expected;
+    if (op === 'contains') return actual.toLowerCase().indexOf(expected.toLowerCase()) !== -1;
+    if (op === 'greaterThan') return actual.trim() !== '' && Number(actual) > Number(expected);
+    if (op === 'lessThan') return actual.trim() !== '' && Number(actual) < Number(expected);
+    return true;
+  }
+  function setControlValue(target, value) {
+    var next = String(value == null ? '' : value);
+    if ('value' in target) {
+      var proto = target.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype
+        : target.tagName === 'SELECT' ? HTMLSelectElement.prototype
+        : HTMLInputElement.prototype;
+      var descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+      if (descriptor && descriptor.set) descriptor.set.call(target, next);
+      else target.value = next;
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+    } else target.textContent = next;
+  }
+  function runLogicRule(rule, event) {
+    if (!rule || rule.enabled === false || !conditionMatches(rule, event)) return;
+    var needsTarget = ['toast', 'navigate'].indexOf(rule.action) === -1;
+    var target = needsTarget ? resolveLogicTarget(rule.target) : null;
+    if (needsTarget && !target) {
       window.parent.postMessage({ type: 'studio:logic-warning', message: 'Logic target not found: ' + (rule.target || '(empty)') }, '*');
       return;
     }
+    var sourceValue = rule.valueSource === 'eventValue' ? getEventValue(event)
+      : rule.valueSource === 'eventText' ? getEventText(event)
+      : (typeof rule.value === 'string' ? rule.value : '');
     if (rule.action === 'show') {
       var showDisplay = target.dataset.studioLogicDisplay;
       target.hidden = false;
@@ -108,6 +147,16 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       }
     } else if (rule.action === 'setText') {
       target.textContent = typeof rule.value === 'string' ? rule.value : '';
+    } else if (rule.action === 'setTextFromValue') {
+      target.textContent = sourceValue;
+    } else if (rule.action === 'setValue') {
+      setControlValue(target, sourceValue);
+    } else if (rule.action === 'increment' || rule.action === 'decrement') {
+      var current = Number(('value' in target ? target.value : target.textContent) || 0);
+      var step = Number(rule.value || 1);
+      if (!Number.isFinite(step)) step = 1;
+      if (!Number.isFinite(current)) current = 0;
+      setControlValue(target, String(current + (rule.action === 'increment' ? step : -step)));
     } else if (rule.action === 'navigate') {
       if (typeof rule.target === 'string' && rule.target) window.parent.postMessage({ type: 'studio:navigate', route: rule.target }, '*');
     } else if (rule.action === 'toast') {
@@ -119,7 +168,6 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       window.setTimeout(function() { toast.remove(); }, 2600);
     }
   }
-
   function runLogicForEvent(trigger, event) {
     if (CURRENT_MODE !== 'interact') return;
     var seeds = [event.target];
@@ -142,10 +190,12 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       var owner = matched.find(function(entry) { return entry.id === rule.componentId; });
       if (!owner) return;
       if (trigger === 'onMouseEnter' && event.relatedTarget && owner.node.contains(event.relatedTarget)) return;
-      runLogicRule(rule);
+      runLogicRule(rule, event);
     });
   }
-
+  document.addEventListener('focusin', function(event) { runLogicForEvent('onFocus', event); }, true);
+  document.addEventListener('focusout', function(event) { runLogicForEvent('onBlur', event); }, true);
+  document.addEventListener('input', function(event) { runLogicForEvent('onInput', event); }, true);
   document.addEventListener('click', function(event) { runLogicForEvent('onClick', event); }, true);
   document.addEventListener('change', function(event) { runLogicForEvent('onChange', event); }, true);
   document.addEventListener('submit', function(event) {
@@ -157,7 +207,9 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       var formCursor = form;
       while (formCursor && formCursor !== document.documentElement) {
         var formId = formCursor.getAttribute && formCursor.getAttribute('data-studio-id');
+        var formInstanceId = formCursor.getAttribute && formCursor.getAttribute('data-studio-instance');
         if (formId) formIds.push(formId);
+        if (formInstanceId) formIds.push(formInstanceId);
         formCursor = formCursor.parentElement;
       }
       if (LOGIC_RULES.some(function(rule) {
