@@ -67,6 +67,11 @@ import {
   scanExternalImportsInSource,
 } from '@/lib/studio/library-importer';
 import {
+  ReactUiLibraryEntry,
+  applyUiLibraryToProject,
+  replaceElementWithSnippetInSource,
+} from '@/lib/studio/react-ui-catalog';
+import {
   clearAutosaveProgress,
   createDraftSnapshot,
   deleteDraftFromStorage,
@@ -867,8 +872,21 @@ export default function StudioWorkspace() {
       identifiers: string[];
       targetFilePath: string;
       sampleJsx?: string;
+      action?: 'replace' | 'insert';
+      position?: ComponentInsertPosition;
+      targetElementIndex?: number;
     }) => {
-      const { packageName, version, importMode, identifiers, targetFilePath, sampleJsx } = params;
+      const {
+        packageName,
+        version,
+        importMode,
+        identifiers,
+        targetFilePath,
+        sampleJsx,
+        action = 'insert',
+        position = 'inside-end',
+        targetElementIndex,
+      } = params;
       const currentTargetCode = project.files[targetFilePath];
       if (!currentTargetCode) {
         return { ok: false, error: 'Target source file not found.' };
@@ -883,24 +901,116 @@ export default function StudioWorkspace() {
 
       if (sampleJsx && /\.(tsx|jsx)$/i.test(targetFilePath)) {
         const targetIdx =
-          selected && selected.filePath === targetFilePath ? selected.elementIndex : 0;
-        const withSnippet = insertJsxSnippetIntoSource({
-          targetCode: updatedSource,
-          targetElementIndex: targetIdx,
-          position: 'inside-end',
-          jsxSnippet: sampleJsx,
-        });
+          targetElementIndex !== undefined
+            ? targetElementIndex
+            : selected && selected.filePath === targetFilePath
+            ? selected.elementIndex
+            : 0;
+        const withSnippet =
+          action === 'replace'
+            ? replaceElementWithSnippetInSource({
+                targetCode: updatedSource,
+                elementIndex: targetIdx,
+                jsxSnippet: sampleJsx,
+              })
+            : insertJsxSnippetIntoSource({
+                targetCode: updatedSource,
+                targetElementIndex: targetIdx,
+                position,
+                jsxSnippet: sampleJsx,
+              });
         if (withSnippet) {
           updatedSource = withSnippet;
         }
       }
 
       nextFiles = { ...nextFiles, [targetFilePath]: updatedSource };
+      setSelected(null);
       commitFilesMutation(nextFiles, targetFilePath);
       preloadExternalLibrary(packageName);
       return { ok: true };
     },
     [project.files, selected, commitFilesMutation, preloadExternalLibrary]
+  );
+
+  const handleApplyUiComponent = useCallback(
+    (params: {
+      targetFilePath: string;
+      targetElementIndex: number;
+      entry: ReactUiLibraryEntry;
+      action: 'replace' | 'insert';
+      position?: ComponentInsertPosition;
+      integrationMode: 'component' | 'inline';
+      customProps?: Record<string, string>;
+    }) => {
+      const result = applyUiLibraryToProject({
+        files: project.files,
+        ...params,
+      });
+      if (!result.ok) {
+        return { ok: false, error: result.error };
+      }
+      setSelected(null);
+      setMultiSelected([]);
+      commitFilesMutation(result.files, result.touchedFilePath);
+      for (const pkg of result.installedPackages) {
+        preloadExternalLibrary(pkg);
+      }
+      return {
+        ok: true,
+        createdComponentPath: result.createdComponentPath,
+      };
+    },
+    [project.files, commitFilesMutation, preloadExternalLibrary]
+  );
+
+  const handleApplyProjectComponent = useCallback(
+    (params: {
+      targetFilePath: string;
+      targetElementIndex: number;
+      componentFilePath: string;
+      action: 'replace' | 'insert';
+      position?: ComponentInsertPosition;
+      props?: Record<string, string>;
+    }) => {
+      const targetCode = project.files[params.targetFilePath];
+      const comp = projectComponents.find((c) => c.filePath === params.componentFilePath);
+      if (!targetCode || !comp) {
+        return { ok: false, error: 'Target file or component not found.' };
+      }
+      const updated =
+        params.action === 'replace'
+          ? replaceElementWithComponentInSource({
+              targetCode,
+              targetFilePath: params.targetFilePath,
+              elementIndex: params.targetElementIndex,
+              componentName: comp.name,
+              componentFilePath: comp.filePath,
+              componentCode: project.files[comp.filePath],
+              props: params.props,
+            })
+          : insertComponentIntoSource({
+              targetCode,
+              targetFilePath: params.targetFilePath,
+              targetElementIndex: params.targetElementIndex,
+              position: params.position || 'after',
+              componentName: comp.name,
+              componentFilePath: comp.filePath,
+              componentCode: project.files[comp.filePath],
+              props: params.props,
+            });
+      if (!updated || updated === targetCode) {
+        return {
+          ok: false,
+          error: 'Could not apply component to the selected element slot.',
+        };
+      }
+      setSelected(null);
+      setMultiSelected([]);
+      commitFilesMutation({ ...project.files, [params.targetFilePath]: updated }, params.targetFilePath);
+      return { ok: true };
+    },
+    [project.files, projectComponents, commitFilesMutation]
   );
 
   const handleRemoveDependency = useCallback(
@@ -1769,7 +1879,25 @@ export default function StudioWorkspace() {
         onClose={() => setIsLibraryModalOpen(false)}
         files={project.files}
         defaultTargetFile={selected?.filePath || canvasTargetPage.filePath}
+        selectedTarget={
+          selected
+            ? {
+                filePath: selected.filePath,
+                elementIndex: selected.elementIndex,
+                tagName: selected.tagName,
+                textPreview: selected.textContent,
+              }
+            : null
+        }
+        projectComponents={projectComponents}
         dependencies={packageDependencies}
+        onApplyUiComponent={handleApplyUiComponent}
+        onApplyProjectComponent={handleApplyProjectComponent}
+        onCreateComponent={handleCreateComponent}
+        onIsolateComponent={(compPath) => {
+          setIsolatedComponentPath(compPath);
+          setSelected(null);
+        }}
         onImportLibrary={handleImportReactLibrary}
         onRemoveDependency={handleRemoveDependency}
       />

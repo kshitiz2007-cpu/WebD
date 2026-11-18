@@ -2318,13 +2318,13 @@ export default function StyleInspectorPanel({
                 </section>
               )}
 
-              {/* React Libraries & Imports */}
+              {/* React Libraries & UI Studio */}
               {onOpenLibraryModal && (
                 <section className="space-y-2 border-b border-slate-100 pb-4">
                   <div className="flex items-center justify-between">
                     <h3 className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
                       <PackagePlus className="h-3.5 w-3.5 text-indigo-600" />
-                      <span>React Libraries</span>
+                      <span>React Lib UI &amp; Packages</span>
                     </h3>
                     <span className="font-mono text-[10px] text-slate-400">
                       {dependenciesCount} deps
@@ -2347,10 +2347,10 @@ export default function StyleInspectorPanel({
                   <button
                     type="button"
                     onClick={onOpenLibraryModal}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100"
                   >
                     <PackagePlus className="h-3.5 w-3.5 text-indigo-600" />
-                    <span>Import React Library</span>
+                    <span>Browse React Lib UI (Insert / Replace)</span>
                   </button>
                 </section>
               )}

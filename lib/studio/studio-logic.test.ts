@@ -1364,5 +1364,94 @@ test('github-import parses repo URLs, detects HTML proxy errors safely, and fall
   assert.ok(imported.files['Civil-recovery-original-full-app/app/page.tsx']?.includes('<main>Hi</main>'));
 });
 
+import { transform as sucraseTransform } from 'sucrase';
+import {
+  REACT_UI_LIBRARY_ITEMS,
+  applyUiLibraryToProject,
+  filterReactUiCatalog,
+  replaceElementWithSnippetInSource,
+} from './react-ui-catalog';
+
+test('react-ui-catalog filters items, compiles all templates cleanly, and inserts or replaces in component and inline modes', () => {
+  assert.ok(REACT_UI_LIBRARY_ITEMS.length >= 16);
+  const charts = filterReactUiCatalog(REACT_UI_LIBRARY_ITEMS, 'recharts', 'Motion & Charts');
+  assert.equal(charts.length, 1);
+  assert.equal(charts[0].componentName, 'UiBarChartCard');
+
+  // Verify every UI component template compiles cleanly with Sucrase JSX/TS
+  for (const item of REACT_UI_LIBRARY_ITEMS) {
+    const out = sucraseTransform(item.componentSource, {
+      transforms: ['typescript', 'jsx', 'imports'],
+      jsxRuntime: 'classic',
+      jsxPragma: 'React.createElement',
+      jsxFragmentPragma: 'React.Fragment',
+      filePath: `components/ui/${item.componentName}.tsx`,
+    });
+    assert.ok(out.code.length > 0, `Expected compiled output for ${item.id}`);
+  }
+
+  const baseFiles: Record<string, string> = {
+    'package.json': JSON.stringify({ name: 'demo', dependencies: { react: '^19.0.0' } }),
+    'app/page.tsx': `'use client';
+import React from 'react';
+
+export default function Page() {
+  return (
+    <main className="p-6">
+      <div className="old-hero">Old Block</div>
+      <section className="content">Body</section>
+    </main>
+  );
+}
+`,
+  };
+
+  // Replace element index 1 (<div className="old-hero">) with UiHeroBanner component + custom prop
+  const heroEntry = REACT_UI_LIBRARY_ITEMS.find((i) => i.id === 'ui-hero-banner')!;
+  const replacedRes = applyUiLibraryToProject({
+    files: baseFiles,
+    targetFilePath: 'app/page.tsx',
+    targetElementIndex: 1,
+    entry: heroEntry,
+    action: 'replace',
+    integrationMode: 'component',
+    customProps: {
+      heading: 'Custom Studio Headline',
+    },
+  });
+  assert.equal(replacedRes.ok, true);
+  assert.ok(replacedRes.files['components/ui/UiHeroBanner.tsx']);
+  assert.ok(replacedRes.files['app/page.tsx'].includes(`import UiHeroBanner from '@/components/ui/UiHeroBanner'`));
+  assert.ok(replacedRes.files['app/page.tsx'].includes(`<UiHeroBanner heading="Custom Studio Headline" />`));
+  assert.ok(!replacedRes.files['app/page.tsx'].includes('old-hero'));
+  assert.ok(JSON.parse(replacedRes.files['package.json']).dependencies['lucide-react']);
+
+  // Insert Framer Motion card inline after <section className="content"> (index 2 in baseFiles)
+  const motionEntry = REACT_UI_LIBRARY_ITEMS.find((i) => i.id === 'ui-motion-card')!;
+  const inlineInsertRes = applyUiLibraryToProject({
+    files: baseFiles,
+    targetFilePath: 'app/page.tsx',
+    targetElementIndex: 2,
+    entry: motionEntry,
+    action: 'insert',
+    position: 'after',
+    integrationMode: 'inline',
+  });
+  assert.equal(inlineInsertRes.ok, true);
+  assert.ok(inlineInsertRes.files['app/page.tsx'].includes(`from 'framer-motion'`));
+  assert.ok(inlineInsertRes.files['app/page.tsx'].includes(`<motion.div`));
+  assert.ok(JSON.parse(inlineInsertRes.files['package.json']).dependencies['framer-motion']);
+
+  // Direct snippet replace helper
+  const snippetReplaced = replaceElementWithSnippetInSource({
+    targetCode: baseFiles['app/page.tsx'],
+    elementIndex: 1,
+    jsxSnippet: '<CustomCard />',
+  });
+  assert.ok(snippetReplaced?.includes('<CustomCard />'));
+  assert.ok(!snippetReplaced?.includes('old-hero'));
+});
+
+
 
 

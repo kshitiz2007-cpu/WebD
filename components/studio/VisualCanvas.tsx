@@ -1246,11 +1246,11 @@ export default function VisualCanvas({
             <button
               type="button"
               onClick={onOpenLibraryModal}
-              aria-label="Import React library"
-              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium whitespace-nowrap text-slate-700 hover:bg-slate-50"
+              aria-label="Open React Lib UI"
+              className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50/70 px-2 py-1 text-[11px] font-semibold whitespace-nowrap text-indigo-700 hover:bg-indigo-100"
             >
               <PackagePlus className="h-3 w-3 text-indigo-600" />
-              <span>React Libs</span>
+              <span>React Lib UI</span>
             </button>
           )}
           {onToggleSnap && (
@@ -1526,6 +1526,17 @@ export default function VisualCanvas({
               >
                 <Move className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
               </button>
+              {onOpenLibraryModal && (
+                <button
+                  type="button"
+                  title="Replace or insert from React Lib UI"
+                  aria-label="Replace or insert with React Lib UI"
+                  onClick={onOpenLibraryModal}
+                  className="rounded p-1.5 sm:p-1 text-indigo-300 hover:bg-slate-700"
+                >
+                  <PackagePlus className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                </button>
+              )}
               <button
                 type="button"
                 aria-label="Duplicate selected element"
