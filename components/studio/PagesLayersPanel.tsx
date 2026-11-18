@@ -26,7 +26,7 @@ interface PagesLayersPanelProps {
   pages: ProjectPage[];
   activeRoute: string;
   onSelectPage: (route: string) => void;
-  onCreatePage?: (title: string, slug: string, template: PageTemplatePreset, customTemplateCode?: string) => boolean;
+  onCreatePage?: (title: string, slug: string, template: PageTemplatePreset, customTemplateCode?: string) => boolean | { ok: boolean; error?: string };
   isHtmlProject?: boolean;
   onCreateSiteKit?: () => boolean;
   components?: ProjectComponentInfo[];
@@ -256,11 +256,19 @@ export default function PagesLayersPanel({
                 {showNewPage && (
                   <form className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5" onSubmit={(event) => {
                     event.preventDefault();
-                    const created = onCreatePage(newPageTitle, newPageSlug, pageTemplate, pageTemplate === 'custom' ? customTemplateCode : undefined);
+                    setPageError('');
+                    const result = onCreatePage(newPageTitle, newPageSlug, pageTemplate, pageTemplate === 'custom' ? customTemplateCode : undefined);
+                    const created = typeof result === 'boolean' ? result : result.ok;
                     if (created) {
-                      setShowNewPage(false); setPageError(''); setNewPageTitle('New Page'); setNewPageSlug('new-page'); setPageTemplate('landing');
+                      setShowNewPage(false);
+                      setPageError('');
+                      setNewPageTitle('New Page');
+                      setNewPageSlug('new-page');
+                      setPageTemplate('landing');
                     } else {
-                      setPageError('Could not create the page. Check the URL path and pasted template code.');
+                      setPageError(typeof result === 'boolean'
+                        ? 'Could not create the page. Check that the URL is unique and the pasted code is valid.'
+                        : (result.error || 'Could not create the page. Check the pasted code and URL path.'));
                     }
                   }}>
                     <label className="block text-[10px] font-semibold text-slate-600">Page name
@@ -279,11 +287,16 @@ export default function PagesLayersPanel({
                     </label>
                     {pageTemplate === 'custom' && (
                       <label className="block text-[10px] font-semibold text-slate-600">
-                        Custom {isHtmlProject ? 'HTML' : 'React / TSX'} layout code
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <span>Custom {isHtmlProject ? 'HTML' : 'React / TSX'} layout code</span>
+                          <button type="submit" className="shrink-0 rounded-md bg-indigo-600 px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-sm hover:bg-indigo-700">
+                            Create from code
+                          </button>
+                        </div>
                         <textarea
                           value={customTemplateCode}
                           onChange={(event) => setCustomTemplateCode(event.target.value)}
-                          rows={9}
+                          rows={7}
                           spellCheck={false}
                           className="mt-1 w-full resize-y rounded-md border border-slate-200 bg-slate-950 p-2.5 font-mono text-[10px] leading-5 text-slate-100 outline-none focus:border-indigo-500"
                           placeholder={isHtmlProject ? '<main>...</main>' : '<main className="...">...</main>'}
@@ -291,8 +304,8 @@ export default function PagesLayersPanel({
                         />
                         <span className="mt-1 block text-[10px] font-normal leading-4 text-slate-500">
                           {isHtmlProject
-                            ? 'Paste a full HTML document or an HTML fragment. Fragments receive a basic HTML document wrapper.'
-                            : 'Paste a full default-exported React page component or a JSX layout fragment. Fragments are wrapped in a page component.'}
+                            ? 'Paste a complete HTML document or fragment. Fragments get a basic document wrapper. Click “Create from code” to generate and open the page.'
+                            : 'Paste a complete React page component or JSX layout fragment. A fragment is wrapped automatically. Click “Create from code” to generate and open the page.'}
                           {' '}Optional placeholders: {'{{TITLE}}'} and {'{{SLUG}}'}.
                         </span>
                       </label>
