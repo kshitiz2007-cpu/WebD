@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { GitBranch, Plus, Trash2, X, Zap } from 'lucide-react';
 import type { StudioElementSnapshot } from '@/lib/studio/types';
-import type { LogicAction, LogicTrigger, VisualLogicRule } from '@/lib/studio/logic-engine';
+import type { LogicAction, LogicConditionOperator, LogicTrigger, LogicValueSource, VisualLogicRule } from '@/lib/studio/logic-engine';
 
 interface LogicPanelProps {
   selected: StudioElementSnapshot | null;
@@ -17,8 +17,11 @@ interface LogicPanelProps {
 const TRIGGERS: { value: LogicTrigger; label: string }[] = [
   { value: 'onClick', label: 'On click' },
   { value: 'onChange', label: 'On change' },
+  { value: 'onInput', label: 'While typing (input)' },
   { value: 'onSubmit', label: 'On submit' },
   { value: 'onMouseEnter', label: 'On hover' },
+  { value: 'onFocus', label: 'On focus' },
+  { value: 'onBlur', label: 'On blur' },
 ];
 
 const ACTIONS: { value: LogicAction; label: string }[] = [
@@ -26,8 +29,23 @@ const ACTIONS: { value: LogicAction; label: string }[] = [
   { value: 'hide', label: 'Hide element' },
   { value: 'toggle', label: 'Toggle element' },
   { value: 'setText', label: 'Set text' },
+  { value: 'setTextFromValue', label: 'Copy event value to text' },
+  { value: 'setValue', label: 'Set input / control value' },
+  { value: 'increment', label: 'Increment number' },
+  { value: 'decrement', label: 'Decrement number' },
   { value: 'navigate', label: 'Navigate to route' },
   { value: 'toast', label: 'Show toast' },
+];
+
+const CONDITIONS: { value: LogicConditionOperator; label: string }[] = [
+  { value: 'always', label: 'Always run' },
+  { value: 'equals', label: 'Value equals' },
+  { value: 'notEquals', label: 'Value does not equal' },
+  { value: 'contains', label: 'Value contains' },
+  { value: 'greaterThan', label: 'Value is greater than' },
+  { value: 'lessThan', label: 'Value is less than' },
+  { value: 'isEmpty', label: 'Value is empty' },
+  { value: 'isNotEmpty', label: 'Value is not empty' },
 ];
 
 const inputClass = 'h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
@@ -43,6 +61,9 @@ function createRule(selected: StudioElementSnapshot | null): VisualLogicRule {
     target: '',
     value: '',
     enabled: true,
+    conditionOperator: 'always',
+    conditionValue: '',
+    valueSource: 'literal',
   };
 }
 
@@ -124,8 +145,19 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
                 <div><label className={labelClass}>When</label><select value={rule.trigger} onChange={(e) => updateRule(rule.id, { trigger: e.target.value as LogicTrigger })} className={inputClass}>{TRIGGERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></div>
                 <div className="flex justify-center"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">THEN</span></div>
                 <div><label className={labelClass}>Action</label><select value={rule.action} onChange={(e) => updateRule(rule.id, { action: e.target.value as LogicAction })} className={inputClass}>{ACTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></div>
-                {rule.action !== 'toast' && <div><label className={labelClass}>{rule.action === 'navigate' ? 'Route' : 'Target element'}</label><input list={rule.action === 'navigate' ? undefined : 'webd-logic-targets'} value={rule.target} onChange={(e) => updateRule(rule.id, { target: e.target.value })} placeholder={rule.action === 'navigate' ? '/about' : 'Choose an element or enter its ID'} className={inputClass} />{rule.action !== 'navigate' && <datalist id="webd-logic-targets">{availableTargets.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</datalist>}</div>}
-                {(rule.action === 'setText' || rule.action === 'toast') && <div><label className={labelClass}>{rule.action === 'toast' ? 'Message' : 'New text'}</label><input value={rule.value} onChange={(e) => updateRule(rule.id, { value: e.target.value })} placeholder="Enter a value" className={inputClass} /></div>}
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <label className={labelClass}>Condition</label>
+                  <select value={rule.conditionOperator || 'always'} onChange={(e) => updateRule(rule.id, { conditionOperator: e.target.value as LogicConditionOperator })} className={inputClass}>
+                    {CONDITIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                  </select>
+                  {['equals', 'notEquals', 'contains', 'greaterThan', 'lessThan'].includes(rule.conditionOperator || 'always') && (
+                    <input value={rule.conditionValue || ''} onChange={(e) => updateRule(rule.id, { conditionValue: e.target.value })} placeholder="Compare with this value" className={inputClass + ' mt-2'} />
+                  )}
+                  <p className="mt-1.5 text-[10px] text-slate-500">Condition checks the value/text of the element that triggered this rule.</p>
+                </div>
+                {!['toast'].includes(rule.action) && <div><label className={labelClass}>{rule.action === 'navigate' ? 'Route' : 'Target element'}</label><input list={rule.action === 'navigate' ? undefined : 'webd-logic-targets'} value={rule.target} onChange={(e) => updateRule(rule.id, { target: e.target.value })} placeholder={rule.action === 'navigate' ? '/about' : 'Choose an element or enter its ID'} className={inputClass} />{rule.action !== 'navigate' && <datalist id="webd-logic-targets">{availableTargets.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</datalist>}</div>}
+                {['setText', 'toast', 'increment', 'decrement'].includes(rule.action) && <div><label className={labelClass}>{rule.action === 'toast' ? 'Message' : rule.action === 'increment' || rule.action === 'decrement' ? 'Step amount' : 'New text'}</label><input value={rule.value} onChange={(e) => updateRule(rule.id, { value: e.target.value })} placeholder={rule.action === 'increment' || rule.action === 'decrement' ? '1' : 'Enter a value'} className={inputClass} /></div>}
+                {['setTextFromValue', 'setValue'].includes(rule.action) && <div><label className={labelClass}>Copy from trigger</label><select value={rule.valueSource || 'eventValue'} onChange={(e) => updateRule(rule.id, { valueSource: e.target.value as LogicValueSource })} className={inputClass}><option value="eventValue">Input / selected value</option><option value="eventText">Visible text</option><option value="literal">Fixed text</option></select>{rule.valueSource === 'literal' && <input value={rule.value} onChange={(e) => updateRule(rule.id, { value: e.target.value })} placeholder="Fixed value" className={inputClass + ' mt-2'} />}</div>}
               </div>
             ) : (
               <div className="space-y-2 bg-slate-950 p-3 text-center text-white">
@@ -137,7 +169,7 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
           </article>
         ))}
 
-        <p className="rounded-lg bg-emerald-50 p-3 text-[11px] leading-relaxed text-emerald-800">Rules execute in Preview mode. Supported actions: show, hide, toggle, set text, navigate and toast. Choose a target from the element list or enter its HTML ID.</p>
+        <p className="rounded-lg bg-emerald-50 p-3 text-[11px] leading-relaxed text-emerald-800">Rules execute in Preview → Interact mode. Add multiple rules to one trigger for multi-action workflows. Conditions can inspect input values; actions can copy values, set controls, update text, increment counters, navigate or show toasts. Choose a target from the element list or enter its HTML ID.</p>
       </div>
     </aside>
   );
