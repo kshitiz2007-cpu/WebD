@@ -118,59 +118,64 @@ function htmlPageSource(title: string, template: Exclude<PageTemplatePreset, 'cu
 
 function stripTemplateCodeFence(value: string): string {
   const trimmed = value.trim();
-  const match = trimmed.match(/^\`\`\`(?:tsx|jsx|ts|js|html|xml)?\\s*\\n([\\s\\S]*?)\\n\`\`\`$/i);
+  const tick = String.fromCharCode(96).repeat(3);
+  const match = trimmed.match(new RegExp('^' + tick + '(?:tsx|jsx|ts|js|html|xml)?\\\\s*\\\\n([\\\\s\\\\S]*?)\\\\n' + tick + '$', 'i'));
   return (match ? match[1] : trimmed).trim();
 }
 
 function applyTemplatePlaceholders(source: string, title: string, slug: string, html: boolean): string {
-  const safeTitle = html ? escapeHtml(title) : title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const safeTitle = html
+    ? escapeHtml(title)
+    : title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const safeSlug = html ? escapeHtml(slug) : slug;
-  return source.replace(/\\{\\{\\s*TITLE\\s*\\}\\}/gi, safeTitle)
+  return source
+    .replace(/\\{\\{\\s*TITLE\\s*\\}\\}/gi, safeTitle)
     .replace(/\\{\\{\\s*SLUG\\s*\\}\\}/gi, safeSlug);
 }
 
 function customReactPageSource(title: string, slug: string, rawCode: string): string {
   const source = applyTemplatePlaceholders(stripTemplateCodeFence(rawCode), title, slug, false);
   if (!source) throw new Error('Paste a React component or JSX layout before creating the page.');
-  const hasDefaultExport = /export\\s+default\\s+(?:async\\s+)?(?:function|class|[A-Za-z_$][\\w$]*|\\()/m.test(source)
-    || /export\\s*\\{[^}]*\\bas\\s+default\\b[^}]*\\}/m.test(source);
+  const hasDefaultExport =
+    /export\\s+default\\s+(?:async\\s+)?(?:function|class|[A-Za-z_$][\\w$]*|\\()/m.test(source) ||
+    /export\\s*\\{[^}]*\\bas\\s+default\\b[^}]*\\}/m.test(source);
   if (hasDefaultExport) return source;
   if (!source.includes('<') || !source.includes('>')) {
     throw new Error('Custom React template must contain JSX or a default-exported React page component.');
   }
   const rawName = toTitleCase(title).replace(/[^A-Za-z0-9]/g, '') || 'Custom';
-  const componentName = /^[A-Za-z_]/.test(rawName) ? rawName : `Page${rawName}`;
-  return `'use client';
-import React from 'react';
-
-export default function ${componentName}Page() {
-  return (
-    ${source}
-  );
-}
-`;
+  const componentName = /^[A-Za-z_]/.test(rawName) ? rawName : 'Page' + rawName;
+  return [
+    "'use client';",
+    "import React from 'react';",
+    "",
+    "export default function " + componentName + "Page() {",
+    "  return (",
+    "    " + source,
+    "  );",
+    "}",
+    "",
+  ].join('\\n');
 }
 
 function customHtmlPageSource(title: string, slug: string, rawCode: string): string {
   const source = applyTemplatePlaceholders(stripTemplateCodeFence(rawCode), title, slug, true);
   if (!source) throw new Error('Paste an HTML page or layout before creating the page.');
   if (/<html[\\s>]/i.test(source) || /<!doctype\\s+html/i.test(source)) return source;
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(title)}</title>
-  <style>
-    *,*::before,*::after{box-sizing:border-box}
-    body{margin:0;font-family:Inter,system-ui,sans-serif;color:#0f172a;background:#fff}
-    img,video{max-width:100%;height:auto}
-  </style>
-</head>
-<body>
-  ${source}
-</body>
-</html>`;
+  return [
+    '<!doctype html>',
+    '<html lang="en">',
+    '<head>',
+    '  <meta charset="utf-8" />',
+    '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+    '  <title>' + escapeHtml(title) + '</title>',
+    '  <style>*,*::before,*::after{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,sans-serif;color:#0f172a;background:#fff}img,video{max-width:100%;height:auto}</style>',
+    '</head>',
+    '<body>',
+    source,
+    '</body>',
+    '</html>',
+  ].join('\\n');
 }
 
 export function createPageFile(params: {
@@ -178,6 +183,7 @@ export function createPageFile(params: {
   title: string;
   slug: string;
   template: PageTemplatePreset;
+  customTemplateCode?: string;
   files: Record<string, string>;
 }): GeneratedPageFile {
   const title = params.title.trim() || toTitleCase(params.slug);
