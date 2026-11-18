@@ -312,3 +312,42 @@ test('gradient-persistence saves and reloads custom multi-stop hex config and pr
   assert.equal(remaining.length, 0);
 });
 
+import {
+  boxShadowToElevationHint,
+  clampBorderWidth,
+  clampCornerRadius,
+  clampElevationLevel,
+  clampOpacityPercent,
+  elevationLevelToBoxShadow,
+  matchShadowPresetLabel,
+} from './border-elevation';
+
+test('border-elevation clamps numeric inputs and converts elevation levels cleanly', () => {
+  assert.equal(clampCornerRadius(''), null);
+  assert.equal(clampCornerRadius('24'), 24);
+  assert.equal(clampCornerRadius('999'), 200);
+  assert.equal(clampCornerRadius('-5'), 0);
+
+  assert.equal(clampBorderWidth('2'), 2);
+  assert.equal(clampBorderWidth('50'), 24);
+
+  assert.equal(clampOpacityPercent(''), null);
+  assert.equal(clampOpacityPercent('75'), 75);
+  assert.equal(clampOpacityPercent('140'), 100);
+  assert.equal(clampOpacityPercent('-10'), 0);
+
+  assert.equal(clampElevationLevel('12'), 12);
+  assert.equal(elevationLevelToBoxShadow(0), 'none');
+  const shadow10 = elevationLevelToBoxShadow(10);
+  assert.equal(shadow10, '0 10px 25px -3px rgba(15,23,42,0.16)');
+  assert.equal(boxShadowToElevationHint(shadow10), 10);
+
+  assert.equal(matchShadowPresetLabel('0 10px 25px -5px rgba(15,23,42,0.12)'), 'Card');
+  assert.equal(
+    matchShadowPresetLabel(undefined, 'rgba(15, 23, 42, 0.08) 0px 2px 8px 0px'),
+    'Soft'
+  );
+  assert.equal(matchShadowPresetLabel(undefined, 'none'), 'None');
+});
+
+

@@ -16,6 +16,16 @@ import {
   X,
 } from 'lucide-react';
 import GradientEditor from './GradientEditor';
+import {
+  SHADOW_PRESETS,
+  boxShadowToElevationHint,
+  clampBorderWidth,
+  clampCornerRadius,
+  clampElevationLevel,
+  clampOpacityPercent,
+  elevationLevelToBoxShadow,
+  matchShadowPresetLabel,
+} from '@/lib/studio/border-elevation';
 import { normalizeHex, parseGradientCss } from '@/lib/studio/gradient';
 import {
   getLastGradientSnapshot,
@@ -72,12 +82,37 @@ export default function StyleInspectorPanel({
   const [textDraft, setTextDraft] = useState(selected?.textContent || '');
   const [textColorHex, setTextColorHex] = useState('#0F172A');
   const [borderColorHex, setBorderColorHex] = useState('#E2E8F0');
+  const [radiusDraft, setRadiusDraft] = useState('0');
+  const [borderWidthDraft, setBorderWidthDraft] = useState('0');
+  const [opacityDraft, setOpacityDraft] = useState('100');
+  const [elevationDraft, setElevationDraft] = useState('0');
+  const [shadowCssDraft, setShadowCssDraft] = useState('none');
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
   const [prevSelectedKey, setPrevSelectedKey] = useState<string | null>(null);
 
+  const rawRadius = selected
+    ? parsePxNumber(selected.inlineStyles['border-radius'] || selected.computedStyles.borderRadius) || '0'
+    : '0';
+  const rawBorderWidth = selected
+    ? parsePxNumber(selected.inlineStyles['border-width'] || selected.computedStyles.borderWidth) || '0'
+    : '0';
+  const rawOpacity = selected
+    ? Math.min(
+        100,
+        Math.max(
+          0,
+          Math.round(parseFloat(selected.inlineStyles.opacity || selected.computedStyles.opacity || '1') * 100)
+        )
+      )
+    : 100;
+  const rawBoxShadow = selected
+    ? selected.inlineStyles['box-shadow'] || selected.computedStyles.boxShadow || 'none'
+    : 'none';
+  const rawElevation = boxShadowToElevationHint(rawBoxShadow);
+
   const selectedSyncKey = selected
-    ? `${selected.studioId}|${selected.textContent}|${selected.computedStyles.color}|${selected.computedStyles.borderColor}|${selected.inlineStyles.transform || selected.computedStyles.transform}`
+    ? `${selected.studioId}|${selected.textContent}|${selected.computedStyles.color}|${selected.computedStyles.borderColor}|${rawRadius}|${rawBorderWidth}|${rawOpacity}|${rawBoxShadow}|${selected.inlineStyles.transform || selected.computedStyles.transform}`
     : null;
 
   if (selectedSyncKey !== prevSelectedKey) {
@@ -86,6 +121,11 @@ export default function StyleInspectorPanel({
       setTextDraft(selected.textContent || '');
       setTextColorHex(normalizeHex(selected.computedStyles.color || '#0F172A', '#0F172A'));
       setBorderColorHex(normalizeHex(selected.computedStyles.borderColor || '#E2E8F0', '#E2E8F0'));
+      setRadiusDraft(rawRadius);
+      setBorderWidthDraft(rawBorderWidth);
+      setOpacityDraft(String(rawOpacity));
+      setElevationDraft(String(rawElevation));
+      setShadowCssDraft(rawBoxShadow);
       const offsets = parseTranslateOffsets(
         selected.inlineStyles.transform || selected.computedStyles.transform
       );
@@ -221,12 +261,15 @@ export default function StyleInspectorPanel({
   const padLeft = parsePxNumber(ins['padding-left'] || cs.paddingLeft);
   const marTop = parsePxNumber(ins['margin-top'] || cs.marginTop);
   const marBottom = parsePxNumber(ins['margin-bottom'] || cs.marginBottom);
-  const radius = parsePxNumber(ins['border-radius'] || cs.borderRadius) || '0';
+  const radius = rawRadius;
   const fontSize = parsePxNumber(ins['font-size'] || cs.fontSize) || '16';
   const fontWeight = cs.fontWeight || '400';
   const textAlign = cs.textAlign || 'left';
-  const opacity = Math.round(parseFloat(cs.opacity || '1') * 100);
-  const borderWidth = parsePxNumber(ins['border-width'] || cs.borderWidth) || '0';
+  const opacity = rawOpacity;
+  const borderWidth = rawBorderWidth;
+  const activeShadowPreset = matchShadowPresetLabel(ins['box-shadow'], cs.boxShadow);
+  const sliderRadius = Math.min(48, clampCornerRadius(radiusDraft) ?? (Number(radius) || 0));
+  const sliderOpacity = clampOpacityPercent(opacityDraft) ?? opacity;
 
   return (
     <aside
@@ -416,25 +459,68 @@ export default function StyleInspectorPanel({
             <section className="space-y-3">
               <h3 className="text-[11px] font-semibold text-slate-700">Border &amp; Elevation</h3>
 
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label htmlFor="inspector-radius" className="text-[11px] text-slate-600">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor="inspector-radius-input" className="text-[11px] text-slate-600">
                     Corner Radius
                   </label>
-                  <span className="font-mono text-[11px] tabular-nums text-slate-700">
-                    {radius}px
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      id="inspector-radius-input"
+                      type="number"
+                      aria-label="Corner Radius px"
+                      min={0}
+                      max={200}
+                      value={radiusDraft}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setRadiusDraft(raw);
+                        const parsed = clampCornerRadius(raw);
+                        if (parsed !== null) {
+                          commitStyles({ borderRadius: `${parsed}px` });
+                        }
+                      }}
+                      onBlur={() => {
+                        const parsed = clampCornerRadius(radiusDraft);
+                        if (parsed === null) {
+                          setRadiusDraft(radius);
+                        } else {
+                          setRadiusDraft(String(parsed));
+                          commitStyles({ borderRadius: `${parsed}px` });
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const parsed = clampCornerRadius(radiusDraft);
+                          if (parsed !== null) {
+                            setRadiusDraft(String(parsed));
+                            commitStyles({ borderRadius: `${parsed}px` });
+                          }
+                        }
+                      }}
+                      className="h-8 sm:h-7 w-16 rounded-md border border-slate-200 bg-white px-2 text-right font-mono text-xs tabular-nums text-slate-800 focus:border-blue-500 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    <span className="text-[11px] text-slate-400">px</span>
+                  </div>
                 </div>
                 <input
                   id="inspector-radius"
+                  aria-label="Corner Radius slider"
                   type="range"
                   min={0}
                   max={48}
-                  value={Number(radius) || 0}
-                  onChange={(e) =>
-                    onPreviewStyles(selected.studioId, { borderRadius: `${e.target.value}px` })
-                  }
+                  value={sliderRadius}
+                  onChange={(e) => {
+                    setRadiusDraft(e.target.value);
+                    onPreviewStyles(selected.studioId, { borderRadius: `${e.target.value}px` });
+                  }}
                   onPointerUp={(e) =>
+                    commitStyles({ borderRadius: `${(e.target as HTMLInputElement).value}px` })
+                  }
+                  onTouchEnd={(e) =>
+                    commitStyles({ borderRadius: `${(e.target as HTMLInputElement).value}px` })
+                  }
+                  onKeyUp={(e) =>
                     commitStyles({ borderRadius: `${(e.target as HTMLInputElement).value}px` })
                   }
                   className="h-2 sm:h-1.5 w-full cursor-pointer touch-none accent-blue-600"
@@ -446,23 +532,39 @@ export default function StyleInspectorPanel({
                   <label htmlFor="inspector-border-width" className="mb-1 block text-[11px] text-slate-600">
                     Border Width
                   </label>
-                  <input
-                    id="inspector-border-width"
-                    type="number"
-                    min={0}
-                    max={12}
-                    defaultValue={Number(borderWidth) || 0}
-                    key={`bw-${selected.studioId}-${borderWidth}`}
-                    onChange={(e) => {
-                      const w = `${Math.max(0, Number(e.target.value) || 0)}px`;
-                      commitStyles({
-                        borderWidth: w,
-                        borderStyle: w === '0px' ? 'none' : 'solid',
-                        borderColor: borderColorHex,
-                      });
-                    }}
-                    className="h-8 w-full rounded-md border border-slate-200 px-2 font-mono text-xs tabular-nums text-slate-800"
-                  />
+                  <div className="flex items-center gap-1">
+                    <input
+                      id="inspector-border-width"
+                      type="number"
+                      aria-label="Border Width"
+                      min={0}
+                      max={24}
+                      value={borderWidthDraft}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setBorderWidthDraft(raw);
+                        const parsed = clampBorderWidth(raw);
+                        if (parsed !== null) {
+                          const w = `${parsed}px`;
+                          commitStyles({
+                            borderWidth: w,
+                            borderStyle: parsed === 0 ? 'none' : 'solid',
+                            borderColor: borderColorHex,
+                          });
+                        }
+                      }}
+                      onBlur={() => {
+                        const parsed = clampBorderWidth(borderWidthDraft);
+                        if (parsed === null) {
+                          setBorderWidthDraft(borderWidth);
+                        } else {
+                          setBorderWidthDraft(String(parsed));
+                        }
+                      }}
+                      className="h-8 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-right font-mono text-xs tabular-nums text-slate-800 focus:border-blue-500 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    <span className="text-[11px] text-slate-400">px</span>
+                  </div>
                 </div>
                 <div>
                   <label htmlFor="inspector-border-hex" className="mb-1 block text-[11px] text-slate-600">
@@ -472,7 +574,7 @@ export default function StyleInspectorPanel({
                     <input
                       type="color"
                       aria-label="Border color picker"
-                      value={borderColorHex}
+                      value={normalizeHex(borderColorHex, '#E2E8F0')}
                       onChange={(e) => {
                         const hex = normalizeHex(e.target.value);
                         setBorderColorHex(hex);
@@ -496,27 +598,74 @@ export default function StyleInspectorPanel({
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label htmlFor="inspector-opacity" className="text-[11px] text-slate-600">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor="inspector-opacity-input" className="text-[11px] text-slate-600">
                     Opacity
                   </label>
-                  <span className="font-mono text-[11px] tabular-nums text-slate-700">
-                    {opacity}%
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      id="inspector-opacity-input"
+                      type="number"
+                      aria-label="Opacity percent"
+                      min={0}
+                      max={100}
+                      value={opacityDraft}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setOpacityDraft(raw);
+                        const parsed = clampOpacityPercent(raw);
+                        if (parsed !== null) {
+                          commitStyles({ opacity: String(parsed / 100) });
+                        }
+                      }}
+                      onBlur={() => {
+                        const parsed = clampOpacityPercent(opacityDraft);
+                        if (parsed === null) {
+                          setOpacityDraft(String(opacity));
+                        } else {
+                          setOpacityDraft(String(parsed));
+                          commitStyles({ opacity: String(parsed / 100) });
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const parsed = clampOpacityPercent(opacityDraft);
+                          if (parsed !== null) {
+                            setOpacityDraft(String(parsed));
+                            commitStyles({ opacity: String(parsed / 100) });
+                          }
+                        }
+                      }}
+                      className="h-8 sm:h-7 w-16 rounded-md border border-slate-200 bg-white px-2 text-right font-mono text-xs tabular-nums text-slate-800 focus:border-blue-500 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    <span className="text-[11px] text-slate-400">%</span>
+                  </div>
                 </div>
                 <input
                   id="inspector-opacity"
+                  aria-label="Opacity slider"
                   type="range"
-                  min={10}
+                  min={0}
                   max={100}
-                  value={opacity}
-                  onChange={(e) =>
+                  value={sliderOpacity}
+                  onChange={(e) => {
+                    setOpacityDraft(e.target.value);
                     onPreviewStyles(selected.studioId, {
                       opacity: String(Number(e.target.value) / 100),
+                    });
+                  }}
+                  onPointerUp={(e) =>
+                    commitStyles({
+                      opacity: String(Number((e.target as HTMLInputElement).value) / 100),
                     })
                   }
-                  onPointerUp={(e) =>
+                  onTouchEnd={(e) =>
+                    commitStyles({
+                      opacity: String(Number((e.target as HTMLInputElement).value) / 100),
+                    })
+                  }
+                  onKeyUp={(e) =>
                     commitStyles({
                       opacity: String(Number((e.target as HTMLInputElement).value) / 100),
                     })
@@ -525,24 +674,92 @@ export default function StyleInspectorPanel({
                 />
               </div>
 
-              <div>
-                <span className="mb-1.5 block text-[11px] text-slate-600">Shadow Preset</span>
+              <div className="space-y-2">
+                <span className="block text-[11px] text-slate-600">Elevation &amp; Shadow</span>
                 <div className="grid grid-cols-4 gap-1">
-                  {[
-                    { label: 'None', val: 'none' },
-                    { label: 'Soft', val: '0 2px 8px rgba(15,23,42,0.08)' },
-                    { label: 'Card', val: '0 10px 25px -5px rgba(15,23,42,0.12)' },
-                    { label: 'Deep', val: '0 20px 45px -10px rgba(15,23,42,0.25)' },
-                  ].map((preset) => (
+                  {SHADOW_PRESETS.map((preset) => (
                     <button
                       key={preset.label}
                       type="button"
-                      onClick={() => commitStyles({ boxShadow: preset.val })}
-                      className="rounded border border-slate-200 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                      onClick={() => {
+                        setShadowCssDraft(preset.val);
+                        setElevationDraft(String(boxShadowToElevationHint(preset.val)));
+                        commitStyles({ boxShadow: preset.val });
+                      }}
+                      className={`rounded border py-1 text-[11px] font-medium transition-colors ${
+                        activeShadowPreset === preset.label
+                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
                     >
                       {preset.label}
                     </button>
                   ))}
+                </div>
+
+                <div className="grid grid-cols-[84px_1fr] gap-2">
+                  <div>
+                    <label htmlFor="inspector-elevation-level" className="mb-1 block text-[10px] text-slate-500">
+                      Level (0-24)
+                    </label>
+                    <input
+                      id="inspector-elevation-level"
+                      type="number"
+                      aria-label="Elevation level"
+                      min={0}
+                      max={24}
+                      value={elevationDraft}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setElevationDraft(raw);
+                        const lvl = clampElevationLevel(raw);
+                        if (lvl !== null) {
+                          const nextShadow = elevationLevelToBoxShadow(lvl);
+                          setShadowCssDraft(nextShadow);
+                          commitStyles({ boxShadow: nextShadow });
+                        }
+                      }}
+                      onBlur={() => {
+                        const lvl = clampElevationLevel(elevationDraft);
+                        if (lvl === null) {
+                          setElevationDraft(String(rawElevation));
+                        } else {
+                          setElevationDraft(String(lvl));
+                        }
+                      }}
+                      className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-right font-mono text-xs tabular-nums text-slate-800 focus:border-blue-500 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label htmlFor="inspector-shadow-css" className="mb-1 block text-[10px] text-slate-500">
+                      Shadow CSS
+                    </label>
+                    <input
+                      id="inspector-shadow-css"
+                      type="text"
+                      aria-label="Shadow CSS"
+                      value={shadowCssDraft}
+                      onChange={(e) => setShadowCssDraft(e.target.value)}
+                      onBlur={() => {
+                        const trimmed = shadowCssDraft.trim();
+                        if (!trimmed) {
+                          setShadowCssDraft(rawBoxShadow);
+                          return;
+                        }
+                        commitStyles({ boxShadow: trimmed });
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const trimmed = shadowCssDraft.trim();
+                          if (trimmed) {
+                            commitStyles({ boxShadow: trimmed });
+                          }
+                        }
+                      }}
+                      placeholder="0 10px 25px -5px rgba(15,23,42,0.12)"
+                      className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 font-mono text-[11px] text-slate-800 focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
                 </div>
               </div>
             </section>
