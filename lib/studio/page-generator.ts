@@ -1,4 +1,4 @@
-import type { ProjectFramework } from './types';
+import type { ProjectFramework } from './types';\nimport { addLayoutToReactPage } from './site-kit';
 
 export type PageTemplatePreset = 'blank' | 'landing' | 'about' | 'contact' | 'pricing';
 
@@ -141,10 +141,18 @@ export function createPageFile(params: {
     throw new Error(`A page already exists at ${route}. Choose another URL.`);
   }
 
-  const code =
+  let code =
     params.framework === 'html'
       ? htmlPageSource(title, params.template)
       : reactPageSource(title, params.template);
+
+  if (params.framework !== 'html') {
+    const componentRoot = params.framework === 'react-vite' ? 'src/components' : 'components';
+    const layoutPath = `${componentRoot}/SiteLayout.tsx`;
+    if (params.files[layoutPath]) {
+      code = addLayoutToReactPage(code, filePath, layoutPath) || code;
+    }
+  }
 
   return { title, route, filePath, code };
 }
