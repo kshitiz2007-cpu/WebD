@@ -1,7 +1,7 @@
 import type { ProjectFramework } from './types';
 import { addLayoutToHtmlPage, addLayoutToReactPage } from './site-kit';
 
-export type PageTemplatePreset = 'blank' | 'landing' | 'about' | 'contact' | 'pricing';
+export type PageTemplatePreset = 'blank' | 'landing' | 'about' | 'contact' | 'pricing' | 'custom';
 
 export interface GeneratedPageFile {
   title: string;
@@ -47,7 +47,7 @@ export function normalizePageSlug(value: string): string {
     .join('/');
 }
 
-function reactPageSource(title: string, template: PageTemplatePreset): string {
+function reactPageSource(title: string, template: Exclude<PageTemplatePreset, 'custom'>): string {
   const safeTitle = escapeJsx(title);
   const rawComponentName = toTitleCase(title).replace(/[^A-Za-z0-9]/g, '') || 'New';
   const componentName = /^[A-Za-z_]/.test(rawComponentName) ? rawComponentName : `Page${rawComponentName}`;
@@ -81,7 +81,7 @@ export default function ${componentName}Page() {
 `;
 }
 
-function htmlPageSource(title: string, template: PageTemplatePreset): string {
+function htmlPageSource(title: string, template: Exclude<PageTemplatePreset, 'custom'>): string {
   const safeTitle = escapeHtml(title);
   const body =
     template === 'contact'
@@ -116,6 +116,63 @@ function htmlPageSource(title: string, template: PageTemplatePreset): string {
 </html>`;
 }
 
+function stripTemplateCodeFence(value: string): string {
+  const trimmed = value.trim();
+  const match = trimmed.match(/^\`\`\`(?:tsx|jsx|ts|js|html|xml)?\\s*\\n([\\s\\S]*?)\\n\`\`\`$/i);
+  return (match ? match[1] : trimmed).trim();
+}
+
+function applyTemplatePlaceholders(source: string, title: string, slug: string, html: boolean): string {
+  const safeTitle = html ? escapeHtml(title) : title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const safeSlug = html ? escapeHtml(slug) : slug;
+  return source.replace(/\\{\\{\\s*TITLE\\s*\\}\\}/gi, safeTitle)
+    .replace(/\\{\\{\\s*SLUG\\s*\\}\\}/gi, safeSlug);
+}
+
+function customReactPageSource(title: string, slug: string, rawCode: string): string {
+  const source = applyTemplatePlaceholders(stripTemplateCodeFence(rawCode), title, slug, false);
+  if (!source) throw new Error('Paste a React component or JSX layout before creating the page.');
+  const hasDefaultExport = /export\\s+default\\s+(?:async\\s+)?(?:function|class|[A-Za-z_$][\\w$]*|\\()/m.test(source)
+    || /export\\s*\\{[^}]*\\bas\\s+default\\b[^}]*\\}/m.test(source);
+  if (hasDefaultExport) return source;
+  if (!source.includes('<') || !source.includes('>')) {
+    throw new Error('Custom React template must contain JSX or a default-exported React page component.');
+  }
+  const rawName = toTitleCase(title).replace(/[^A-Za-z0-9]/g, '') || 'Custom';
+  const componentName = /^[A-Za-z_]/.test(rawName) ? rawName : `Page${rawName}`;
+  return `'use client';
+import React from 'react';
+
+export default function ${componentName}Page() {
+  return (
+    ${source}
+  );
+}
+`;
+}
+
+function customHtmlPageSource(title: string, slug: string, rawCode: string): string {
+  const source = applyTemplatePlaceholders(stripTemplateCodeFence(rawCode), title, slug, true);
+  if (!source) throw new Error('Paste an HTML page or layout before creating the page.');
+  if (/<html[\\s>]/i.test(source) || /<!doctype\\s+html/i.test(source)) return source;
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(title)}</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,sans-serif;color:#0f172a;background:#fff}
+    img,video{max-width:100%;height:auto}
+  </style>
+</head>
+<body>
+  ${source}
+</body>
+</html>`;
+}
+
 export function createPageFile(params: {
   framework: ProjectFramework;
   title: string;
@@ -142,17 +199,25 @@ export function createPageFile(params: {
     throw new Error(`A page already exists at ${route}. Choose another URL.`);
   }
 
-  let code =
-    params.framework === 'html'
+  const isCustomTemplate = params.template === 'custom';
+  let code = isCustomTemplate
+    ? params.framework === 'html'
+      ? customHtmlPageSource(title, slug, params.customTemplateCode || '')
+      : customReactPageSource(title, slug, params.customTemplateCode || '')
+    : params.framework === 'html'
       ? htmlPageSource(title, params.template)
       : reactPageSource(title, params.template);
 
-  const componentRoot = params.framework === 'react-vite' ? 'src/components' : 'components';
-  const layoutPath = `${componentRoot}/SiteLayout.tsx`;
-  if (params.files[layoutPath]) {
-    code = params.framework === 'html'
-      ? addLayoutToHtmlPage(code)
-      : addLayoutToReactPage(code, filePath, layoutPath) || code;
+  // Built-in presets participate in the shared site kit. Custom layouts are kept
+  // as pasted so their supplied structure is not unexpectedly wrapped or altered.
+  if (!isCustomTemplate) {
+    const componentRoot = params.framework === 'react-vite' ? 'src/components' : 'components';
+    const layoutPath = `${componentRoot}/SiteLayout.tsx`;
+    if (params.files[layoutPath]) {
+      code = params.framework === 'html'
+        ? addLayoutToHtmlPage(code)
+        : addLayoutToReactPage(code, filePath, layoutPath) || code;
+    }
   }
 
   return { title, route, filePath, code };
