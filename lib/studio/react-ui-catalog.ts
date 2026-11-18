@@ -9,6 +9,7 @@ import {
   injectLibraryImportIntoSource,
 } from './library-importer';
 import { scanElements } from './source-editor';
+import { EXTRA_REACT_UI_LIBRARY_ITEMS } from './react-ui-extra-catalog';
 
 export type ReactUiCategory =
   | 'All'
@@ -17,7 +18,12 @@ export type ReactUiCategory =
   | 'Cards & Stats'
   | 'Interactive & Data'
   | 'Buttons & Inputs'
-  | 'Motion & Charts';
+  | 'Motion & Charts'
+  | 'Forms'
+  | 'Feedback'
+  | 'Commerce'
+  | 'Content'
+  | 'Dashboard';
 
 export const REACT_UI_CATEGORIES: ReactUiCategory[] = [
   'All',
@@ -27,6 +33,11 @@ export const REACT_UI_CATEGORIES: ReactUiCategory[] = [
   'Interactive & Data',
   'Buttons & Inputs',
   'Motion & Charts',
+  'Forms',
+  'Feedback',
+  'Commerce',
+  'Content',
+  'Dashboard',
 ];
 
 export interface ReactUiPackageRequirement {
@@ -1402,6 +1413,7 @@ export default function UiBarChartCard({
   </div>
 </div>`,
   },
+  ...EXTRA_REACT_UI_LIBRARY_ITEMS,
 ];
 
 export function filterReactUiCatalog(
