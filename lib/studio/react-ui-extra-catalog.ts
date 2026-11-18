@@ -17,7 +17,7 @@ export const EXTRA_REACT_UI_LIBRARY_ITEMS: ReactUiLibraryEntry[] = [
     componentSource: `'use client';
 import React, { useState } from 'react';
 export default function UiModalDialog({ title = 'Confirm your action', description = 'Are you sure you want to continue?', confirmLabel = 'Continue' }: { title?: string; description?: string; confirmLabel?: string }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   return <div className="w-full">
     <button type="button" onClick={() => setOpen(true)} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Open dialog</button>
     {open && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" role="presentation">
