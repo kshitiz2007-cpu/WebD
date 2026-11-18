@@ -24,7 +24,7 @@ function escapeJsx(value: string): string {
 
 function toTitleCase(value: string): string {
   return value
-    .split(/[-_\\s]+/)
+    .split(/[-_\s]+/)
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
@@ -33,14 +33,14 @@ function toTitleCase(value: string): string {
 export function normalizePageSlug(value: string): string {
   return value
     .trim()
-    .replace(/^\\/+|\\/+$/g, '')
+    .replace(/^\/+|\/+$/g, '')
     .split('/')
     .map((segment) =>
       segment
         .toLowerCase()
         .replace(/[^a-z0-9-_]/g, '-')
         .replace(/-+/g, '-')
-        .replace(/^[-_]+|[-_]+$/g, '')
+    .replace(/^\/+|\/+$/g, '')
     )
     .filter(Boolean)
     .join('/');
@@ -121,7 +121,7 @@ export function createPageFile(params: {
   files: Record<string, string>;
 }): GeneratedPageFile {
   const title = params.title.trim() || toTitleCase(params.slug);
-  const slug = normalizePageSlug(params.slug || title.toLowerCase().replace(/\\s+/g, '-'));
+  const slug = normalizePageSlug(params.slug || title.toLowerCase().replace(/\s+/g, '-'));
   const segments = slug.split('/').filter(Boolean);
   const route = slug ? `/${slug}` : '/';
   let filePath: string;
