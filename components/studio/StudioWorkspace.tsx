@@ -1589,12 +1589,14 @@ export default function StudioWorkspace() {
 
           {/* Visual Logic Builder (docked on desktop) */}
           {!isCompactViewport && isLogicPanelOpen && (
-            <LogicPanel
-              selected={selected}
-              rules={logicRules}
-              onChange={handleLogicRulesChange}
-              onClose={() => setIsLogicPanelOpen(false)}
-            />
+            <div className="absolute inset-y-0 right-0 z-40 flex shadow-xl">
+              <LogicPanel
+                selected={selected}
+                rules={logicRules}
+                onChange={handleLogicRulesChange}
+                onClose={() => setIsLogicPanelOpen(false)}
+              />
+            </div>
           )}
 
           {/* Global Styles Manager (docked on desktop) */}
