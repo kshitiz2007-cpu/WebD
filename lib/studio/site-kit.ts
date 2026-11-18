@@ -82,7 +82,7 @@ export default function SiteFooter() {
 `;
 }
 
-function addLayoutToReactPage(
+export function addLayoutToReactPage(
   code: string,
   pagePath: string,
   layoutPath: string
