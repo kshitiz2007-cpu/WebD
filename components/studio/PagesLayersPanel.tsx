@@ -80,6 +80,7 @@ export default function PagesLayersPanel({
   const [pageTemplate, setPageTemplate] = useState<PageTemplatePreset>('landing');
   const [pageError, setPageError] = useState('');
   const [siteKitError, setSiteKitError] = useState('');
+  const [siteKitApplied, setSiteKitApplied] = useState(false);
 
   const toggleCollapse = (id: string) => {
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -288,10 +289,12 @@ export default function PagesLayersPanel({
                 <p className="text-[10px] leading-4 text-violet-800/80">Add one reusable header, footer and layout across every page. Edit them once in Components to update the whole site.</p>
                 <button type="button" onClick={() => {
                   const created = onCreateSiteKit();
+                  setSiteKitApplied(created);
                   setSiteKitError(created ? '' : 'Could not apply the site kit. Check for existing custom SiteLayout files.');
                 }} className="w-full rounded-md bg-violet-600 px-2.5 py-2 text-[11px] font-semibold text-white hover:bg-violet-700">
                   Generate shared site kit
                 </button>
+                {siteKitApplied && <p role="status" className="text-[10px] leading-4 text-emerald-700">Shared header, footer and layout applied. Edit SiteHeader or SiteFooter in Components to update every connected page.</p>}
                 {siteKitError && <p role="alert" className="text-[10px] text-rose-600">{siteKitError}</p>}
               </div>
             )}
