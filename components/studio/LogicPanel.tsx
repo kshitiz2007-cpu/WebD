@@ -36,7 +36,7 @@ const labelClass = 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wi
 function createRule(selected: StudioElementSnapshot | null): VisualLogicRule {
   return {
     id: `logic-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    componentId: selected?.studioId || '',
+    componentId: selected?.instanceStudioId || selected?.studioId || '',
     componentLabel: selected ? `<${selected.tagName.toLowerCase()}>` : 'Select a component',
     trigger: 'onClick',
     action: 'show',
@@ -49,7 +49,7 @@ function createRule(selected: StudioElementSnapshot | null): VisualLogicRule {
 export default function LogicPanel({ selected, rules, availableTargets = [], onChange, onClose, isBottomSheet = false }: LogicPanelProps) {
   const [mode, setMode] = useState<'basic' | 'flow'>('basic');
   const selectedRules = useMemo(
-    () => selected ? rules.filter((rule) => rule.componentId === selected.studioId) : rules,
+    () => selected ? rules.filter((rule) => rule.componentId === (selected.instanceStudioId || selected.studioId)) : rules,
     [rules, selected]
   );
 
