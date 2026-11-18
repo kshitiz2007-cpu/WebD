@@ -1,4 +1,4 @@
-import type { ProjectFramework } from './types';
+import type { ProjectFramework, ProjectPage } from './types';
 
 export interface SiteKitResult {
   files: Record<string, string>;
@@ -46,16 +46,12 @@ export default function SiteLayout({
 `;
 }
 
-function sharedHeaderSource(): string {
+function sharedHeaderSource(pages: ProjectPage[]): string {
   return `'use client';
 import React from 'react';
 
-const links = [
-  { label: 'Home', href: '/' },
-  { label: 'About', href: '/about' },
-  { label: 'Services', href: '/services' },
-  { label: 'Contact', href: '/contact' },
-];
+const links = ${JSON.stringify(pages.map((page) => ({ label: page.title, href: page.route })))};
+
 
 export default function SiteHeader() {
   return (
@@ -176,7 +172,7 @@ export function addLayoutToHtmlPage(code: string): string {
 export function createSharedSiteKit(params: {
   framework: ProjectFramework;
   files: Record<string, string>;
-  pagePaths: string[];
+  pages: ProjectPage[];
 }): SiteKitResult {
   const files = { ...params.files };
   const componentRoot = params.framework === 'react-vite' ? 'src/components' : 'components';
@@ -195,11 +191,11 @@ export function createSharedSiteKit(params: {
   }
 
   files[layoutPath] = sharedLayoutSource();
-  files[headerPath] = sharedHeaderSource().replace("'use client';", "'use client';\n// WEBD_SHARED_SITE_HEADER");
+  files[headerPath] = sharedHeaderSource(params.pages).replace("'use client';", "'use client';\n// WEBD_SHARED_SITE_HEADER");
   files[footerPath] = sharedFooterSource().replace("'use client';", "'use client';\n// WEBD_SHARED_SITE_FOOTER");
 
   const updatedPages: string[] = [];
-  for (const pagePath of params.pagePaths) {
+  for (const pagePath of params.pages.map((page) => page.filePath)) {
     const code = files[pagePath];
     if (!code) continue;
     if (/\.(tsx|jsx)$/i.test(pagePath)) {
