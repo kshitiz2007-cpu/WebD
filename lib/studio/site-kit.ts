@@ -95,40 +95,40 @@ export function addLayoutToReactPage(
   pagePath: string,
   layoutPath: string
 ): string | null {
-  if (/import\\s+SiteLayout\\s+from\\s+['"]/.test(code) || code.includes('<SiteLayout')) return code;
+  if (/import\s+SiteLayout\s+from\s+['"]/.test(code) || code.includes('<SiteLayout')) return code;
 
   let next = code;
   let useSharedHeader = false;
   let useSharedFooter = false;
 
-  if (/import\\s+Navbar\\s+from\\s+['"][^'"]+['"];?/.test(next) && /<Navbar\\b/.test(next)) {
-    next = next.replace(/import\\s+Navbar\\s+from\\s+['"][^'"]+['"];?\\s*\\n?/, '');
-    next = next.replace(/<Navbar\\b[^>]*\\/>/g, '<SiteHeader />');
+  if (/import\s+Navbar\s+from\s+['"][^'"]+['"];?/.test(next) && /<Navbar\b/.test(next)) {
+    next = next.replace(/import\s+Navbar\s+from\s+['"][^'"]+['"];?\s*\n?/, '');
+    next = next.replace(/<Navbar\b[^>]*\/>/g, '<SiteHeader />');
     useSharedHeader = true;
   }
 
-  if (/<footer\\b[\\s\\S]*?<\\/footer>/.test(next)) {
-    next = next.replace(/<footer\\b[\\s\\S]*?<\\/footer>/, '<SiteFooter />');
+  if (/<footer\b[\s\S]*?<\/footer>/.test(next)) {
+    next = next.replace(/<footer\b[\s\S]*?<\/footer>/, '<SiteFooter />');
     useSharedFooter = true;
   }
 
-  const returnPattern = /return\\s*\\(\\s*([\\s\\S]*?)\\n\\s*\\);/g;
+  const returnPattern = /return\s*\(\s*([\s\S]*?)\n\s*\);/g;
   let match: RegExpExecArray | null;
   let lastMatch: RegExpExecArray | null = null;
   while ((match = returnPattern.exec(next)) !== null) lastMatch = match;
   if (!lastMatch) return null;
 
-  const layoutImport = relativeImport(pagePath, layoutPath.replace(/\\.tsx$/, ''));
-  const componentRoot = layoutPath.replace(/\\/SiteLayout\\.tsx$/, '');
+  const layoutImport = relativeImport(pagePath, layoutPath.replace(/\.tsx$/, ''));
+  const componentRoot = layoutPath.replace(/\/SiteLayout\.tsx$/, '');
   const headerImport = relativeImport(pagePath, `${componentRoot}/SiteHeader`);
   const footerImport = relativeImport(pagePath, `${componentRoot}/SiteFooter`);
-  const hasExistingHeader = useSharedHeader || /<header\\b/.test(next);
-  const hasExistingFooter = useSharedFooter || /<footer\\b/.test(next);
+  const hasExistingHeader = useSharedHeader || /<header\b/.test(next);
+  const hasExistingFooter = useSharedFooter || /<footer\b/.test(next);
   const imports = [
     `import SiteLayout from '${layoutImport}';`,
     ...(useSharedHeader ? [`import SiteHeader from '${headerImport}';`] : []),
     ...(useSharedFooter ? [`import SiteFooter from '${footerImport}';`] : []),
-  ].join('\\n');
+  ].join('\n');
   const wrappedReturn = `return (
     <SiteLayout showHeader={${!hasExistingHeader}} showFooter={${!hasExistingFooter}}>
 ${lastMatch[1]}
@@ -136,13 +136,13 @@ ${lastMatch[1]}
   );`;
   next = next.slice(0, lastMatch.index) + wrappedReturn + next.slice(lastMatch.index + lastMatch[0].length);
 
-  const reactImport = /import\\s+React[^;]*;?/;
+  const reactImport = /import\s+React[^;]*;?/;
   const reactMatch = reactImport.exec(next);
   if (reactMatch) {
     const insertAt = reactMatch.index + reactMatch[0].length;
-    next = next.slice(0, insertAt) + '\\n' + imports + next.slice(insertAt);
+    next = next.slice(0, insertAt) + '\n' + imports + next.slice(insertAt);
   } else {
-    next = imports + '\\n' + next;
+    next = imports + '\n' + next;
   }
   return next;
 }
