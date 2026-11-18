@@ -36,7 +36,7 @@ export default function SiteLayout({
   showFooter?: boolean;
 }) {
   return (
-    <div className="flex min-h-screen flex-col bg-white text-slate-900">
+    <div className="flex min-h-screen flex-col bg-white text-slate-900" style={{ "--site-primary": "#4f46e5", "--site-primary-hover": "#4338ca", "--site-radius": "16px" } as React.CSSProperties}>
       {showHeader && <SiteHeader />}
       <div className="min-h-0 flex-1">{children}</div>
       {showFooter && <SiteFooter />}
