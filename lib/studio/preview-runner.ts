@@ -140,9 +140,18 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
     var form = event.target;
     var sid = form && form.getAttribute ? form.getAttribute('data-studio-id') : null;
     runLogicForEvent('onSubmit', event);
-    if (CURRENT_MODE === 'interact' && sid && LOGIC_RULES.some(function(rule) {
-      return rule && rule.enabled !== false && rule.trigger === 'onSubmit' && rule.componentId === sid;
-    })) event.preventDefault();
+    if (CURRENT_MODE === 'interact') {
+      var formIds = [];
+      var formCursor = form;
+      while (formCursor && formCursor !== document.documentElement) {
+        var formId = formCursor.getAttribute && formCursor.getAttribute('data-studio-id');
+        if (formId) formIds.push(formId);
+        formCursor = formCursor.parentElement;
+      }
+      if (LOGIC_RULES.some(function(rule) {
+        return rule && rule.enabled !== false && rule.trigger === 'onSubmit' && formIds.indexOf(rule.componentId) !== -1;
+      })) event.preventDefault();
+    }
   }, true);
   document.addEventListener('mouseover', function(event) {
     if (event.relatedTarget && event.target && event.target.contains && event.target.contains(event.relatedTarget)) return;
