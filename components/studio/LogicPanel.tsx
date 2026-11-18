@@ -63,7 +63,7 @@ function createRule(selected: StudioElementSnapshot | null): VisualLogicRule {
     enabled: true,
     conditionOperator: 'always',
     conditionValue: '',
-    valueSource: 'literal',
+    valueSource: 'eventValue',
   };
 }
 
