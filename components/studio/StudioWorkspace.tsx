@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Code2, Layers, Monitor, Palette, SlidersHorizontal, Smartphone, Sparkles, Tablet } from 'lucide-react';
+import LogicPanel, { VisualLogicRule } from './LogicPanel';
 import TopToolbar from './TopToolbar';
 import PagesLayersPanel from './PagesLayersPanel';
 import VisualCanvas from './VisualCanvas';
@@ -112,6 +113,7 @@ export default function StudioWorkspace() {
   const [pseudoState, setPseudoState] = useState<'default' | 'hover' | 'focus'>('default');
   const [layerTree, setLayerTree] = useState<LayerTreeNode[]>([]);
   const [isCodeDrawerOpen, setIsCodeDrawerOpen] = useState(false);
+  const [isLogicPanelOpen, setIsLogicPanelOpen] = useState(false);
   const [codeDrawerFile, setCodeDrawerFile] = useState<string>('app/page.tsx');
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isDraftsOpen, setIsDraftsOpen] = useState(false);
@@ -288,6 +290,21 @@ export default function StudioWorkspace() {
       projectComponents.map((c) => c.name)
     );
   }, [selected?.filePath, canvasTargetPage.filePath, project.files, projectComponents]);
+
+  const logicRules = useMemo<VisualLogicRule[]>(() => {
+    try {
+      const raw = project.files['webd.logic.json'];
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }, [project.files]);
+
+  const handleLogicRulesChange = useCallback((nextRules: VisualLogicRule[]) => {
+    commitFilesMutation({ ...project.files, 'webd.logic.json': JSON.stringify(nextRules, null, 2) });
+  }, [project.files, commitFilesMutation]);
 
   const packageDependencies = useMemo(
     () => parsePackageDependencies(project.files),
@@ -1417,6 +1434,8 @@ export default function StudioWorkspace() {
         onToggleGradientPanel={handleToggleGradientPanel}
         showGlobalStylesPanel={showGlobalStylesPanel}
         onToggleGlobalStylesPanel={handleToggleGlobalStylesPanel}
+        showLogicPanel={isLogicPanelOpen}
+        onToggleLogicPanel={() => setIsLogicPanelOpen((v) => !v)}
         savedDraftsCount={savedDrafts.length}
         justSavedDraft={justSavedDraft}
         onQuickSaveDraft={handleQuickSaveDraft}
@@ -1481,7 +1500,8 @@ export default function StudioWorkspace() {
             showRightPanel ||
             showGradientPanel ||
             showGlobalStylesPanel ||
-            showSmartAligner) && (
+            showSmartAligner ||
+            isLogicPanelOpen) && (
             <button
               type="button"
               aria-label="Close panel drawer"
@@ -1491,6 +1511,7 @@ export default function StudioWorkspace() {
                 setCompactGradientOpen(false);
                 setCompactGlobalStylesOpen(false);
                 setCompactSmartAlignerOpen(false);
+                setIsLogicPanelOpen(false);
               }}
               className="absolute inset-0 z-30 bg-slate-900/30"
             />
@@ -1563,6 +1584,16 @@ export default function StudioWorkspace() {
               onPreviewStyles={handlePreviewStyles}
               onCommitPatch={handleCommitPatch}
               onClose={() => setDesktopGradientOpen(false)}
+            />
+          )}
+
+          {/* Visual Logic Builder (docked on desktop) */}
+          {!isCompactViewport && isLogicPanelOpen && (
+            <LogicPanel
+              selected={selected}
+              rules={logicRules}
+              onChange={handleLogicRulesChange}
+              onClose={() => setIsLogicPanelOpen(false)}
             />
           )}
 
@@ -1656,6 +1687,19 @@ export default function StudioWorkspace() {
                 handleOpenInMonaco(path);
               }}
               onClose={() => setCompactGlobalStylesOpen(false)}
+              isBottomSheet={isPhoneViewport}
+            />
+          </div>
+        )}
+
+        {/* Visual Logic Builder (bottom sheet / drawer on compact screens) */}
+        {isCompactViewport && isLogicPanelOpen && (
+          <div className={isPhoneViewport ? 'absolute inset-x-0 bottom-0 z-40 flex h-[74vh] max-h-[620px] rounded-t-2xl shadow-2xl overflow-hidden' : 'absolute inset-y-0 right-0 z-40 flex shadow-xl'}>
+            <LogicPanel
+              selected={selected}
+              rules={logicRules}
+              onChange={handleLogicRulesChange}
+              onClose={() => setIsLogicPanelOpen(false)}
               isBottomSheet={isPhoneViewport}
             />
           </div>
