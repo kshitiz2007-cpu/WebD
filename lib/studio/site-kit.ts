@@ -26,12 +26,20 @@ import React from 'react';
 import SiteHeader from './SiteHeader';
 import SiteFooter from './SiteFooter';
 
-export default function SiteLayout({ children }: { children: React.ReactNode }) {
+export default function SiteLayout({
+  children,
+  showHeader = true,
+  showFooter = true,
+}: {
+  children: React.ReactNode;
+  showHeader?: boolean;
+  showFooter?: boolean;
+}) {
   return (
-    <div className="flex min-h-screen flex-col bg-white text-slate-900" style={{ ['--site-primary' as string]: '#4f46e5' }}>
-      <SiteHeader />
+    <div className="flex min-h-screen flex-col bg-white text-slate-900">
+      {showHeader && <SiteHeader />}
       <div className="min-h-0 flex-1">{children}</div>
-      <SiteFooter />
+      {showFooter && <SiteFooter />}
     </div>
   );
 }
@@ -87,28 +95,54 @@ export function addLayoutToReactPage(
   pagePath: string,
   layoutPath: string
 ): string | null {
-  if (/import\s+SiteLayout\s+from\s+['"]/.test(code) || code.includes('<SiteLayout')) return code;
-  const returnPattern = /return\s*\(\s*([\s\S]*?)\n\s*\);/g;
+  if (/import\\s+SiteLayout\\s+from\\s+['"]/.test(code) || code.includes('<SiteLayout')) return code;
+
+  let next = code;
+  let useSharedHeader = false;
+  let useSharedFooter = false;
+
+  if (/import\\s+Navbar\\s+from\\s+['"][^'"]+['"];?/.test(next) && /<Navbar\\b/.test(next)) {
+    next = next.replace(/import\\s+Navbar\\s+from\\s+['"][^'"]+['"];?\\s*\\n?/, '');
+    next = next.replace(/<Navbar\\b[^>]*\\/>/g, '<SiteHeader />');
+    useSharedHeader = true;
+  }
+
+  if (/<footer\\b[\\s\\S]*?<\\/footer>/.test(next)) {
+    next = next.replace(/<footer\\b[\\s\\S]*?<\\/footer>/, '<SiteFooter />');
+    useSharedFooter = true;
+  }
+
+  const returnPattern = /return\\s*\\(\\s*([\\s\\S]*?)\\n\\s*\\);/g;
   let match: RegExpExecArray | null;
   let lastMatch: RegExpExecArray | null = null;
-  while ((match = returnPattern.exec(code)) !== null) lastMatch = match;
+  while ((match = returnPattern.exec(next)) !== null) lastMatch = match;
   if (!lastMatch) return null;
 
-  const importPath = relativeImport(pagePath, layoutPath.replace(/\.tsx$/, ''));
+  const layoutImport = relativeImport(pagePath, layoutPath.replace(/\\.tsx$/, ''));
+  const componentRoot = layoutPath.replace(/\\/SiteLayout\\.tsx$/, '');
+  const headerImport = relativeImport(pagePath, `${componentRoot}/SiteHeader`);
+  const footerImport = relativeImport(pagePath, `${componentRoot}/SiteFooter`);
+  const hasExistingHeader = useSharedHeader || /<header\\b/.test(next);
+  const hasExistingFooter = useSharedFooter || /<footer\\b/.test(next);
+  const imports = [
+    `import SiteLayout from '${layoutImport}';`,
+    ...(useSharedHeader ? [`import SiteHeader from '${headerImport}';`] : []),
+    ...(useSharedFooter ? [`import SiteFooter from '${footerImport}';`] : []),
+  ].join('\\n');
   const wrappedReturn = `return (
-    <SiteLayout>
+    <SiteLayout showHeader={${!hasExistingHeader}} showFooter={${!hasExistingFooter}}>
 ${lastMatch[1]}
     </SiteLayout>
   );`;
-  let next = code.slice(0, lastMatch.index) + wrappedReturn + code.slice(lastMatch.index + lastMatch[0].length);
-  const reactImport = /import\s+React[^;]*;?/;
+  next = next.slice(0, lastMatch.index) + wrappedReturn + next.slice(lastMatch.index + lastMatch[0].length);
+
+  const reactImport = /import\\s+React[^;]*;?/;
   const reactMatch = reactImport.exec(next);
-  const importLine = `import SiteLayout from '${importPath}';`;
   if (reactMatch) {
     const insertAt = reactMatch.index + reactMatch[0].length;
-    next = next.slice(0, insertAt) + '\n' + importLine + next.slice(insertAt);
+    next = next.slice(0, insertAt) + '\\n' + imports + next.slice(insertAt);
   } else {
-    next = importLine + '\n' + next;
+    next = imports + '\\n' + next;
   }
   return next;
 }
