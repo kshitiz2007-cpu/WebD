@@ -408,6 +408,16 @@ export default function StudioWorkspace() {
     [project.files]
   );
 
+  const logicTargets = useMemo(() => {
+    const items: Array<{ id: string; label: string }> = [];
+    const visit = (nodes: LayerTreeNode[]) => nodes.forEach((node) => {
+      items.push({ id: node.studioId, label: node.label || node.tagName });
+      visit(node.children || []);
+    });
+    visit(layerTree);
+    return items;
+  }, [layerTree]);
+
   const handleLogicRulesChange = useCallback((nextRules: VisualLogicRule[]) => {
     commitFilesMutation({ ...project.files, 'webd.logic.json': JSON.stringify(nextRules, null, 2) });
   }, [project.files, commitFilesMutation]);
@@ -1520,6 +1530,7 @@ export default function StudioWorkspace() {
         <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
           <VisualCanvas
             project={project}
+            logicRules={logicRules}
             activePage={canvasTargetPage}
             compiledTailwindCss={compiledTailwindCss}
             viewport={viewport}
@@ -1593,6 +1604,7 @@ export default function StudioWorkspace() {
               <LogicPanel
                 selected={selected}
                 rules={logicRules}
+                availableTargets={logicTargets}
                 onChange={handleLogicRulesChange}
                 onClose={() => setIsLogicPanelOpen(false)}
               />
@@ -1700,6 +1712,7 @@ export default function StudioWorkspace() {
             <LogicPanel
               selected={selected}
               rules={logicRules}
+              availableTargets={logicTargets}
               onChange={handleLogicRulesChange}
               onClose={() => setIsLogicPanelOpen(false)}
               isBottomSheet={isPhoneViewport}
