@@ -561,8 +561,8 @@ export default function StudioWorkspace() {
     if (!targetCode) return;
     const targetElementIndex = parsedTarget?.elementIndex ??
       (selected?.filePath === filePath ? selected.elementIndex : 0);
-    const isHtml = /\\.html?$/i.test(filePath);
-    const compatibleSnippet = isHtml ? snippet.replace(/\\bclassName=/g, 'class=') : snippet;
+    const isHtml = /\.html?$/i.test(filePath);
+    const compatibleSnippet = isHtml ? snippet.replace(/\bclassName=/g, 'class=') : snippet;
     const updated = insertJsxSnippetIntoSource({
       targetCode,
       targetElementIndex,
