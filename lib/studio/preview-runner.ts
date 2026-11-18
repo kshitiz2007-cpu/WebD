@@ -84,11 +84,11 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       return;
     }
     if (rule.action === 'show') {
-      if (target.dataset.studioLogicDisplay !== undefined) {
-        target.style.display = target.dataset.studioLogicDisplay;
-        delete target.dataset.studioLogicDisplay;
-      } else target.style.display = '';
+      var showDisplay = target.dataset.studioLogicDisplay;
       target.hidden = false;
+      target.style.display = showDisplay && showDisplay !== 'none' ? showDisplay : '';
+      delete target.dataset.studioLogicDisplay;
+      if (window.getComputedStyle(target).display === 'none') target.style.display = 'block';
     } else if (rule.action === 'hide') {
       if (target.dataset.studioLogicDisplay === undefined) target.dataset.studioLogicDisplay = target.style.display || '';
       target.style.display = 'none';
@@ -96,9 +96,11 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
     } else if (rule.action === 'toggle') {
       var isHidden = target.hidden || window.getComputedStyle(target).display === 'none';
       if (isHidden) {
+        var restoreDisplay = target.dataset.studioLogicDisplay;
         target.hidden = false;
-        target.style.display = target.dataset.studioLogicDisplay !== undefined ? target.dataset.studioLogicDisplay : '';
+        target.style.display = restoreDisplay && restoreDisplay !== 'none' ? restoreDisplay : '';
         delete target.dataset.studioLogicDisplay;
+        if (window.getComputedStyle(target).display === 'none') target.style.display = 'block';
       } else {
         target.dataset.studioLogicDisplay = target.style.display || '';
         target.style.display = 'none';
@@ -120,19 +122,27 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
 
   function runLogicForEvent(trigger, event) {
     if (CURRENT_MODE !== 'interact') return;
-    var node = event.target && event.target.closest ? event.target.closest('[data-studio-id]') : null;
-    if (!node) return;
-    var ids = [];
-    var cursor = node;
-    while (cursor && cursor !== document.documentElement) {
-      var id = cursor.getAttribute && cursor.getAttribute('data-studio-id');
-      var instanceId = cursor.getAttribute && cursor.getAttribute('data-studio-instance');
-      if (id && ids.indexOf(id) === -1) ids.push(id);
-      if (instanceId && ids.indexOf(instanceId) === -1) ids.push(instanceId);
-      cursor = cursor.parentElement;
-    }
+    var seeds = [event.target];
+    if (trigger === 'onSubmit' && event.submitter) seeds.push(event.submitter);
+    var matched = [];
+    seeds.forEach(function(seed) {
+      var node = seed && seed.closest ? seed.closest('[data-studio-id], [data-studio-instance]') : null;
+      var cursor = node;
+      while (cursor && cursor !== document.documentElement) {
+        var id = cursor.getAttribute && cursor.getAttribute('data-studio-id');
+        var instanceId = cursor.getAttribute && cursor.getAttribute('data-studio-instance');
+        if (id && !matched.some(function(entry) { return entry.id === id; })) matched.push({ id: id, node: cursor });
+        if (instanceId && !matched.some(function(entry) { return entry.id === instanceId; })) matched.push({ id: instanceId, node: cursor });
+        cursor = cursor.parentElement;
+      }
+    });
+    if (!matched.length) return;
     LOGIC_RULES.forEach(function(rule) {
-      if (rule && rule.enabled !== false && rule.trigger === trigger && ids.indexOf(rule.componentId) !== -1) runLogicRule(rule);
+      if (!rule || rule.enabled === false || rule.trigger !== trigger) return;
+      var owner = matched.find(function(entry) { return entry.id === rule.componentId; });
+      if (!owner) return;
+      if (trigger === 'onMouseEnter' && event.relatedTarget && owner.node.contains(event.relatedTarget)) return;
+      runLogicRule(rule);
     });
   }
 
