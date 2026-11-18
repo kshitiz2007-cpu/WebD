@@ -52,6 +52,7 @@ export default function PagesLayersPanel({
   activeRoute,
   onSelectPage,
   onCreatePage,
+  onCreateSiteKit,
   components = [],
   isolatedComponentPath = null,
   onSelectComponent,
