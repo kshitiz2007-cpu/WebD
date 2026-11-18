@@ -205,6 +205,28 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
   document.addEventListener('input', function(event) { runLogicForEvent('onInput', event); }, true);
   document.addEventListener('click', function(event) { runLogicForEvent('onClick', event); }, true);
   document.addEventListener('change', function(event) { runLogicForEvent('onChange', event); }, true);
+  // Treat Enter in a standalone input as a submit action too. Search fields are
+  // often not wrapped in a native <form>, so the regular submit event never fires.
+  document.addEventListener('keydown', function(event) {
+    var field = event.target;
+    if (event.key !== 'Enter' || !field || !field.matches ||
+        !field.matches('input:not([type="button"]):not([type="submit"]), select')) return;
+    runLogicForEvent('onSubmit', event);
+    if (CURRENT_MODE !== 'interact') return;
+    var ids = [];
+    var cursor = field;
+    while (cursor && cursor !== document.documentElement) {
+      var id = cursor.getAttribute && cursor.getAttribute('data-studio-id');
+      var instanceId = cursor.getAttribute && cursor.getAttribute('data-studio-instance');
+      if (id) ids.push(id);
+      if (instanceId) ids.push(instanceId);
+      cursor = cursor.parentElement;
+    }
+    if (LOGIC_RULES.some(function(rule) {
+      return rule && rule.enabled !== false && rule.trigger === 'onSubmit' &&
+        ids.indexOf(rule.componentId) !== -1 && conditionMatches(rule, event);
+    })) event.preventDefault();
+  }, true);
   document.addEventListener('submit', function(event) {
     var form = event.target;
     var sid = form && form.getAttribute ? form.getAttribute('data-studio-id') : null;
