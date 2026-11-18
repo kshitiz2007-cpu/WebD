@@ -446,10 +446,14 @@ export default function StudioWorkspace() {
     const previous = historyPast[historyPast.length - 1];
     setHistoryPast((prev) => prev.slice(0, -1));
     setHistoryFuture((prev) => [project.files, ...prev.slice(0, 49)]);
-    const nextCssPaths = Object.keys(previous)
-      .filter((p) => /\.css$/i.test(p))
-      .sort();
-    setProject((prev) => ({ ...prev, files: previous, globalCssPaths: nextCssPaths }));
+    const scanned = scanProjectStructure(previous);
+    setProject((prev) => ({
+      ...prev,
+      files: previous,
+      pages: scanned.pages,
+      framework: scanned.framework,
+      globalCssPaths: scanned.globalCssPaths,
+    }));
   }, [historyPast, project.files]);
 
   const handleRedo = useCallback(() => {
@@ -457,10 +461,14 @@ export default function StudioWorkspace() {
     const next = historyFuture[0];
     setHistoryFuture((prev) => prev.slice(1));
     setHistoryPast((prev) => [...prev.slice(-49), project.files]);
-    const nextCssPaths = Object.keys(next)
-      .filter((p) => /\.css$/i.test(p))
-      .sort();
-    setProject((prev) => ({ ...prev, files: next, globalCssPaths: nextCssPaths }));
+    const scanned = scanProjectStructure(next);
+    setProject((prev) => ({
+      ...prev,
+      files: next,
+      pages: scanned.pages,
+      framework: scanned.framework,
+      globalCssPaths: scanned.globalCssPaths,
+    }));
   }, [historyFuture, project.files]);
 
   useEffect(() => {
