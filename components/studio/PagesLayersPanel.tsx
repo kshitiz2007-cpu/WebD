@@ -20,11 +20,13 @@ import {
   ProjectComponentInfo,
 } from '@/lib/studio/component-editor';
 import { LayerTreeNode, ProjectPage } from '@/lib/studio/types';
+import type { PageTemplatePreset } from '@/lib/studio/page-generator';
 
 interface PagesLayersPanelProps {
   pages: ProjectPage[];
   activeRoute: string;
   onSelectPage: (route: string) => void;
+  onCreatePage?: (title: string, slug: string, template: PageTemplatePreset) => boolean;
   components?: ProjectComponentInfo[];
   isolatedComponentPath?: string | null;
   onSelectComponent?: (filePath: string) => void;
@@ -48,6 +50,7 @@ export default function PagesLayersPanel({
   pages,
   activeRoute,
   onSelectPage,
+  onCreatePage,
   components = [],
   isolatedComponentPath = null,
   onSelectComponent,
@@ -70,6 +73,11 @@ export default function PagesLayersPanel({
   const [topSectionTab, setTopSectionTab] = useState<'pages' | 'components'>('pages');
   const [newCompName, setNewCompName] = useState('');
   const [compPreset, setCompPreset] = useState<ComponentTemplatePreset>('card');
+  const [showNewPage, setShowNewPage] = useState(false);
+  const [newPageTitle, setNewPageTitle] = useState('New Page');
+  const [newPageSlug, setNewPageSlug] = useState('new-page');
+  const [pageTemplate, setPageTemplate] = useState<PageTemplatePreset>('landing');
+  const [pageError, setPageError] = useState('');
 
   const toggleCollapse = (id: string) => {
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -230,7 +238,47 @@ export default function PagesLayersPanel({
         </div>
 
         {topSectionTab === 'pages' ? (
-          <nav aria-label="Project pages" className="max-h-44 space-y-0.5 overflow-y-auto studio-scroll">
+          <div className="space-y-2">
+            {onCreatePage && (
+              <div className="space-y-2">
+                <button type="button" onClick={() => { setShowNewPage((value) => !value); setPageError(''); }} className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-indigo-300 bg-indigo-50 px-2.5 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100">
+                  <Plus className="h-3.5 w-3.5" />Create visual page
+                </button>
+                {showNewPage && (
+                  <form className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5" onSubmit={(event) => {
+                    event.preventDefault();
+                    const created = onCreatePage(newPageTitle, newPageSlug, pageTemplate);
+                    if (created) {
+                      setShowNewPage(false); setPageError(''); setNewPageTitle('New Page'); setNewPageSlug('new-page');
+                    } else {
+                      setPageError('This route already exists or the page name is invalid.');
+                    }
+                  }}>
+                    <label className="block text-[10px] font-semibold text-slate-600">Page name
+                      <input value={newPageTitle} onChange={(event) => {
+                        const value = event.target.value; setNewPageTitle(value);
+                        setNewPageSlug(value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''));
+                      }} className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800 outline-none focus:border-indigo-500" placeholder="About us" required />
+                    </label>
+                    <label className="block text-[10px] font-semibold text-slate-600">URL path
+                      <div className="mt-1 flex h-8 items-center rounded-md border border-slate-200 bg-white px-2 text-xs"><span className="text-slate-400">/</span><input value={newPageSlug} onChange={(event) => setNewPageSlug(event.target.value)} className="min-w-0 flex-1 bg-transparent pl-0.5 text-slate-800 outline-none" placeholder="about" /></div>
+                    </label>
+                    <label className="block text-[10px] font-semibold text-slate-600">Start from
+                      <select value={pageTemplate} onChange={(event) => setPageTemplate(event.target.value as PageTemplatePreset)} className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-normal text-slate-800">
+                        <option value="landing">Landing page</option><option value="blank">Blank canvas</option><option value="about">About page</option><option value="contact">Contact page</option><option value="pricing">Pricing page</option>
+                      </select>
+                    </label>
+                    {pageError && <p role="alert" className="text-[10px] text-rose-600">{pageError}</p>}
+                    <div className="flex gap-1.5">
+                      <button type="button" onClick={() => setShowNewPage(false)} className="h-8 flex-1 rounded-md border border-slate-200 bg-white text-xs font-medium text-slate-600">Cancel</button>
+                      <button type="submit" className="h-8 flex-1 rounded-md bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-700">Create page</button>
+                    </div>
+                    <p className="text-[10px] leading-4 text-slate-400">Creates a real page file. Visual edits stay synced to source code.</p>
+                  </form>
+                )}
+              </div>
+            )}
+            <nav aria-label="Project pages" className="max-h-44 space-y-0.5 overflow-y-auto studio-scroll">
             {pages.map((page) => {
               const active = !isolatedComponentPath && page.route === activeRoute;
               return (
@@ -255,7 +303,8 @@ export default function PagesLayersPanel({
                 </button>
               );
             })}
-          </nav>
+            </nav>
+          </div>
         ) : (
           <div className="space-y-2">
             {onCreateComponent && (
