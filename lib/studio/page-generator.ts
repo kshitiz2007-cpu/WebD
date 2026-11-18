@@ -210,13 +210,16 @@ export function createPageFile(params: {
   }
 
   const isCustomTemplate = params.template === 'custom';
-  let code = isCustomTemplate
-    ? params.framework === 'html'
+  let code: string;
+  if (params.template === 'custom') {
+    code = params.framework === 'html'
       ? customHtmlPageSource(title, slug, params.customTemplateCode || '')
-      : customReactPageSource(title, slug, params.customTemplateCode || '')
-    : params.framework === 'html'
-      ? htmlPageSource(title, params.template)
-      : reactPageSource(title, params.template);
+      : customReactPageSource(title, slug, params.customTemplateCode || '');
+  } else if (params.framework === 'html') {
+    code = htmlPageSource(title, params.template);
+  } else {
+    code = reactPageSource(title, params.template);
+  }
 
   // Built-in presets participate in the shared site kit. Custom layouts are kept
   // as pasted so their supplied structure is not unexpectedly wrapped or altered.
