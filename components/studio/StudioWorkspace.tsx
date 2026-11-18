@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Code2, Layers, Monitor, Palette, SlidersHorizontal, Smartphone, Sparkles, Tablet } from 'lucide-react';
+import { Code2, GitBranch, Layers, Monitor, Palette, SlidersHorizontal, Smartphone, Sparkles, Tablet } from 'lucide-react';
 import LogicPanel, { VisualLogicRule } from './LogicPanel';
 import TopToolbar from './TopToolbar';
 import PagesLayersPanel from './PagesLayersPanel';
@@ -1827,6 +1827,16 @@ export default function StudioWorkspace() {
         </div>
 
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setIsLogicPanelOpen((v) => !v)}
+            aria-pressed={isLogicPanelOpen}
+            aria-label="Toggle logic builder"
+            className={`inline-flex h-9 items-center gap-1 rounded-lg border px-2 text-xs font-medium whitespace-nowrap transition-colors ${isLogicPanelOpen ? 'border-violet-600 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+          >
+            <GitBranch className="h-3.5 w-3.5 shrink-0" />
+            <span className="hidden sm:inline">Logic</span>
+          </button>
           <button
             type="button"
             onClick={handleToggleGradientPanel}
