@@ -2,7 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Code2, GitBranch, Layers, Monitor, Palette, SlidersHorizontal, Smartphone, Sparkles, Tablet } from 'lucide-react';
-import LogicPanel, { type VisualLogicRule } from './LogicPanel';
+import LogicPanel from './LogicPanel';
+import { normalizeLogicRules, type VisualLogicRule } from '@/lib/studio/logic-engine';
 import TopToolbar from './TopToolbar';
 import PagesLayersPanel from './PagesLayersPanel';
 import VisualCanvas from './VisualCanvas';
@@ -295,8 +296,7 @@ export default function StudioWorkspace() {
     try {
       const raw = project.files['webd.logic.json'];
       if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      return normalizeLogicRules(JSON.parse(raw));
     } catch {
       return [];
     }
