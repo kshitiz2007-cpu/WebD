@@ -26,7 +26,7 @@ interface PagesLayersPanelProps {
   pages: ProjectPage[];
   activeRoute: string;
   onSelectPage: (route: string) => void;
-  onCreatePage?: (title: string, slug: string, template: PageTemplatePreset) => boolean;
+  onCreatePage?: (title: string, slug: string, template: PageTemplatePreset) => boolean;\n  onCreateSiteKit?: () => boolean;
   components?: ProjectComponentInfo[];
   isolatedComponentPath?: string | null;
   onSelectComponent?: (filePath: string) => void;
@@ -77,7 +77,7 @@ export default function PagesLayersPanel({
   const [newPageTitle, setNewPageTitle] = useState('New Page');
   const [newPageSlug, setNewPageSlug] = useState('new-page');
   const [pageTemplate, setPageTemplate] = useState<PageTemplatePreset>('landing');
-  const [pageError, setPageError] = useState('');
+  const [pageError, setPageError] = useState('');\n  const [siteKitError, setSiteKitError] = useState('');
 
   const toggleCollapse = (id: string) => {
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -276,6 +276,21 @@ export default function PagesLayersPanel({
                     <p className="text-[10px] leading-4 text-slate-400">Creates a real page file. Visual edits stay synced to source code.</p>
                   </form>
                 )}
+              </div>
+            )}
+            {onCreateSiteKit && (
+              <div className="space-y-1.5 rounded-lg border border-violet-200 bg-violet-50 p-2.5">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-violet-900">
+                  <Layers className="h-3.5 w-3.5" /> Shared site design
+                </div>
+                <p className="text-[10px] leading-4 text-violet-800/80">Add one reusable header, footer and layout across every page. Edit them once in Components to update the whole site.</p>
+                <button type="button" onClick={() => {
+                  const created = onCreateSiteKit();
+                  setSiteKitError(created ? '' : 'Could not apply the site kit. Check for existing custom SiteLayout files.');
+                }} className="w-full rounded-md bg-violet-600 px-2.5 py-2 text-[11px] font-semibold text-white hover:bg-violet-700">
+                  Generate shared site kit
+                </button>
+                {siteKitError && <p role="alert" className="text-[10px] text-rose-600">{siteKitError}</p>}
               </div>
             )}
             <nav aria-label="Project pages" className="max-h-44 space-y-0.5 overflow-y-auto studio-scroll">
