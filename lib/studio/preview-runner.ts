@@ -126,7 +126,9 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
     var cursor = node;
     while (cursor && cursor !== document.documentElement) {
       var id = cursor.getAttribute && cursor.getAttribute('data-studio-id');
-      if (id) ids.push(id);
+      var instanceId = cursor.getAttribute && cursor.getAttribute('data-studio-instance');
+      if (id && ids.indexOf(id) === -1) ids.push(id);
+      if (instanceId && ids.indexOf(instanceId) === -1) ids.push(instanceId);
       cursor = cursor.parentElement;
     }
     LOGIC_RULES.forEach(function(rule) {
