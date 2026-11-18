@@ -1,4 +1,4 @@
-import type { ProjectFramework } from './types';\nimport { addLayoutToReactPage } from './site-kit';
+import type { ProjectFramework } from './types';\nimport { addLayoutToHtmlPage, addLayoutToReactPage } from './site-kit';
 
 export type PageTemplatePreset = 'blank' | 'landing' | 'about' | 'contact' | 'pricing';
 
@@ -146,12 +146,12 @@ export function createPageFile(params: {
       ? htmlPageSource(title, params.template)
       : reactPageSource(title, params.template);
 
-  if (params.framework !== 'html') {
-    const componentRoot = params.framework === 'react-vite' ? 'src/components' : 'components';
-    const layoutPath = `${componentRoot}/SiteLayout.tsx`;
-    if (params.files[layoutPath]) {
-      code = addLayoutToReactPage(code, filePath, layoutPath) || code;
-    }
+  const componentRoot = params.framework === 'react-vite' ? 'src/components' : 'components';
+  const layoutPath = `${componentRoot}/SiteLayout.tsx`;
+  if (params.files[layoutPath]) {
+    code = params.framework === 'html'
+      ? addLayoutToHtmlPage(code)
+      : addLayoutToReactPage(code, filePath, layoutPath) || code;
   }
 
   return { title, route, filePath, code };
