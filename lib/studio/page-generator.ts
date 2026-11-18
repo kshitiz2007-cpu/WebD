@@ -1,3 +1,4 @@
+import { transform } from 'sucrase';
 import type { ProjectFramework } from './types';
 import { addLayoutToHtmlPage, addLayoutToReactPage } from './site-kit';
 
@@ -142,23 +143,43 @@ function customReactPageSource(title: string, slug: string, rawCode: string): st
   if (!source) throw new Error('Paste a React component or JSX layout before creating the page.');
   const hasDefaultExport = source.includes('export default') ||
     (source.includes('export {') && source.includes(' as default'));
-  if (hasDefaultExport) return source;
-  if (!source.includes('<') || !source.includes('>')) {
-    throw new Error('Custom React template must contain JSX or a default-exported React page component.');
+  let pageSource: string;
+  if (hasDefaultExport) {
+    pageSource = source;
+  } else {
+    if (source.includes('import ') || source.includes('export ')) {
+      throw new Error('This looks like a full React module. Include an export default page component, or paste only the JSX layout fragment.');
+    }
+    if (!source.includes('<') || !source.includes('>')) {
+      throw new Error('Custom React template must contain JSX or a default-exported React page component.');
+    }
+    const rawName = toTitleCase(title).replace(/[^A-Za-z0-9]/g, '') || 'Custom';
+    const componentName = /^[A-Za-z_]/.test(rawName) ? rawName : 'Page' + rawName;
+    pageSource = [
+      "'use client';",
+      "import React from 'react';",
+      "",
+      "export default function " + componentName + "Page() {",
+      "  return (",
+      "    " + source,
+      "  );",
+      "}",
+      "",
+    ].join('\n');
   }
-  const rawName = toTitleCase(title).replace(/[^A-Za-z0-9]/g, '') || 'Custom';
-  const componentName = /^[A-Za-z_]/.test(rawName) ? rawName : 'Page' + rawName;
-  return [
-    "'use client';",
-    "import React from 'react';",
-    "",
-    "export default function " + componentName + "Page() {",
-    "  return (",
-    "    " + source,
-    "  );",
-    "}",
-    "",
-  ].join('\n');
+
+  try {
+    transform(pageSource, {
+      transforms: ['typescript', 'jsx', 'imports'],
+      jsxRuntime: 'classic',
+      jsxPragma: 'React.createElement',
+      filePath: 'custom-template.tsx',
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'Invalid JSX syntax';
+    throw new Error('Custom template JSX could not be parsed: ' + detail);
+  }
+  return pageSource;
 }
 
 function customHtmlPageSource(title: string, slug: string, rawCode: string): string {
