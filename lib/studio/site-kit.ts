@@ -147,7 +147,7 @@ ${lastMatch[1]}
   return next;
 }
 
-function addLayoutToHtmlPage(code: string): string {
+export function addLayoutToHtmlPage(code: string): string {
   if (code.includes('data-webd-site-header')) return code;
   const header = '<header data-webd-site-header style="display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px max(5vw,24px);background:#fff;border-bottom:1px solid #e2e8f0"><a href="/" style="font-weight:800;color:#0f172a;text-decoration:none">Your Brand</a><nav style="display:flex;gap:18px;flex-wrap:wrap"><a href="/" style="color:#475569">Home</a><a href="/about" style="color:#475569">About</a><a href="/services" style="color:#475569">Services</a><a href="/contact" style="color:#475569">Contact</a></nav></header>';
   const footer = '<footer data-webd-site-footer style="margin-top:48px;padding:28px 24px;text-align:center;background:#0f172a;color:#cbd5e1;font-size:12px">© ' + new Date().getFullYear() + ' Your Brand. All rights reserved.</footer>';
