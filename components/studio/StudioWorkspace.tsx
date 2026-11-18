@@ -817,7 +817,7 @@ export default function StudioWorkspace() {
   }, [activePage.filePath]);
 
   const handleCreatePage = useCallback(
-    (title: string, slug: string, template: PageTemplatePreset, customTemplateCode?: string): boolean => {
+    (title: string, slug: string, template: PageTemplatePreset, customTemplateCode?: string): { ok: boolean; error?: string } => {
       try {
         const generated = createPageFile({
           framework: project.framework,
@@ -827,7 +827,9 @@ export default function StudioWorkspace() {
           customTemplateCode,
           files: project.files,
         });
-        if (project.pages.some((page) => page.route === generated.route)) return false;
+        if (project.pages.some((page) => page.route === generated.route)) {
+          return { ok: false, error: `The URL ${generated.route} already exists. Choose a different URL path.` };
+        }
         const nextFiles = { ...project.files, [generated.filePath]: generated.code };
         commitFilesMutation(nextFiles, generated.filePath);
         setIsolatedComponentPath(null);
@@ -838,9 +840,12 @@ export default function StudioWorkspace() {
         setHiddenIds([]);
         setPseudoState('default');
         setInteractionMode('design');
-        return true;
-      } catch {
-        return false;
+        return { ok: true };
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : 'Could not generate this page. Check the pasted code and try again.',
+        };
       }
     },
     [project.framework, project.files, project.pages, commitFilesMutation]
