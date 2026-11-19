@@ -275,3 +275,28 @@ export function injectLibraryImportIntoSource(
 
   return `${importStatement}\n${code}`;
 }
+
+export interface ParsedNpmInstallCommand {
+  packageName: string;
+  version: string;
+}
+
+/** Accept one-package npm install commands, including scoped packages and explicit versions. */
+export function parseNpmInstallCommand(command: string): ParsedNpmInstallCommand | null {
+  const trimmed = command.trim();
+  const match = trimmed.match(/^(?:npm\\s+(?:install|i))\\s+(.+)$/i);
+  if (!match) return null;
+  const args = match[1].trim().split(/\\s+/);
+  const packageArgs = args.filter((arg) => !arg.startsWith('-'));
+  if (args.some((arg) => arg.startsWith('-')) || packageArgs.length !== 1) return null;
+  const spec = packageArgs[0];
+  const slash = spec.lastIndexOf('/');
+  const at = spec.lastIndexOf('@');
+  const hasVersion = at > slash;
+  const packageName = hasVersion ? spec.slice(0, at) : spec;
+  const version = hasVersion ? spec.slice(at + 1) : 'latest';
+  if (!isValidPackageName(packageName) || !version || !/^[a-z0-9*^~><=.|+-]+$/i.test(version)) {
+    return null;
+  }
+  return { packageName, version };
+}
