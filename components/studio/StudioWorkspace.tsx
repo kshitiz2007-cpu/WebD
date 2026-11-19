@@ -68,6 +68,7 @@ import {
   buildEsmShUrl,
   injectLibraryImportIntoSource,
   parsePackageDependencies,
+  parseNpmInstallCommand,
   removePackageDependencyFromFiles,
   scanExternalImportsInSource,
   isValidPackageName,
@@ -1304,6 +1305,64 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
     [project.files, selected, commitFilesMutation, preloadExternalLibrary]
   );
 
+
+  const handleInstallTypographyNpmPackage = useCallback((params: {
+    command: string;
+    kind: 'font' | 'motion';
+    fontFamily?: string;
+    cssImport?: string;
+    componentName?: string;
+    componentExport?: string;
+  }) => {
+    const parsed = parseNpmInstallCommand(params.command);
+    if (!parsed) return { ok: false, error: 'Enter one valid npm install command.' };
+    if (params.kind === 'font') {
+      const family = (params.fontFamily || '').trim().replace(/[<>;{}"']/g, '');
+      const cssImport = (params.cssImport || '').trim();
+      if (!family) return { ok: false, error: 'Enter the font family name.' };
+      if (!cssImport || !cssImport.startsWith(parsed.packageName) || /["'\\\\;]/.test(cssImport) || cssImport.includes('..')) {
+        return { ok: false, error: 'CSS entry must be a valid path inside the installed font package, e.g. @fontsource/roboto/400.css.' };
+      }
+      const cssPath = project.globalCssPaths[0] || Object.keys(project.files).find((path) => /\\.css$/i.test(path));
+      if (!cssPath) return { ok: false, error: 'This project has no CSS file to register the font. Add a global CSS file first.' };
+      const currentCss = project.files[cssPath] || '';
+      const importRule = `@import '${cssImport}';`;
+      const nextCss = currentCss.includes(importRule) ? currentCss : `${importRule}\\n${currentCss}`;
+      let nextFiles = addPackageDependencyToFiles(project.files, parsed.packageName, parsed.version);
+      nextFiles[cssPath] = nextCss;
+      if (selected) {
+        const source = nextFiles[selected.filePath];
+        if (source) {
+          const isHtml = /\\.html?$/i.test(selected.filePath);
+          nextFiles[selected.filePath] = applyElementPatchToSource(source, selected.elementIndex, isHtml, {
+            styles: { fontFamily: `'${family}', sans-serif` },
+          });
+        }
+      }
+      commitFilesMutation(nextFiles, selected?.filePath || cssPath);
+      return { ok: true };
+    }
+
+    const componentName = (params.componentName || '').trim();
+    const componentExport = (params.componentExport || 'default').trim() || 'default';
+    if (componentName) {
+      return handleImportReactLibrary({
+        packageName: parsed.packageName,
+        version: parsed.version,
+        importMode: componentExport === 'default' ? 'default' : 'named',
+        identifiers: [componentExport === 'default' ? componentName + 'Primitive' : componentExport],
+        targetFilePath: selected?.filePath || activePage.filePath,
+        componentLibraryName: componentName,
+        componentExportName: componentExport,
+      });
+    }
+
+    const nextFiles = addPackageDependencyToFiles(project.files, parsed.packageName, parsed.version);
+    commitFilesMutation(nextFiles, 'package.json');
+    preloadExternalLibrary(parsed.packageName);
+    return { ok: true };
+  }, [project.files, project.globalCssPaths, selected, activePage.filePath, commitFilesMutation, preloadExternalLibrary, handleImportReactLibrary]);
+
   const handleApplyUiComponent = useCallback(
     (params: {
       targetFilePath: string;
@@ -2344,6 +2403,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         onClose={() => setIsTypographyEffectsOpen(false)}
         onApplyFont={handleApplyFont}
         onApplyMotion={handleApplyTextMotion}
+        onInstallNpmPackage={handleInstallTypographyNpmPackage}
       />
 
       <MediaLibraryModal
