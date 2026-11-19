@@ -16,6 +16,7 @@ import ReactLibraryModal from './ReactLibraryModal';
 import LayoutBuilderPanel from './LayoutBuilderPanel';
 import SmartAlignerPanel from './SmartAlignerPanel';
 import CodeDrawer from './CodeDrawer';
+import MediaLibraryModal from './MediaLibraryModal';
 import {
   WrapContainerLayout,
   applyBatchElementPatches,
@@ -122,6 +123,7 @@ export default function StudioWorkspace() {
   const [isLogicPanelOpen, setIsLogicPanelOpen] = useState(false);
   const [codeDrawerFile, setCodeDrawerFile] = useState<string>('app/page.tsx');
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isMediaLibraryOpen, setIsMediaLibraryOpen] = useState(false);
   const [isDraftsOpen, setIsDraftsOpen] = useState(false);
   const [justSavedDraft, setJustSavedDraft] = useState(false);
   const [compiledTailwindCss, setCompiledTailwindCss] = useState<string>('');
@@ -1597,6 +1599,19 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
     []
   );
 
+  const handleInsertMediaAsset = useCallback((asset: { name: string; type: string; dataUrl: string }) => {
+    if (!selected) return;
+    if (selected.tagName.toLowerCase() === 'img' || selected.src) {
+      handleCommitPatch(selected.filePath, selected.elementIndex, { src: asset.dataUrl });
+      return;
+    }
+    const safeAlt = asset.name.replace(/["<>]/g, '').replace(/\.[^.]+$/, '');
+    const snippet = /\.html?$/i.test(selected.filePath)
+      ? `<img src="${asset.dataUrl}" alt="${safeAlt}" style="max-width:100%;height:auto;object-fit:contain;" />`
+      : `<img src="${asset.dataUrl}" alt="${safeAlt}" style={{ maxWidth: '100%', height: 'auto', objectFit: 'contain' }} />`;
+    handleInsertLayoutBlock(snippet, selected.studioId);
+  }, [selected, handleCommitPatch, handleInsertLayoutBlock]);
+
   const handleExportZip = useCallback(async () => {
     const { default: JSZip } = await import('jszip');
     const zip = new JSZip();
@@ -1728,6 +1743,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         isCodeDrawerOpen={isCodeDrawerOpen}
         onToggleCodeDrawer={() => setIsCodeDrawerOpen((v) => !v)}
         onOpenImportModal={() => setIsImportOpen(true)}
+        onOpenMediaLibrary={() => setIsMediaLibraryOpen(true)}
         onExportZip={handleExportZip}
         hasUnsavedEdits={hasUnsavedEdits}
         showLeftPanel={showLeftPanel}
@@ -2242,6 +2258,13 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
           </button>
         </div>
       </nav>
+
+      <MediaLibraryModal
+        open={isMediaLibraryOpen}
+        onClose={() => setIsMediaLibraryOpen(false)}
+        onInsert={handleInsertMediaAsset}
+        hasSelection={Boolean(selected)}
+      />
 
       <ImportProjectModal
         isOpen={isImportOpen}
