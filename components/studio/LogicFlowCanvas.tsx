@@ -97,7 +97,7 @@ export default function LogicFlowCanvas({ rule, triggers, actions, onChange }: P
   const addFlowNode = (type: 'action'|'condition', x?: number, y?: number) => {
     const id = 'node-' + Date.now() + '-' + Math.random().toString(36).slice(2,6);
     const next: VisualFlowNode = type === 'action' ? {id,type,action:'setState',target:'app.value',value:'true',valueSource:'literal'} : {id,type,conditionOperator:'equals',conditionValue:'true'};
-    onChange({flowNodes:[...flowNodes,next],flowLayout:{...positions,[id]:{x:x??330,y:y??330}}});
+    const layout={...positions,[id]:{x:x??330,y:y??330}}; setPositions(layout); onChange({flowNodes:[...flowNodes,next],flowLayout:layout});
   };
   const updateFlowNode = (id:string, patch:Partial<VisualFlowNode>) => onChange({flowNodes:flowNodes.map((node)=>node.id===id?{...node,...patch}:node)});
   const removeFlowNode = (id:string) => { onChange({flowNodes:flowNodes.filter((node)=>node.id!==id)}); saveEdges(edges.filter((edge)=>edge.from!==id&&edge.to!==id)); };
@@ -166,7 +166,7 @@ export default function LogicFlowCanvas({ rule, triggers, actions, onChange }: P
       <button type="button" onClick={()=>saveEdges([])} className="rounded-md border px-2 py-1 text-[10px] font-semibold">Clear all wires</button>
       <span className="text-[10px] text-slate-500">{edges.length} connection(s) · {flowNodes.length} custom node(s)</span>
     </div>
-    {edges.length>0&&<div className="flex flex-wrap gap-1">{edges.map((edge)=><button key={edge.id} type="button" onClick={()=>saveEdges(edges.filter((item)=>item.id!==edge.id))} className="rounded-full bg-slate-100 px-2 py-1 text-[10px] text-slate-600 hover:bg-rose-50 hover:text-rose-600">{edge.from} → {edge.to} ×</button>)}</div>}
+    {edges.length>0&&<div className="flex flex-wrap gap-1">{edges.map((edge)=><span key={edge.id} className="inline-flex items-center rounded-full bg-slate-100 text-[10px] text-slate-600"><button type="button" onClick={()=>saveEdges(edges.map((item)=>item.id===edge.id?{...item,label:item.label==='true'?'false':item.label==='false'?'': 'true'}:item))} className="px-2 py-1">{edge.from} → {edge.to} {edge.label||'next'} · branch</button><button type="button" aria-label="Remove connection" onClick={()=>saveEdges(edges.filter((item)=>item.id!==edge.id))} className="px-1 py-1 text-rose-600">×</button></span>)}</div>}
     <section className="overflow-hidden rounded-xl border border-slate-200">
       <div className="flex items-center justify-between bg-slate-50 px-3 py-2"><span className="text-xs font-semibold text-slate-700">Live state inspector</span><button type="button" onClick={()=>sendToPreviewFrames({type:'studio:request-workflow-state'})} className="text-[10px] font-semibold text-blue-600">Refresh</button></div>
       <div className="space-y-2 p-3">
