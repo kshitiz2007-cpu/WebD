@@ -372,7 +372,7 @@ function ReactLibraryModalInner({
 
     // ReactBits is a shadcn registry, not an npm package. Resolve its registry
     // item directly instead of passing the command to the npm package parser.
-    const registryCommand = npmCommand.trim().match(/^npx\\s+shadcn(?:@latest)?\\s+add\\s+@react-bits\\/([A-Za-z0-9_-]+)$/i);
+    const registryCommand = npmCommand.trim().match(/^npx\s+shadcn(?:@latest)?\s+add\s+@react-bits\/([A-Za-z0-9_-]+)$/i);
     if (registryCommand) {
       const itemName = registryCommand[1];
       const componentName = npmComponentName.trim() || itemName.replace(/-TS-(?:CSS|TW)$/i, '').replace(/[^A-Za-z0-9]/g, '');
@@ -389,14 +389,14 @@ function ReactLibraryModalInner({
         const registryItem = await response.json();
         const registryFiles = Array.isArray(registryItem.files) ? registryItem.files : [];
         const sourceFile = registryFiles.find((file: { path?: string; content?: string }) =>
-          /\\.(?:tsx|jsx)$/.test(file.path || '') && typeof file.content === 'string'
+          /\.(?:tsx|jsx)$/.test(file.path || '') && typeof file.content === 'string'
         );
         if (!sourceFile?.content) {
           setErrorMsg('The ReactBits registry item did not contain a TSX/JSX component source.');
           return;
         }
         const cssFile = registryFiles.find((file: { path?: string; content?: string }) =>
-          /\\.css$/.test(file.path || '') && typeof file.content === 'string'
+          /\.css$/.test(file.path || '') && typeof file.content === 'string'
         );
         const dependencySpecs: string[] = Array.isArray(registryItem.dependencies) ? registryItem.dependencies : [];
         const dependencies: Array<{ packageName: string; version: string }> = [];
