@@ -30,7 +30,7 @@ const labels: Record<string, string> = {
   persistState:'Save state',loadState:'Load state',
 };
 const pathGet = (root: Record<string, unknown>, path: string) => path.split('.').filter(Boolean).reduce<unknown>((v,k) => v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined, root);
-const pathSet = (root: Record<string, unknown>, path: string, value: unknown) => {
+const sendToPreviewFrames = (message: Record<string, unknown>) => {\n  try { Array.from(window.frames).forEach((frame) => frame.postMessage(message, '*')); } catch {}\n};\nconst pathSet = (root: Record<string, unknown>, path: string, value: unknown) => {
   const keys = path.split('.').filter(Boolean); if (!keys.length) return root;
   const next = structuredClone(root);
   let cursor: Record<string, unknown> = next;
@@ -58,7 +58,7 @@ export default function LogicFlowCanvas({ rule, triggers, actions, onChange }: P
       }
     };
     window.addEventListener('message', receive);
-    window.top?.postMessage({ type: 'studio:request-workflow-state' }, '*');
+    sendToPreviewFrames({ type: 'studio:request-workflow-state' });
     return () => window.removeEventListener('message', receive);
   }, []);
 
@@ -123,11 +123,11 @@ export default function LogicFlowCanvas({ rule, triggers, actions, onChange }: P
     if(!editPath.trim()) return;
     let parsed:unknown=editValue; try{parsed=JSON.parse(editValue);}catch{}
     const next=pathSet(state,editPath.trim(),parsed); setState(next); setStateError('');
-    window.top?.postMessage({type:'studio:workflow-set-state',path:editPath.trim(),value:parsed},'*');
+    sendToPreviewFrames({type:'studio:workflow-set-state',path:editPath.trim(),value:parsed});
   };
   return <div className="space-y-3">
     <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
-      <span>{connectFrom? `Connecting from ${connectFrom}: click another node's left port`:'Drag nodes · click right port then left port to connect · select a wire to remove'}</span>
+      <span>{connectFrom? `Connecting from ${connectFrom}: click another node's left port`:'Drag nodes · connect Trigger → Condition and Condition → IF/ELSE using ports'}</span>
       <div className="flex items-center gap-1">
         <button type="button" onClick={()=>setZoom(Math.max(.6,zoom-.1))} className="rounded border px-2 py-1">−</button><span>{Math.round(zoom*100)}%</span><button type="button" onClick={()=>setZoom(Math.min(1.4,zoom+.1))} className="rounded border px-2 py-1">+</button>
         <button type="button" onClick={reset} className="rounded border px-2 py-1 font-semibold">Auto layout</button>
@@ -153,7 +153,7 @@ export default function LogicFlowCanvas({ rule, triggers, actions, onChange }: P
     </div>
     {edges.length>0&&<div className="flex flex-wrap gap-1">{edges.map((edge)=><button key={edge.id} type="button" onClick={()=>saveEdges(edges.filter((item)=>item.id!==edge.id))} className="rounded-full bg-slate-100 px-2 py-1 text-[10px] text-slate-600 hover:bg-rose-50 hover:text-rose-600">{edge.from} → {edge.to} ×</button>)}</div>}
     <section className="overflow-hidden rounded-xl border border-slate-200">
-      <div className="flex items-center justify-between bg-slate-50 px-3 py-2"><span className="text-xs font-semibold text-slate-700">Live state inspector</span><button type="button" onClick={()=>window.top?.postMessage({type:'studio:request-workflow-state'},'*')} className="text-[10px] font-semibold text-blue-600">Refresh</button></div>
+      <div className="flex items-center justify-between bg-slate-50 px-3 py-2"><span className="text-xs font-semibold text-slate-700">Live state inspector</span><button type="button" onClick={()=>sendToPreviewFrames({type:'studio:request-workflow-state'})} className="text-[10px] font-semibold text-blue-600">Refresh</button></div>
       <div className="space-y-2 p-3">
         {stateError&&<p className="text-[10px] text-slate-500">{stateError} Open Preview → Interact and trigger a rule.</p>}
         <div className="max-h-48 space-y-1 overflow-auto">{flatState(state).map(({path,value})=><div key={path} className="flex items-center justify-between gap-2 rounded bg-slate-50 px-2 py-1"><code className="min-w-0 truncate text-[10px] text-slate-600">{path}</code><span className="max-w-[55%] truncate text-[10px] text-slate-900">{typeof value==='string'?value:JSON.stringify(value)}</span></div>)}</div>
