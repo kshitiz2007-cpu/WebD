@@ -211,8 +211,50 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       else node.textContent = output;
     });
   }
-  window.addEventListener('message', function(event) {\n    var message = event.data || {};\n    if (message.type === 'studio:request-workflow-state') {\n      try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}\n    } else if (message.type === 'studio:workflow-set-state' && typeof message.path === 'string') {\n      setStatePath(message.path, message.value);\n      try { window.localStorage.setItem('webd:app-state', JSON.stringify(getWorkflowState())); } catch (_) {}\n      try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}\n    }\n  });\n  function runLogicRule(rule, event) {
+  window.addEventListener('message', function(event) {\n    var message = event.data || {};\n    if (message.type === 'studio:request-workflow-state') {\n      try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}\n    } else if (message.type === 'studio:workflow-set-state' && typeof message.path === 'string') {\n      setStatePath(message.path, message.value);\n      try { window.localStorage.setItem('webd:app-state', JSON.stringify(getWorkflowState())); } catch (_) {}\n      try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}\n    }\n  });\n  function runFlowGraph(rule, event) {
+    var nodes = Array.isArray(rule.flowNodes) ? rule.flowNodes : [];
+    var edges = Array.isArray(rule.flowEdges) ? rule.flowEdges : [];
+    var byId = {};
+    nodes.forEach(function(node) { if (node && node.id) byId[node.id] = node; });
+    var visited = {};
+    var steps = 0;
+    function walk(id) {
+      if (!id || visited[id] || steps++ >= 200) return;
+      visited[id] = true;
+      var node = byId[id];
+      if (!node) return;
+      if (node.type === 'condition') {
+        var testRule = Object.assign({}, rule, {
+          conditionOperator: node.conditionOperator || 'always',
+          conditionValue: node.conditionValue || ''
+        });
+        var passed = conditionMatches(testRule, event);
+        edges.filter(function(edge) { return edge.from === id && ((String(edge.label || '').toLowerCase() === 'true' || String(edge.label || '').toLowerCase() === 'if true') === passed); })
+          .forEach(function(edge) { walk(edge.to); });
+        return;
+      }
+      if (node.type === 'action' && node.action) {
+        runLogicRule(Object.assign({}, rule, {
+          action: node.action,
+          target: node.target || '',
+          value: node.value || '',
+          valueSource: node.valueSource || 'literal',
+          flowNodes: undefined,
+          flowEdges: undefined,
+          conditionOperator: 'always',
+          elseAction: undefined
+        }), event);
+      }
+      edges.filter(function(edge) { return edge.from === id; }).forEach(function(edge) { walk(edge.to); });
+    }
+    edges.filter(function(edge) { return edge.from === 'trigger'; }).forEach(function(edge) { walk(edge.to); });
+  }
+  function runLogicRule(rule, event) {
     if (!rule || rule.enabled === false) return;
+    if (Array.isArray(rule.flowNodes) && rule.flowNodes.length) {
+      runFlowGraph(rule, event);
+      return;
+    }
     var conditionPassed = conditionMatches(rule, event);
     var connectedTrigger = Array.isArray(rule.flowEdges) ? rule.flowEdges.some(function(edge) { return edge.from === 'trigger' && edge.to === 'condition'; }) : true;
     var connectedBranch = Array.isArray(rule.flowEdges) ? rule.flowEdges.some(function(edge) { return edge.from === 'condition' && edge.to === (conditionPassed ? 'yes' : 'no'); }) : true;
