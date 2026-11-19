@@ -29,6 +29,7 @@ import {
   ReactLibraryCatalogEntry,
   isValidPackageName,
   scanExternalImportsInSource,
+  parseNpmInstallCommand,
 } from '@/lib/studio/library-importer';
 import {
   REACT_UI_CATEGORIES,
@@ -84,6 +85,8 @@ interface ReactLibraryModalProps {
     action?: 'replace' | 'insert';
     position?: ComponentInsertPosition;
     targetElementIndex?: number;
+    componentLibraryName?: string;
+    componentExportName?: string;
   }) => { ok: boolean; error?: string };
   onRemoveDependency: (packageName: string) => void;
 }
@@ -153,6 +156,9 @@ function ReactLibraryModalInner({
   const [newCompPreset, setNewCompPreset] = useState<ComponentTemplatePreset>('card');
 
   // npm Packages Tab state
+  const [npmCommand, setNpmCommand] = useState('');
+  const [npmComponentName, setNpmComponentName] = useState('');
+  const [npmExportName, setNpmExportName] = useState('');
   const [pkgName, setPkgName] = useState('');
   const [importMode, setImportMode] = useState<'named' | 'default' | 'namespace'>('named');
   const [identifiersText, setIdentifiersText] = useState('');
@@ -351,6 +357,44 @@ function ReactLibraryModalInner({
     setStatusNotice(`Imported ${cleanPkg} into ${resolvedTargetFile}`);
     setPkgName('');
     setIdentifiersText('');
+  };
+
+  const handleNpmComponentInstall = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    const parsed = parseNpmInstallCommand(npmCommand);
+    if (!parsed) {
+      setErrorMsg('Use one package command, e.g. npm install @radix-ui/react-dialog or npm i lucide-react@^0.553.0.');
+      return;
+    }
+    const componentName = npmComponentName.trim();
+    const exportName = npmExportName.trim();
+    if (!/^[A-Z][A-Za-z0-9]*$/.test(componentName)) {
+      setErrorMsg('Component name must be PascalCase, e.g. Dialog or LucideButton.');
+      return;
+    }
+    if (!/^(?:default|[A-Za-z_$][A-Za-z0-9_$]*)$/.test(exportName)) {
+      setErrorMsg('Enter a valid React export name, e.g. Dialog, Button, or default.');
+      return;
+    }
+    const isDefault = exportName === 'default';
+    const res = onImportLibrary({
+      packageName: parsed.packageName,
+      version: parsed.version,
+      importMode: isDefault ? 'default' : 'named',
+      identifiers: [isDefault ? componentName + 'Primitive' : exportName],
+      targetFilePath: resolvedTargetFile,
+      componentLibraryName: componentName,
+      componentExportName: exportName,
+    });
+    if (!res.ok) {
+      setErrorMsg(res.error || 'Could not install package component.');
+      return;
+    }
+    setStatusNotice(`Installed ${parsed.packageName}@${parsed.version} and added ${componentName} to Your Components`);
+    setNpmCommand('');
+    setNpmComponentName('');
+    setNpmExportName('');
   };
 
   const handleCatalogImport = (
@@ -989,6 +1033,37 @@ function ReactLibraryModalInner({
         {/* Tab 3: npm Packages & ESM */}
         {activeTab === 'packages' && (
           <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4 sm:p-5 studio-scroll">
+            {/* Install a package and register a reusable project component */}
+            <form onSubmit={handleNpmComponentInstall} className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/40 p-3.5">
+              <div>
+                <h3 className="text-xs font-semibold text-slate-900">Install npm package → Add to Component Library</h3>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                  Paste a one-package npm install command. WebD records the dependency and creates a reusable wrapper in Your Components.
+                </p>
+              </div>
+              <div>
+                <label htmlFor="npm-install-command" className="mb-1 block text-[11px] text-slate-600">npm command</label>
+                <input id="npm-install-command" value={npmCommand} onChange={(e) => setNpmCommand(e.target.value)} placeholder="npm install @radix-ui/react-dialog" className="h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 font-mono text-xs text-slate-800 focus:border-indigo-500 focus:outline-none" />
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="npm-component-name" className="mb-1 block text-[11px] text-slate-600">Component library name</label>
+                  <input id="npm-component-name" value={npmComponentName} onChange={(e) => setNpmComponentName(e.target.value)} placeholder="e.g. Dialog" className="h-8 w-full rounded-md border border-slate-200 bg-white px-2.5 font-mono text-xs text-slate-800" />
+                </div>
+                <div>
+                  <label htmlFor="npm-export-name" className="mb-1 block text-[11px] text-slate-600">Package export</label>
+                  <input id="npm-export-name" value={npmExportName} onChange={(e) => setNpmExportName(e.target.value)} placeholder="e.g. Dialog (or default)" className="h-8 w-full rounded-md border border-slate-200 bg-white px-2.5 font-mono text-xs text-slate-800" />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <button type="submit" className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-xs font-semibold text-white hover:bg-indigo-700">
+                  <PackagePlus className="h-3.5 w-3.5" />
+                  <span>Install &amp; Add Component</span>
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400">Example: npm install lucide-react · Name: SparklesIcon · Export: Sparkles</p>
+            </form>
+
             {/* Custom Package Form */}
             <form onSubmit={handleCustomImport} className="space-y-3 rounded-xl border border-slate-200 p-3.5">
               <h3 className="text-xs font-semibold text-slate-900">
