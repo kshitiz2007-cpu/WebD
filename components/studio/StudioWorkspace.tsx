@@ -937,6 +937,40 @@ export default function StudioWorkspace() {
     [project.framework, project.files, project.pages, commitFilesMutation]
   );
 
+  const handleDeletePage = useCallback((route: string): boolean => {
+    const page = project.pages.find((item) => item.route === route);
+    if (!page || page.route === '/' || project.pages.length <= 1) return false;
+
+    const nextFiles = { ...project.files };
+    const pageSource = nextFiles[page.filePath] || '';
+    delete nextFiles[page.filePath];
+
+    // Remove a page-specific stylesheet only when this page explicitly references it.
+    const cssPath = page.filePath.replace(/\\.(tsx|ts|jsx|js|html?)$/i, '.css');
+    const cssName = cssPath.split('/').pop() || '';
+    if (cssName && nextFiles[cssPath] && pageSource.includes(cssName)) {
+      delete nextFiles[cssPath];
+    }
+
+    const remainingPages = project.pages.filter((item) => item.route !== route);
+    const fallbackPage = remainingPages.find((item) => item.route === '/') || remainingPages[0];
+    if (!fallbackPage) return false;
+
+    commitFilesMutation(nextFiles);
+    if (activeRoute === route) {
+      setActiveRoute(fallbackPage.route);
+      setCodeDrawerFile(fallbackPage.filePath);
+      setSelected(null);
+      setMultiSelected([]);
+      setLockedIds([]);
+      setHiddenIds([]);
+      setPseudoState('default');
+      setIsolatedComponentPath(null);
+    }
+    if (lastPageTarget?.route === route) setLastPageTarget(null);
+    return true;
+  }, [project.pages, project.files, activeRoute, commitFilesMutation, lastPageTarget]);
+
   const handleCreateSiteKit = useCallback((): boolean => {
     try {
       const result = createSharedSiteKit({
@@ -1934,6 +1968,11 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
                 const created = handleCreatePage(title, slug, template, customTemplateCode, customTemplateCss);
                 if (created && isCompactViewport) setCompactLeftOpen(false);
                 return created;
+              }}
+              onDeletePage={(route) => {
+                const deleted = handleDeletePage(route);
+                if (deleted && isCompactViewport) setCompactLeftOpen(false);
+                return deleted;
               }}
               onCreateSiteKit={() => handleCreateSiteKit()}
               components={projectComponents}
