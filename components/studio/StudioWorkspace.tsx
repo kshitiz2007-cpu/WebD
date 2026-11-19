@@ -946,7 +946,7 @@ export default function StudioWorkspace() {
     delete nextFiles[page.filePath];
 
     // Remove a page-specific stylesheet only when this page explicitly references it.
-    const cssPath = page.filePath.replace(/\\.(tsx|ts|jsx|js|html?)$/i, '.css');
+    const cssPath = page.filePath.replace(/\.(tsx|ts|jsx|js|html?)$/i, '.css');
     const cssName = cssPath.split('/').pop() || '';
     if (cssName && nextFiles[cssPath] && pageSource.includes(cssName)) {
       delete nextFiles[cssPath];
