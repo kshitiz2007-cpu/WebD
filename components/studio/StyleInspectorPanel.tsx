@@ -249,6 +249,11 @@ export default function StyleInspectorPanel({
   const [textDraft, setTextDraft] = useState(selected?.textContent || '');
   const [textColorHex, setTextColorHex] = useState('#0F172A');
   const [borderColorHex, setBorderColorHex] = useState('#E2E8F0');
+  const [borderGradientStopCount, setBorderGradientStopCount] = useState(3);
+  const [borderGradientAngle, setBorderGradientAngle] = useState(135);
+  const [borderGradientStops, setBorderGradientStops] = useState(['#6366F1', '#EC4899', '#F59E0B', '#22C55E']);
+  const [shadowGradientStopCount, setShadowGradientStopCount] = useState(3);
+  const [shadowGradientStops, setShadowGradientStops] = useState(['#6366F1', '#EC4899', '#F59E0B', '#22C55E']);
   const [radiusDraft, setRadiusDraft] = useState('0');
   const [borderWidthDraft, setBorderWidthDraft] = useState('0');
   const [opacityDraft, setOpacityDraft] = useState('100');
@@ -400,6 +405,35 @@ export default function StyleInspectorPanel({
 
   const commitStyles = (styles: Record<string, string | null>) => {
     onCommitPatch(selected.filePath, selected.elementIndex, { styles });
+  };
+
+  const applyBorderGradient = () => {
+    const colors = borderGradientStops.slice(0, borderGradientStopCount).map((color) => normalizeHex(color));
+    commitStyles({
+      borderStyle: 'solid',
+      borderWidth: `${Math.max(1, Number(borderWidthDraft) || 1)}px`,
+      borderImageSource: `linear-gradient(${borderGradientAngle}deg, ${colors.join(', ')})`,
+      borderImageSlice: '1',
+    });
+  };
+
+  const applyShadowGradient = () => {
+    const colors = shadowGradientStops.slice(0, shadowGradientStopCount).map((color) => {
+      const hex = normalizeHex(color, '#6366F1').slice(1);
+      const red = parseInt(hex.slice(0, 2), 16);
+      const green = parseInt(hex.slice(2, 4), 16);
+      const blue = parseInt(hex.slice(4, 6), 16);
+      return { red, green, blue };
+    });
+    const shadows = colors.map((color, index) => {
+      const offsetX = (index - (colors.length - 1) / 2) * 3;
+      const blur = 20 + index * 3;
+      const spread = -8 - index;
+      return `${offsetX.toFixed(0)}px 10px ${blur}px ${spread}px rgba(${color.red}, ${color.green}, ${color.blue}, ${0.42 - index * 0.035})`;
+    });
+    const css = shadows.join(', ');
+    setShadowCssDraft(css);
+    commitStyles({ boxShadow: css });
   };
 
   const handleGradientApply = (cfg: GradientConfig, cssValue: string, commit: boolean) => {
@@ -921,6 +955,32 @@ export default function StyleInspectorPanel({
                 </div>
               </div>
 
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[11px] font-semibold text-slate-700">Gradient Border</p>
+                    <p className="text-[10px] text-slate-500">3–4 color stops · HEX controls</p>
+                  </div>
+                  <select aria-label="Border gradient stop count" value={borderGradientStopCount} onChange={(e) => setBorderGradientStopCount(Number(e.target.value))} className="h-7 rounded-md border border-slate-200 bg-white px-2 text-[11px]">
+                    <option value={3}>3 stops</option><option value={4}>4 stops</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {borderGradientStops.slice(0, borderGradientStopCount).map((color, index) => (
+                    <div key={index} className="flex min-w-0 items-center gap-1">
+                      <input type="color" aria-label={`Border gradient stop ${index + 1} color`} value={normalizeHex(color, '#6366F1')} onChange={(e) => setBorderGradientStops((current) => current.map((item, i) => i === index ? e.target.value.toUpperCase() : item))} className="h-8 w-8 shrink-0 cursor-pointer rounded border border-slate-200 p-0.5" />
+                      <input type="text" aria-label={`Border gradient stop ${index + 1} HEX`} value={color} maxLength={7} onChange={(e) => setBorderGradientStops((current) => current.map((item, i) => i === index ? e.target.value : item))} onBlur={() => setBorderGradientStops((current) => current.map((item, i) => i === index ? normalizeHex(item, '#6366F1') : item))} className="h-8 min-w-0 w-full rounded-md border border-slate-200 bg-white px-1.5 font-mono text-[10px] uppercase" />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <label htmlFor="inspector-border-gradient-angle" className="text-[10px] text-slate-600">Angle</label>
+                  <input id="inspector-border-gradient-angle" type="range" min={0} max={360} value={borderGradientAngle} onChange={(e) => setBorderGradientAngle(Number(e.target.value))} className="h-1.5 min-w-0 flex-1 accent-blue-600" />
+                  <span className="w-9 text-right font-mono text-[10px] text-slate-600">{borderGradientAngle}°</span>
+                  <button type="button" onClick={applyBorderGradient} className="rounded-md bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-blue-700">Apply</button>
+                </div>
+              </div>
+
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <ScrubLabel
@@ -1011,6 +1071,29 @@ export default function StyleInspectorPanel({
 
               <div className="space-y-2">
                 <span className="block text-[11px] text-slate-600">Elevation &amp; Shadow</span>
+                <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[11px] font-semibold text-slate-700">Multi-Color Shadow</p>
+                      <p className="text-[10px] text-slate-500">Layered glow from 3–4 HEX stops</p>
+                    </div>
+                    <select aria-label="Shadow gradient stop count" value={shadowGradientStopCount} onChange={(e) => setShadowGradientStopCount(Number(e.target.value))} className="h-7 rounded-md border border-slate-200 bg-white px-2 text-[11px]">
+                      <option value={3}>3 stops</option><option value={4}>4 stops</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {shadowGradientStops.slice(0, shadowGradientStopCount).map((color, index) => (
+                      <div key={index} className="flex min-w-0 items-center gap-1">
+                        <input type="color" aria-label={`Shadow gradient stop ${index + 1} color`} value={normalizeHex(color, '#6366F1')} onChange={(e) => setShadowGradientStops((current) => current.map((item, i) => i === index ? e.target.value.toUpperCase() : item))} className="h-8 w-8 shrink-0 cursor-pointer rounded border border-slate-200 p-0.5" />
+                        <input type="text" aria-label={`Shadow gradient stop ${index + 1} HEX`} value={color} maxLength={7} onChange={(e) => setShadowGradientStops((current) => current.map((item, i) => i === index ? e.target.value : item))} onBlur={() => setShadowGradientStops((current) => current.map((item, i) => i === index ? normalizeHex(item, '#6366F1') : item))} className="h-8 min-w-0 w-full rounded-md border border-slate-200 bg-white px-1.5 font-mono text-[10px] uppercase" />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-end">
+                    <button type="button" onClick={applyShadowGradient} className="rounded-md bg-blue-600 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-blue-700">Apply colorful shadow</button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-4 gap-1">
                   {SHADOW_PRESETS.map((preset) => (
                     <button
