@@ -414,7 +414,7 @@ function ReactLibraryModalInner({
       setErrorMsg('Component name must be PascalCase, e.g. AnimatedContent.');
       return;
     }
-    if (!source || !/(?:export\s+(?:default\s+)?(?:function|const|class)|(?:const|function)\s+[A-Z][A-Za-z0-9_]*|export\s+default\s+[A-Z][A-Za-z0-9_]*)/.test(source)) {
+    if (!source || !/(?:\bexport\s+default\b|\bexport\s*\{[\s\S]*?\})/.test(source) || !/<[A-Za-z][^>]*>/.test(source)) {
       setErrorMsg('Paste a React component source with an exported component (function, const, or class).');
       return;
     }
