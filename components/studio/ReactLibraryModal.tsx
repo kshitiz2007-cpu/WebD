@@ -366,12 +366,80 @@ function ReactLibraryModalInner({
     setIdentifiersText('');
   };
 
-  const handleNpmComponentInstall = (e: React.FormEvent) => {
+  const handleNpmComponentInstall = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+
+    // ReactBits is a shadcn registry, not an npm package. Resolve its registry
+    // item directly instead of passing the command to the npm package parser.
+    const registryCommand = npmCommand.trim().match(/^npx\\s+shadcn(?:@latest)?\\s+add\\s+@react-bits\\/([A-Za-z0-9_-]+)$/i);
+    if (registryCommand) {
+      const itemName = registryCommand[1];
+      const componentName = npmComponentName.trim() || itemName.replace(/-TS-(?:CSS|TW)$/i, '').replace(/[^A-Za-z0-9]/g, '');
+      if (!/^[A-Z][A-Za-z0-9]*$/.test(componentName)) {
+        setErrorMsg('Component library name must be PascalCase, e.g. CircularCarousel.');
+        return;
+      }
+      try {
+        const response = await fetch(`https://reactbits.dev/r/${encodeURIComponent(itemName)}.json`);
+        if (!response.ok) {
+          setErrorMsg(`ReactBits registry returned ${response.status}. Check the component command/name and try again.`);
+          return;
+        }
+        const registryItem = await response.json();
+        const registryFiles = Array.isArray(registryItem.files) ? registryItem.files : [];
+        const sourceFile = registryFiles.find((file: { path?: string; content?: string }) =>
+          /\\.(?:tsx|jsx)$/.test(file.path || '') && typeof file.content === 'string'
+        );
+        if (!sourceFile?.content) {
+          setErrorMsg('The ReactBits registry item did not contain a TSX/JSX component source.');
+          return;
+        }
+        const cssFile = registryFiles.find((file: { path?: string; content?: string }) =>
+          /\\.css$/.test(file.path || '') && typeof file.content === 'string'
+        );
+        const dependencySpecs: string[] = Array.isArray(registryItem.dependencies) ? registryItem.dependencies : [];
+        const dependencies: Array<{ packageName: string; version: string }> = [];
+        for (const spec of dependencySpecs) {
+          if (typeof spec !== 'string') continue;
+          const slash = spec.lastIndexOf('/');
+          const at = spec.lastIndexOf('@');
+          const hasVersion = at > slash;
+          const packageName = hasVersion ? spec.slice(0, at) : spec;
+          const version = hasVersion ? spec.slice(at + 1) : 'latest';
+          if (!isValidPackageName(packageName) || !version) {
+            setErrorMsg(`ReactBits registry returned an invalid dependency: ${spec}`);
+            return;
+          }
+          dependencies.push({ packageName, version });
+        }
+        const res = onImportLibrary({
+          packageName: '',
+          importMode: 'named',
+          identifiers: [],
+          targetFilePath: resolvedTargetFile,
+          componentLibraryName: componentName,
+          componentSource: sourceFile.content,
+          componentCss: cssFile?.content || '',
+          dependencyPackages: dependencies,
+        });
+        if (!res.ok) {
+          setErrorMsg(res.error || 'Could not import ReactBits registry component.');
+          return;
+        }
+        setStatusNotice(`Imported ReactBits ${itemName} into Your Components`);
+        setNpmCommand('');
+        setNpmComponentName('');
+        setNpmExportName('');
+      } catch (error) {
+        setErrorMsg(error instanceof Error ? error.message : 'Could not fetch the ReactBits registry item.');
+      }
+      return;
+    }
+
     const parsed = parseNpmInstallCommand(npmCommand);
     if (!parsed) {
-      setErrorMsg('Use one package command, e.g. npm install @radix-ui/react-dialog or npm i lucide-react@^0.553.0.');
+      setErrorMsg('Use npm install <package> OR ReactBits command: npx shadcn@latest add @react-bits/CircularCarousel-TS-CSS.');
       return;
     }
     const componentName = npmComponentName.trim();
