@@ -1280,22 +1280,41 @@ export function buildPreviewDocument(
     });
   }
 
+  function createStudioMotionValue(initial) {
+    var current = initial;
+    var listeners = new Set();
+    return {
+      get: function() { return current; },
+      set: function(next) { current = next; listeners.forEach(function(fn) { try { fn(current); } catch (e) {} }); },
+      jump: function(next) { current = next; listeners.forEach(function(fn) { try { fn(current); } catch (e) {} }); },
+      onChange: function(fn) { listeners.add(fn); return function() { listeners.delete(fn); }; }
+    };
+  }
+  function useStudioMotionValue(initial) { var ref = React.useRef(null); if (!ref.current) ref.current = createStudioMotionValue(initial); return ref.current; }
+  function useStudioTransform(inputs, transform) {
+    var ref = React.useRef(null); var list = Array.isArray(inputs) ? inputs : [inputs];
+    var read = function() { return transform.apply(null, list.map(function(v) { return v && typeof v.get === 'function' ? v.get() : v; })); };
+    if (!ref.current) ref.current = createStudioMotionValue(read());
+    React.useEffect(function() { var update = function() { ref.current.set(read()); };
+      var cleanups = list.map(function(v) { return v && typeof v.onChange === 'function' ? v.onChange(update) : function() {}; });
+      update(); return function() { cleanups.forEach(function(fn) { fn(); }); };
+    }, list); return ref.current;
+  }
+  function studioAnimate(value, target) { if (value && typeof value.set === 'function') value.set(target); return { stop: function() {} }; }
   var MotionProxy = new Proxy({}, {
-    get: function(_, tag) {
-      if (tag === '__esModule') return true;
-      var elTag = typeof tag === 'string' ? tag : 'div';
-      return React.forwardRef(function MotionWrapper(props, ref) {
-        var clean = {};
-        if (props) {
-          Object.keys(props).forEach(function(k) {
-            if (['initial','animate','exit','transition','whileHover','whileTap','whileInView','variants','viewport','layout','layoutId'].indexOf(k) === -1) {
-              clean[k] = props[k];
-            }
-          });
-        }
-        clean.ref = ref;
+    get: function(_, tag) { if (tag === '__esModule') return true; var elTag = typeof tag === 'string' ? tag : 'div';
+      return function StudioMotionElement(props) {
+        var tick = React.useState(0); var style = props && props.style ? props.style : {}; var cleanStyle = {}; var values = [];
+        Object.keys(style).forEach(function(key) { var value = style[key];
+          if (value && typeof value.get === 'function') { cleanStyle[key] = value.get(); if (typeof value.onChange === 'function') values.push(value); } else cleanStyle[key] = value;
+        });
+        React.useEffect(function() { var cleanups = values.map(function(value) { return value.onChange(function() { tick[1](function(n) { return n + 1; }); }); });
+          return function() { cleanups.forEach(function(fn) { fn(); }); };
+        }, values);
+        var clean = Object.assign({}, props, { style: cleanStyle });
+        ['initial','animate','exit','transition','whileHover','whileTap','whileInView','variants','viewport','layout','layoutId'].forEach(function(key) { delete clean[key]; });
         return React.createElement(elTag, clean);
-      });
+      };
     }
   });
 
@@ -1386,16 +1405,17 @@ export function buildPreviewDocument(
     if (spec === 'react-dom/client') return ReactDOMClient;
     if (spec === 'lucide-react') return LucideProxy;
     if (spec === 'motion/react' || spec === 'framer-motion') {
-      return {
-        motion: MotionProxy,
-        AnimatePresence: function(p) { return p.children || null; },
-        MotionConfig: function(p) { return p.children || null; },
-        useScroll: function() { return { scrollY: { get: function(){return 0;} }, scrollYProgress: { get: function(){return 0;} } }; },
-        useTransform: function() { return 0; },
-        useSpring: function(v) { return v; },
-        useInView: function() { return true; }
+      return { animate: studioAnimate, motion: MotionProxy, m: MotionProxy,
+        AnimatePresence: function(p) { return p.children || null; }, MotionConfig: function(p) { return p.children || null; },
+        useMotionValue: useStudioMotionValue, useReducedMotion: function() { return false; }, useTransform: useStudioTransform,
+        useSpring: function(v) { return v && typeof v.get === 'function' ? v : useStudioMotionValue(v); }, useInView: function() { return true; },
+        useScroll: function() { return { scrollY: useStudioMotionValue(0), scrollYProgress: useStudioMotionValue(0) }; }
       };
     }
+    if (spec === '@hugeicons/react') return { HugeiconsIcon: function(props) {
+      return React.createElement('svg', { width: props.size || 20, height: props.size || 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: props.strokeWidth || 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }, React.createElement('path', { d: 'M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4' }));
+    } };
+    if (spec === '@hugeicons/core-free-icons') return { Notification03Icon: { name: 'Notification03Icon' } };
     if (spec === 'next/link') return { __esModule: true, default: LinkStub };
     if (spec === 'next/image') {
       return {
