@@ -87,6 +87,16 @@ function collectImportedStyles(
     }
   }
 
+  // React Bits CircularCarousel uses height: 100% on its root. When it is
+  // inserted as a sibling in a page, its parent often has no explicit height,
+  // so the carousel collapses to 0px and appears to have failed to render.
+  // Give this known full-height visual component a responsive standalone size.
+  if (cssParts.some((css) => /\\.circular-carousel\\s*\\{/.test(css))) {
+    cssParts.push(
+      '.circular-carousel { width: 100%; min-height: 420px; height: min(70vh, 620px); }'
+    );
+  }
+
   return { css: cssParts.join('\n'), cssModules };
 }
 
