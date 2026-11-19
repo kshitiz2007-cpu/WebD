@@ -48,6 +48,7 @@ interface PagesLayersPanelProps {
   activeRoute: string;
   onSelectPage: (route: string) => void;
   onCreatePage?: (title: string, slug: string, template: PageTemplatePreset, customTemplateCode?: string, customTemplateCss?: string) => boolean | { ok: boolean; error?: string };
+  onDeletePage?: (route: string) => boolean;
   installedDependencies?: Record<string, string>;
   onInstallNpmCommand?: (command: string) => boolean | { ok: boolean; error?: string };
   isHtmlProject?: boolean;
@@ -77,6 +78,7 @@ export default function PagesLayersPanel({
   activeRoute,
   onSelectPage,
   onCreatePage,
+  onDeletePage,
   installedDependencies = {},
   onInstallNpmCommand,
   isHtmlProject = false,
@@ -449,30 +451,47 @@ export default function PagesLayersPanel({
               </div>
             )}
             <nav aria-label="Project pages" className="max-h-44 space-y-0.5 overflow-y-auto studio-scroll">
-            {pages.map((page) => {
-              const active = !isolatedComponentPath && page.route === activeRoute;
-              return (
-                <button
-                  key={page.filePath}
-                  type="button"
-                  onClick={() => onSelectPage(page.route)}
-                  className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs transition-colors ${
-                    active
-                      ? 'bg-slate-900 font-medium text-white'
-                      : 'text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <span className="truncate">{page.title}</span>
-                  <span
-                    className={`ml-2 shrink-0 font-mono text-[10px] ${
-                      active ? 'text-slate-300' : 'text-slate-400'
-                    }`}
-                  >
-                    {page.route}
-                  </span>
-                </button>
-              );
-            })}
+              {pages.map((page) => {
+                const active = !isolatedComponentPath && page.route === activeRoute;
+                const canDelete = Boolean(onDeletePage && page.route !== '/' && pages.length > 1);
+                return (
+                  <div key={page.filePath} className={`group flex items-center gap-1 rounded-md pr-1 transition-colors ${
+                    active ? 'bg-slate-900' : 'hover:bg-slate-100'
+                  }`}>
+                    <button
+                      type="button"
+                      onClick={() => onSelectPage(page.route)}
+                      className={`flex min-w-0 flex-1 items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs transition-colors ${
+                        active ? 'font-medium text-white' : 'text-slate-700'
+                      }`}
+                    >
+                      <span className="truncate">{page.title}</span>
+                      <span className={`ml-2 shrink-0 font-mono text-[10px] ${
+                        active ? 'text-slate-300' : 'text-slate-400'
+                      }`}>
+                        {page.route}
+                      </span>
+                    </button>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        aria-label={`Delete page ${page.title}`}
+                        title={`Delete ${page.title}`}
+                        onClick={() => {
+                          if (window.confirm(`Delete the "${page.title}" page? This removes its page file from the project.`)) {
+                            onDeletePage?.(page.route);
+                          }
+                        }}
+                        className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors ${
+                          active ? 'text-slate-300 hover:bg-rose-500 hover:text-white' : 'text-slate-400 hover:bg-rose-100 hover:text-rose-600'
+                        }`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </nav>
           </div>
         ) : (
