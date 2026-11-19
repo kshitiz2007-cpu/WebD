@@ -33,7 +33,7 @@ export default function LogicFlowCanvas({ rule, triggers, actions, onChange }: P
   const [stateSnapshot, setStateSnapshot] = useState<Record<string, unknown> | null>(null);
   const [inspectorError, setInspectorError] = useState('Waiting for Preview state…');
   const [inspectorOpen, setInspectorOpen] = useState(true);
-  const [canvasSize, setCanvasSize] = useState({ width: 760, height: 310 });
+  const canvasSize = { width: 760, height: 310 };
 
   useEffect(() => {
     const onMove = (event: MouseEvent) => {
