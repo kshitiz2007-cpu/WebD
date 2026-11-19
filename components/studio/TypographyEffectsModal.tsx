@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Sparkles, Type, X } from 'lucide-react';
+import { PackagePlus, Sparkles, Type, X } from 'lucide-react';
+import { parseNpmInstallCommand } from '@/lib/studio/library-importer';
 
 export type TextMotionPreset = 'none' | 'fade-up' | 'fade-in' | 'slide-left' | 'slide-right' | 'pop' | 'float' | 'glow' | 'wave';
 
@@ -11,6 +12,7 @@ interface TypographyEffectsModalProps {
   onClose: () => void;
   onApplyFont: (family: string) => void;
   onApplyMotion: (preset: TextMotionPreset, duration: number, delay: number) => void;
+  onInstallNpmPackage: (params: { command: string; kind: 'font' | 'motion'; fontFamily?: string; cssImport?: string; componentName?: string; componentExport?: string }) => { ok: boolean; error?: string };
 }
 
 const FONT_SUGGESTIONS = ['Inter', 'Poppins', 'Roboto', 'Montserrat', 'Playfair Display', 'DM Sans', 'Lato', 'Oswald', 'Merriweather', 'Space Grotesk'];
@@ -26,12 +28,20 @@ const MOTIONS: Array<{ id: TextMotionPreset; label: string; hint: string }> = [
   { id: 'wave', label: 'Wave', hint: 'Subtle vertical text motion' },
 ];
 
-export default function TypographyEffectsModal({ open, hasSelection, onClose, onApplyFont, onApplyMotion }: TypographyEffectsModalProps) {
+export default function TypographyEffectsModal({ open, hasSelection, onClose, onApplyFont, onApplyMotion, onInstallNpmPackage }: TypographyEffectsModalProps) {
   const [font, setFont] = useState('Inter');
   const [customFont, setCustomFont] = useState('');
   const [duration, setDuration] = useState(0.8);
   const [delay, setDelay] = useState(0);
   const [motion, setMotion] = useState<TextMotionPreset>('fade-up');
+  const [npmKind, setNpmKind] = useState<'font' | 'motion'>('motion');
+  const [npmCommand, setNpmCommand] = useState('npm install motion');
+  const [npmFontFamily, setNpmFontFamily] = useState('');
+  const [npmCssImport, setNpmCssImport] = useState('');
+  const [npmComponentName, setNpmComponentName] = useState('');
+  const [npmComponentExport, setNpmComponentExport] = useState('default');
+  const [npmNotice, setNpmNotice] = useState('');
+  const [npmError, setNpmError] = useState('');
   if (!open) return null;
   const family = (customFont.trim() || font).replace(/[<>;{}]/g, '');
   return (
@@ -50,6 +60,38 @@ export default function TypographyEffectsModal({ open, hasSelection, onClose, on
             </select>
             <input value={customFont} onChange={e => setCustomFont(e.target.value)} placeholder="Or enter font family, e.g. 'Cormorant Garamond'" className="h-9 w-full rounded-lg border border-slate-200 px-3 text-xs" />
             <button type="button" disabled={!hasSelection || !family} onClick={() => onApplyFont(family)} className="w-full rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40">Import font & apply to selected text</button>
+          </section>
+          <section className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/40 p-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-800"><PackagePlus className="h-4 w-4 text-violet-600" /> Import typography packages with npm</div>
+            <p className="text-[11px] text-slate-500">Add animation libraries or non-Google font packages directly to this project's package.json. These are project dependencies, not global installs on the editor server.</p>
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
+              <button type="button" onClick={() => { setNpmKind('motion'); setNpmCommand('npm install motion'); setNpmNotice(''); setNpmError(''); }} className={`rounded-md px-2 py-2 text-xs font-medium ${npmKind === 'motion' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-600'}`}>Kinetic / Motion</button>
+              <button type="button" onClick={() => { setNpmKind('font'); setNpmCommand('npm install @fontsource/roboto'); setNpmFontFamily('Roboto'); setNpmCssImport('@fontsource/roboto/400.css'); setNpmNotice(''); setNpmError(''); }} className={`rounded-md px-2 py-2 text-xs font-medium ${npmKind === 'font' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-600'}`}>Font package</button>
+            </div>
+            <label className="block text-[11px] font-medium text-slate-600">NPM install command</label>
+            <input value={npmCommand} onChange={e => setNpmCommand(e.target.value)} placeholder="npm install package-name" className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 font-mono text-xs" />
+            {npmKind === 'font' ? <>
+              <input value={npmFontFamily} onChange={e => setNpmFontFamily(e.target.value)} placeholder="Font family name, e.g. Roboto" className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs" />
+              <input value={npmCssImport} onChange={e => setNpmCssImport(e.target.value)} placeholder="CSS entry, e.g. @fontsource/roboto/400.css" className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 font-mono text-xs" />
+              <p className="text-[10px] text-slate-500">Examples: @fontsource/roboto/400.css, @fontsource-variable/inter, @fontsource/playfair-display/700.css.</p>
+            </> : <>
+              <p className="text-[10px] text-slate-500">Examples: npm install motion, npm install gsap, npm install react-type-animation, npm install react-typing-effect.</p>
+              <div className="grid grid-cols-2 gap-2">
+                <input value={npmComponentName} onChange={e => setNpmComponentName(e.target.value)} placeholder="Optional component name" className="h-9 min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs" />
+                <input value={npmComponentExport} onChange={e => setNpmComponentExport(e.target.value)} placeholder="Export (default)" className="h-9 min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs" />
+              </div>
+              <p className="text-[10px] text-slate-500">Optional: enter a React component export to also create a reusable item in Your Components. Leave blank to add only the package.</p>
+            </>}
+            <button type="button" onClick={() => {
+              setNpmError(''); setNpmNotice('');
+              const parsed = parseNpmInstallCommand(npmCommand);
+              if (!parsed) { setNpmError('Use a single-package command such as npm install package-name or npm i package-name.'); return; }
+              const result = onInstallNpmPackage({ command: npmCommand, kind: npmKind, fontFamily: npmFontFamily, cssImport: npmCssImport, componentName: npmComponentName, componentExport: npmComponentExport });
+              if (!result.ok) setNpmError(result.error || 'Could not add npm package.');
+              else { setNpmNotice(`Added ${parsed.packageName}@${parsed.version} to this project.`); setNpmCommand(''); }
+            }} className="w-full rounded-lg border border-violet-300 bg-white px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-100">Install & add to project</button>
+            {npmError && <p role="alert" className="text-[11px] text-rose-600">{npmError}</p>}
+            {npmNotice && <p role="status" className="text-[11px] text-emerald-700">{npmNotice}</p>}
           </section>
           <section className="space-y-3 rounded-xl border border-slate-200 p-3">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-800"><Sparkles className="h-4 w-4 text-violet-600" /> Motion text shortcuts</div>
