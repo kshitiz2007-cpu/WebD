@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 type Props = {
   selectionKey: string;
@@ -9,8 +9,31 @@ type Props = {
   onCommit: (styles: Record<string, string | null>) => void;
 };
 
+type SavedHexColors = {
+  border: string[];
+  shadow: string[];
+};
+
+const STORAGE_KEY = 'atelier_studio_border_shadow_hex_v1';
 const DEFAULT_BORDER = ['#8B5CF6', '#06B6D4', '#F472B6'];
 const DEFAULT_SHADOW = ['#8B5CF6', '#06B6D4', '#F472B6'];
+const HEX_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+function readSavedColors(): SavedHexColors {
+  if (typeof window === 'undefined') return { border: [], shadow: [] };
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { border: [], shadow: [] };
+    const parsed = JSON.parse(raw) as Partial<SavedHexColors>;
+    const clean = (values: unknown) =>
+      Array.isArray(values)
+        ? Array.from(new Set(values.filter((value): value is string => typeof value === 'string' && HEX_PATTERN.test(value))))
+        : [];
+    return { border: clean(parsed.border), shadow: clean(parsed.shadow) };
+  } catch {
+    return { border: [], shadow: [] };
+  }
+}
 
 export default function BorderShadowGradientControls({ selectionKey, borderWidth, onPreview, onCommit }: Props) {
   const [borderStops, setBorderStops] = useState(DEFAULT_BORDER);
@@ -18,16 +41,47 @@ export default function BorderShadowGradientControls({ selectionKey, borderWidth
   const [angle, setAngle] = useState(135);
   const [blur, setBlur] = useState(28);
   const [spread, setSpread] = useState(1);
-  const [lastSelection, setLastSelection] = useState(selectionKey);
+  const [savedColors, setSavedColors] = useState<SavedHexColors>({ border: [], shadow: [] });
+  const [activeSelection, setActiveSelection] = useState(selectionKey);
+  const [saveMessage, setSaveMessage] = useState('');
 
-  if (lastSelection !== selectionKey) {
-    setLastSelection(selectionKey);
+  useEffect(() => {
+    setSavedColors(readSavedColors());
+  }, []);
+
+  useEffect(() => {
+    if (activeSelection === selectionKey) return;
+    setActiveSelection(selectionKey);
     setBorderStops(DEFAULT_BORDER);
     setShadowStops(DEFAULT_SHADOW);
     setAngle(135);
     setBlur(28);
     setSpread(1);
-  }
+  }, [selectionKey, activeSelection]);
+
+  const persistSavedColors = (next: SavedHexColors) => {
+    setSavedColors(next);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      setSaveMessage('Could not save colors in this browser');
+    }
+  };
+
+  const saveHex = (kind: 'border' | 'shadow', color: string) => {
+    if (!HEX_PATTERN.test(color)) return;
+    const next = {
+      ...savedColors,
+      [kind]: [color.toUpperCase(), ...savedColors[kind].filter((item) => item !== color.toUpperCase())].slice(0, 16),
+    };
+    persistSavedColors(next);
+    setSaveMessage(`${color.toUpperCase()} saved to ${kind} colors`);
+  };
+
+  const removeSavedHex = (kind: 'border' | 'shadow', color: string) => {
+    persistSavedColors({ ...savedColors, [kind]: savedColors[kind].filter((item) => item !== color) });
+    setSaveMessage('');
+  };
 
   const gradient = (stops: string[]) => `linear-gradient(${angle}deg, ${stops.join(', ')})`;
   const shadow = useMemo(
@@ -44,14 +98,18 @@ export default function BorderShadowGradientControls({ selectionKey, borderWidth
     setter((current) => current.map((color, i) => i === index ? value.toUpperCase() : color));
   };
 
+  const applySavedHex = (kind: 'border' | 'shadow', index: number, color: string) => {
+    updateStop(kind, index, color);
+  };
+
   const renderStops = (kind: 'border' | 'shadow', stops: string[]) => (
     <div className="space-y-2">
       {stops.map((color, index) => (
-        <div key={index} className="grid grid-cols-[28px_1fr_auto] items-center gap-2">
+        <div key={index} className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2">
           <input
             type="color"
             aria-label={`${kind} gradient stop ${index + 1} color`}
-            value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : '#8B5CF6'}
+            value={HEX_PATTERN.test(color) ? color : '#8B5CF6'}
             onChange={(event) => updateStop(kind, index, event.target.value)}
             className="h-8 w-7 cursor-pointer rounded border border-slate-200 p-0.5"
           />
@@ -62,16 +120,54 @@ export default function BorderShadowGradientControls({ selectionKey, borderWidth
             onChange={(event) => updateStop(kind, index, event.target.value)}
             onBlur={(event) => {
               const value = event.target.value.trim();
-              if (!/^#[0-9a-fA-F]{6}$/.test(value)) {
+              if (!HEX_PATTERN.test(value)) {
                 const setter = kind === 'border' ? setBorderStops : setShadowStops;
                 setter((current) => current.map((item, i) => i === index ? stops[index] : item));
+              } else {
+                updateStop(kind, index, value.toUpperCase());
               }
             }}
             className="h-8 min-w-0 rounded-md border border-slate-200 px-2 font-mono text-[11px] uppercase"
           />
-          <span className="text-[10px] text-slate-400">Stop {index + 1}</span>
+          <button
+            type="button"
+            disabled={!HEX_PATTERN.test(color)}
+            onClick={() => saveHex(kind, color.toUpperCase())}
+            className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[10px] font-semibold text-blue-600 hover:bg-blue-50 disabled:opacity-40"
+            title="Save this HEX color for later"
+          >
+            Save HEX
+          </button>
         </div>
       ))}
+      {savedColors[kind].length > 0 && (
+        <div className="space-y-1.5 rounded-md border border-slate-200 bg-white p-2">
+          <div className="text-[10px] font-semibold text-slate-600">Saved {kind} HEX colors · tap to use on Stop 1</div>
+          <div className="flex flex-wrap gap-1.5">
+            {savedColors[kind].map((color) => (
+              <div key={color} className="group inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white py-0.5 pl-1 pr-1.5">
+                <button
+                  type="button"
+                  onClick={() => applySavedHex(kind, 0, color)}
+                  className="inline-flex items-center gap-1 text-[10px] font-mono text-slate-700"
+                  title={`Apply ${color} to Stop 1`}
+                >
+                  <span className="h-3.5 w-3.5 rounded-full border border-black/10" style={{ backgroundColor: color }} />
+                  {color}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeSavedHex(kind, color)}
+                  aria-label={`Remove saved ${kind} color ${color}`}
+                  className="text-[10px] text-slate-400 hover:text-rose-600"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-3">
         {stops.length < 4 && (
           <button
@@ -143,6 +239,7 @@ export default function BorderShadowGradientControls({ selectionKey, borderWidth
           <button type="button" onClick={() => onCommit(shadowStyles)} className="flex-1 rounded-md bg-blue-600 px-2 py-1.5 text-[10px] font-semibold text-white">Apply shadow</button>
         </div>
       </div>
+      {saveMessage && <p role="status" className="text-[10px] text-emerald-700">{saveMessage}</p>}
     </section>
   );
 }
