@@ -37,6 +37,18 @@ export type LogicConditionOperator =
 
 export type LogicValueSource = 'literal' | 'eventValue' | 'eventText';
 
+export interface VisualFlowNode {
+  id: string;
+  type: 'action' | 'condition';
+  label?: string;
+  action?: LogicAction;
+  target?: string;
+  value?: string;
+  valueSource?: LogicValueSource;
+  conditionOperator?: LogicConditionOperator;
+  conditionValue?: string;
+}
+
 export interface VisualLogicRule {
   id: string;
   componentId: string;
@@ -57,6 +69,8 @@ export interface VisualLogicRule {
   elseValue?: string;
   flowLayout?: Record<string, { x: number; y: number }>;
   flowEdges?: Array<{ id: string; from: string; to: string; label?: string }>;
+  /** Arbitrary action and nested condition nodes used by the graph executor. */
+  flowNodes?: VisualFlowNode[];
 }
 
 const TRIGGERS = new Set<LogicTrigger>([
@@ -112,7 +126,22 @@ export function normalizeLogicRules(value: unknown): VisualLogicRule[] {
         return typeof candidate.x === 'number' && Number.isFinite(candidate.x) && typeof candidate.y === 'number' && Number.isFinite(candidate.y)
           ? [[key.slice(0, 80), { x: Math.max(0, Math.min(5000, candidate.x)), y: Math.max(0, Math.min(5000, candidate.y)) }]] : [];
       })) : undefined,
-      flowEdges: Array.isArray(rule.flowEdges) ? rule.flowEdges.filter((edge): edge is {id:string;from:string;to:string;label?:string} => !!edge && typeof edge.id === 'string' && typeof edge.from === 'string' && typeof edge.to === 'string').slice(0,100) : undefined,
+      flowEdges: Array.isArray(rule.flowEdges) ? rule.flowEdges.filter((edge): edge is {id:string;from:string;to:string;label?:string} => !!edge && typeof edge.id === 'string' && typeof edge.from === 'string' && typeof edge.to === 'string').slice(0,300) : undefined,
+      flowNodes: Array.isArray(rule.flowNodes) ? rule.flowNodes.flatMap((node): VisualFlowNode[] => {
+        if (!node || typeof node !== 'object' || typeof node.id !== 'string' || !['action','condition'].includes(String(node.type))) return [];
+        const n = node as Record<string, unknown>;
+        return [{
+          id: n.id.slice(0,100),
+          type: n.type as VisualFlowNode['type'],
+          label: typeof n.label === 'string' ? n.label.slice(0,120) : '',
+          action: ACTIONS.has(n.action as LogicAction) ? n.action as LogicAction : undefined,
+          target: typeof n.target === 'string' ? n.target.slice(0,512) : '',
+          value: typeof n.value === 'string' ? n.value.slice(0,4000) : '',
+          valueSource: VALUE_SOURCES.has(n.valueSource as LogicValueSource) ? n.valueSource as LogicValueSource : 'literal',
+          conditionOperator: CONDITIONS.has(n.conditionOperator as LogicConditionOperator) ? n.conditionOperator as LogicConditionOperator : 'always',
+          conditionValue: typeof n.conditionValue === 'string' ? n.conditionValue.slice(0,1000) : '',
+        }];
+      }).slice(0,100) : undefined,
     }];
   });
 }
