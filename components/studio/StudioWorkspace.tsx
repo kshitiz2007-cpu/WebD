@@ -892,6 +892,49 @@ export default function StudioWorkspace() {
     [project.files, commitFilesMutation]
   );
 
+  const handleRemoveComponent = useCallback((componentFilePath: string) => {
+    const component = projectComponents.find((item) => item.filePath === componentFilePath);
+    if (!component || !project.files[componentFilePath]) return;
+
+    const nextFiles = { ...project.files };
+    const componentNames = projectComponents.map((item) => item.name);
+    for (const [filePath, source] of Object.entries(nextFiles)) {
+      if (filePath === componentFilePath || !/\\.(tsx|jsx)$/i.test(filePath)) continue;
+      const matching = scanElements(source, false)
+        .filter((element) => element.tagName === component.name)
+        .sort((a, b) => b.openStart - a.openStart);
+      let updated = source;
+      for (const element of matching) {
+        updated = updated.slice(0, element.openStart) + updated.slice(element.closeEnd);
+      }
+
+      // Remove imports that point at the deleted component file.
+      const importPattern = /^\\s*import\\s+[^;\\n]+?\\s+from\\s+(['"])([^'"]+)\\1\\s*;?\\s*$/gm;
+      updated = updated.replace(importPattern, (statement, _quote: string, specifier: string) => {
+        const normalized = specifier.replace(/\\.(tsx|jsx)$/i, '').replace(/\\/$/, '');
+        const baseName = componentFilePath.replace(/\\.(tsx|jsx)$/i, '');
+        const relativeTarget = filePath.split('/').slice(0, -1).reduce((path, part) => {
+          if (part === '..') return path.split('/').slice(0, -1).join('/');
+          if (part === '.') return path;
+          return path ? path + '/' + part : part;
+        }, '');
+        const resolved = normalized.startsWith('@/') ? normalized.slice(2) : normalized.startsWith('.') ? (relativeTarget ? relativeTarget + '/' : '') + normalized : '';
+        const cleanResolved = resolved.replace(/\\/\\.\\//g, '').replace(/\\/\\//g, '/');
+        const cleanBase = baseName.replace(/^src\\//, '');
+        return cleanResolved === cleanBase || cleanResolved === baseName ? '' : statement;
+      });
+      nextFiles[filePath] = updated;
+    }
+
+    delete nextFiles[componentFilePath];
+    if (isolatedComponentPath === componentFilePath) {
+      setIsolatedComponentPath(null);
+      setSelected(null);
+      setMultiSelected([]);
+    }
+    commitFilesMutation(nextFiles, activePage.filePath);
+  }, [project.files, projectComponents, isolatedComponentPath, commitFilesMutation, activePage.filePath]);
+
   const handleReplaceWithComponent = useCallback(
     (targetFilePath: string, elementIndex: number, componentFilePath: string) => {
       const targetCode = project.files[targetFilePath];
@@ -1719,6 +1762,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
                 handleInsertComponentOnPage(compPath);
                 if (isCompactViewport) setCompactLeftOpen(false);
               }}
+              onRemoveComponent={(compPath) => handleRemoveComponent(compPath)}
               installedLibCount={Object.keys(packageDependencies).length}
               onOpenLibraryModal={() => setIsLibraryModalOpen(true)}
               layerTree={layerTree}
