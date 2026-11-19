@@ -909,18 +909,18 @@ export default function StudioWorkspace() {
       }
 
       // Remove imports that point at the deleted component file.
-      const importPattern = /^\\s*import\\s+[^;\\n]+?\\s+from\\s+(['"])([^'"]+)\\1\\s*;?\\s*$/gm;
+      const importPattern = /^\s*import\s+[^;\n]+?\s+from\s+(['"])([^'"]+)\1\s*;?\s*$/gm;
       updated = updated.replace(importPattern, (statement, _quote: string, specifier: string) => {
-        const normalized = specifier.replace(/\\.(tsx|jsx)$/i, '').replace(/\\/$/, '');
-        const baseName = componentFilePath.replace(/\\.(tsx|jsx)$/i, '');
+        const normalized = specifier.replace(/\.(tsx|jsx)$/i, '').replace(/\/$/, '');
+        const baseName = componentFilePath.replace(/\.(tsx|jsx)$/i, '');
         const relativeTarget = filePath.split('/').slice(0, -1).reduce((path, part) => {
           if (part === '..') return path.split('/').slice(0, -1).join('/');
           if (part === '.') return path;
           return path ? path + '/' + part : part;
         }, '');
         const resolved = normalized.startsWith('@/') ? normalized.slice(2) : normalized.startsWith('.') ? (relativeTarget ? relativeTarget + '/' : '') + normalized : '';
-        const cleanResolved = resolved.replace(/\\/\\.\\//g, '').replace(/\\/\\//g, '/');
-        const cleanBase = baseName.replace(/^src\\//, '');
+        const cleanResolved = resolved.replace(/\/\.\//g, '').replace(/\/\//g, '/');
+        const cleanBase = baseName.replace(/^src\//, '');
         return cleanResolved === cleanBase || cleanResolved === baseName ? '' : statement;
       });
       nextFiles[filePath] = updated;
