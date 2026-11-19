@@ -511,7 +511,7 @@ export default function StudioWorkspace() {
     (filePath: string, updates: Array<{ elementIndex: number; patch: ElementSourcePatch }>) => {
       const currentCode = project.files[filePath];
       if (!currentCode || updates.length === 0) return;
-      const isHtml = /\\.html?$/i.test(filePath);
+      const isHtml = /\.html?$/i.test(filePath);
       const effectiveBp = resolveEffectiveBreakpoint(alignBreakpointScope, viewport);
       const scopedUpdates = updates.map((item) => ({
         ...item,
