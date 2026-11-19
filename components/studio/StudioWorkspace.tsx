@@ -17,6 +17,7 @@ import LayoutBuilderPanel from './LayoutBuilderPanel';
 import SmartAlignerPanel from './SmartAlignerPanel';
 import CodeDrawer from './CodeDrawer';
 import MediaLibraryModal from './MediaLibraryModal';
+import TypographyEffectsModal, { type TextMotionPreset } from './TypographyEffectsModal';
 import {
   WrapContainerLayout,
   applyBatchElementPatches,
@@ -124,6 +125,7 @@ export default function StudioWorkspace() {
   const [codeDrawerFile, setCodeDrawerFile] = useState<string>('app/page.tsx');
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isMediaLibraryOpen, setIsMediaLibraryOpen] = useState(false);
+  const [isTypographyEffectsOpen, setIsTypographyEffectsOpen] = useState(false);
   const [isDraftsOpen, setIsDraftsOpen] = useState(false);
   const [justSavedDraft, setJustSavedDraft] = useState(false);
   const [compiledTailwindCss, setCompiledTailwindCss] = useState<string>('');
@@ -550,6 +552,52 @@ export default function StudioWorkspace() {
     },
     [project.files, alignBreakpointScope, viewport, commitFilesMutation]
   );
+
+  const handleApplyFont = useCallback((family: string) => {
+    if (!selected) return;
+    const cssPath = project.globalCssPaths[0] || Object.keys(project.files).find((path) => /\.css$/i.test(path));
+    if (!cssPath) return;
+    const css = project.files[cssPath] || '';
+    const safeFamily = family.trim().replace(/[<>;{}]/g, '');
+    const googleFamily = encodeURIComponent(safeFamily).replace(/%20/g, '+');
+    const importRule = `@import url('https://fonts.googleapis.com/css2?family=${googleFamily}:wght@400;500;600;700;800&display=swap');`;
+    const nextCss = css.includes(importRule) ? css : `${importRule}\n${css}`;
+    const source = project.files[selected.filePath];
+    if (!source) return;
+    const isHtml = /\.html?$/i.test(selected.filePath);
+    const updatedSource = applyElementPatchToSource(source, selected.elementIndex, isHtml, {
+      styles: { fontFamily: `'${safeFamily}', sans-serif` },
+    });
+    commitFilesMutation({ ...project.files, [cssPath]: nextCss, [selected.filePath]: updatedSource }, selected.filePath);
+    setIsTypographyEffectsOpen(false);
+  }, [selected, project.files, project.globalCssPaths, commitFilesMutation]);
+
+  const handleApplyTextMotion = useCallback((preset: TextMotionPreset, duration: number, delay: number) => {
+    if (!selected) return;
+    const cssPath = project.globalCssPaths[0] || Object.keys(project.files).find((path) => /\.css$/i.test(path));
+    if (!cssPath) return;
+    const css = project.files[cssPath] || '';
+    const keyframes: Record<Exclude<TextMotionPreset, 'none'>, string> = {
+      'fade-up': '@keyframes webd-text-fade-up{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:translateY(0)}}',
+      'fade-in': '@keyframes webd-text-fade-in{from{opacity:0}to{opacity:1}}',
+      'slide-left': '@keyframes webd-text-slide-left{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:translateX(0)}}',
+      'slide-right': '@keyframes webd-text-slide-right{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:translateX(0)}}',
+      pop: '@keyframes webd-text-pop{0%{opacity:0;transform:scale(.82)}75%{transform:scale(1.04)}100%{opacity:1;transform:scale(1)}}',
+      float: '@keyframes webd-text-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}',
+      glow: '@keyframes webd-text-glow{0%,100%{filter:drop-shadow(0 0 0 transparent)}50%{filter:drop-shadow(0 0 9px currentColor)}}',
+      wave: '@keyframes webd-text-wave{0%,100%{transform:translateY(0) rotate(0)}25%{transform:translateY(-3px) rotate(-1deg)}75%{transform:translateY(3px) rotate(1deg)}}',
+    };
+    const updatedCss = preset === 'none' ? css : Object.values(keyframes).reduce((value, rule) => value.includes(rule) ? value : `${value}\n${rule}`, css);
+    const source = project.files[selected.filePath];
+    if (!source) return;
+    const isHtml = /\.html?$/i.test(selected.filePath);
+    const animation = preset === 'none' ? null : `webd-text-${preset} ${duration}s ease ${delay}s ${preset === 'float' || preset === 'glow' || preset === 'wave' ? 'infinite' : 'both'}`;
+    const updatedSource = applyElementPatchToSource(source, selected.elementIndex, isHtml, {
+      styles: { animation, willChange: preset === 'none' ? null : 'transform, opacity' },
+    });
+    commitFilesMutation({ ...project.files, [cssPath]: updatedCss, [selected.filePath]: updatedSource }, selected.filePath);
+    setIsTypographyEffectsOpen(false);
+  }, [selected, project.files, project.globalCssPaths, commitFilesMutation]);
 
   const handleMoveSibling = useCallback(
     (filePath: string, elementIndex: number, targetIndex: number) => {
@@ -1774,6 +1822,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         onToggleCodeDrawer={() => setIsCodeDrawerOpen((v) => !v)}
         onOpenImportModal={() => setIsImportOpen(true)}
         onOpenMediaLibrary={() => setIsMediaLibraryOpen(true)}
+        onOpenTypographyEffects={() => setIsTypographyEffectsOpen(true)}
         onExportZip={handleExportZip}
         hasUnsavedEdits={hasUnsavedEdits}
         showLeftPanel={showLeftPanel}
@@ -2288,6 +2337,14 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
           </button>
         </div>
       </nav>
+
+      <TypographyEffectsModal
+        open={isTypographyEffectsOpen}
+        hasSelection={Boolean(selected)}
+        onClose={() => setIsTypographyEffectsOpen(false)}
+        onApplyFont={handleApplyFont}
+        onApplyMotion={handleApplyTextMotion}
+      />
 
       <MediaLibraryModal
         open={isMediaLibraryOpen}
