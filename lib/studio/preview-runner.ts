@@ -52,7 +52,7 @@ function collectImportedStyles(
   const cssParts: string[] = [];
   const cssModules: Record<string, Record<string, string>> = {};
   const pending: Array<{ from: string; specifier: string }> = [];
-  const importPattern = /(?:from\\s*|import\\s*)['"]([^'"]+)['"]/g;
+  const importPattern = /(?:from\s*|import\s*)['"]([^'"]+)['"]/g;
 
   for (const [filePath, source] of sourceEntries) {
     let match: RegExpExecArray | null;
@@ -64,29 +64,29 @@ function collectImportedStyles(
   while (pending.length) {
     const item = pending.shift()!;
     const resolved = resolveVirtualModulePath(item.from, item.specifier, files);
-    if (!resolved || visited.has(resolved) || !/\\.(?:css|scss|sass|less)$/i.test(resolved)) continue;
+    if (!resolved || visited.has(resolved) || !/\.(?:css|scss|sass|less)$/i.test(resolved)) continue;
     visited.add(resolved);
     const content = files[resolved] || '';
     if (!content.trim()) continue;
 
-    if (/\\.module\\.css$/i.test(resolved)) {
+    if (/\.module\.css$/i.test(resolved)) {
       const names = new Set<string>();
-      const classPattern = /\\.([_a-zA-Z][\\w-]*)/g;
+      const classPattern = /\.([_a-zA-Z][\w-]*)/g;
       let classMatch: RegExpExecArray | null;
       while ((classMatch = classPattern.exec(content)) !== null) names.add(classMatch[1]);
       cssModules[resolved] = Object.fromEntries([...names].map((name) => [name, name]));
     } else {
-      cssParts.push(content.replace(/@import\\s+["']tailwindcss["']\\s*;/g, ''));
+      cssParts.push(content.replace(/@import\s+["']tailwindcss["']\s*;/g, ''));
     }
 
-    const nestedPattern = /@import\\s+(?:url\\(\\s*)?["']([^"']+)["']\\s*\\)?/g;
+    const nestedPattern = /@import\s+(?:url\(\s*)?["']([^"']+)["']\s*\)?/g;
     let nested: RegExpExecArray | null;
     while ((nested = nestedPattern.exec(content)) !== null) {
       if (nested[1].startsWith('.') || nested[1].startsWith('@/')) pending.push({ from: resolved, specifier: nested[1] });
     }
   }
 
-  return { css: cssParts.join('\\n'), cssModules };
+  return { css: cssParts.join('\n'), cssModules };
 }
 
 export interface CompiledPreviewBundle {
