@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { LogicAction, LogicTrigger, VisualLogicRule } from '@/lib/studio/logic-engine';
+import type { LogicAction, LogicTrigger, VisualFlowNode, VisualLogicRule } from '@/lib/studio/logic-engine';
 
 type Choice<T extends string> = { value: T; label: string };
 type Point = { x: number; y: number };
@@ -30,7 +30,10 @@ const labels: Record<string, string> = {
   persistState:'Save state',loadState:'Load state',
 };
 const pathGet = (root: Record<string, unknown>, path: string) => path.split('.').filter(Boolean).reduce<unknown>((v,k) => v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined, root);
-const sendToPreviewFrames = (message: Record<string, unknown>) => {\n  try { Array.from(window.frames).forEach((frame) => frame.postMessage(message, '*')); } catch {}\n};\nconst pathSet = (root: Record<string, unknown>, path: string, value: unknown) => {
+const sendToPreviewFrames = (message: Record<string, unknown>) => {
+  try { Array.from(window.frames).forEach((frame) => frame.postMessage(message, '*')); } catch {}
+};
+const pathSet = (root: Record<string, unknown>, path: string, value: unknown) => {
   const keys = path.split('.').filter(Boolean); if (!keys.length) return root;
   const next = structuredClone(root);
   let cursor: Record<string, unknown> = next;
@@ -41,6 +44,8 @@ const sendToPreviewFrames = (message: Record<string, unknown>) => {\n  try { Arr
 export default function LogicFlowCanvas({ rule, triggers, actions, onChange }: Props) {
   const [positions, setPositions] = useState<Record<string,Point>>(rule.flowLayout || defaults);
   const [edges, setEdges] = useState<Edge[]>(rule.flowEdges || defaultEdges);
+  const flowNodes = rule.flowNodes || [];
+  const [paletteDrag, setPaletteDrag] = useState<'action'|'condition'|null>(null);
   const [drag, setDrag] = useState<{id:string; x:number;y:number}|null>(null);
   const [connectFrom, setConnectFrom] = useState<string|null>(null);
   const [state, setState] = useState<Record<string,unknown>>({});
@@ -83,13 +88,22 @@ export default function LogicFlowCanvas({ rule, triggers, actions, onChange }: P
   const saveEdges = (next: Edge[]) => { setEdges(next); onChange({ flowEdges: next }); };
   const connect = (to: string) => {
     if (!connectFrom || connectFrom === to) { setConnectFrom(null); return; }
-    const valid = (connectFrom === 'trigger' && to === 'condition') || (connectFrom === 'condition' && (to === 'yes' || to === 'no'));
-    if (!valid) { setConnectFrom(null); return; }
+    const validIds = new Set(['trigger','condition','yes','no',...flowNodes.map((node) => node.id)]);
+    if (!validIds.has(connectFrom) || !validIds.has(to)) { setConnectFrom(null); return; }
     const id = `edge-${connectFrom}-${to}`;
-    if (!edges.some((edge) => edge.from === connectFrom && edge.to === to)) saveEdges([...edges,{id,from:connectFrom,to,label:connectFrom==='condition' ? (to==='yes'?'IF true':to==='no'?'ELSE':'') : undefined}]);
+    const sourceNode = flowNodes.find((node) => node.id === connectFrom);
+    const label = connectFrom === 'condition' || sourceNode?.type === 'condition' ? 'true' : undefined;
+    if (!edges.some((edge) => edge.from === connectFrom && edge.to === to)) saveEdges([...edges,{id,from:connectFrom,to,label}]);
     setConnectFrom(null);
   };
   const reset = () => { setPositions(defaults); saveEdges(defaultEdges); onChange({flowLayout:defaults,flowEdges:defaultEdges}); };
+  const addFlowNode = (type: 'action'|'condition', x?: number, y?: number) => {
+    const id = 'node-' + Date.now() + '-' + Math.random().toString(36).slice(2,6);
+    const next: VisualFlowNode = type === 'action' ? {id,type,action:'setState',target:'app.value',value:'true',valueSource:'literal'} : {id,type,conditionOperator:'equals',conditionValue:'true'};
+    const layout={...positions,[id]:{x:x??330,y:y??330}}; setPositions(layout); onChange({flowNodes:[...flowNodes,next],flowLayout:layout});
+  };
+  const updateFlowNode = (id:string, patch:Partial<VisualFlowNode>) => onChange({flowNodes:flowNodes.map((node)=>node.id===id?{...node,...patch}:node)});
+  const removeFlowNode = (id:string) => { onChange({flowNodes:flowNodes.filter((node)=>node.id!==id)}); saveEdges(edges.filter((edge)=>edge.from!==id&&edge.to!==id)); };
   const edgePath = (edge: Edge) => {
     const a=positions[edge.from] || defaults[edge.from], b=positions[edge.to] || defaults[edge.to];
     if (!a || !b) return null;
@@ -135,25 +149,27 @@ export default function LogicFlowCanvas({ rule, triggers, actions, onChange }: P
         <button type="button" onClick={reset} className="rounded border px-2 py-1 font-semibold">Auto layout</button>
       </div>
     </div>
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"><span className="text-[10px] font-semibold text-slate-600">NODE PALETTE</span><button draggable onDragStart={()=>setPaletteDrag("action")} onDragEnd={()=>setPaletteDrag(null)} onClick={()=>addFlowNode("action")} className="rounded-md border bg-white px-2 py-1 text-[10px] font-semibold">＋ Action node</button><button draggable onDragStart={()=>setPaletteDrag("condition")} onDragEnd={()=>setPaletteDrag(null)} onClick={()=>addFlowNode("condition")} className="rounded-md border bg-white px-2 py-1 text-[10px] font-semibold">＋ Condition node</button><span className="text-[9px] text-slate-500">Drag onto graph or click to add</span></div>
     <div className="overflow-auto rounded-xl border border-slate-700 bg-slate-950 p-2">
-      <div ref={canvasRef} className="relative" style={{width:900*zoom,height:420*zoom}}>
-        <div className="absolute left-0 top-0 origin-top-left" style={{width:900,height:420,transform:`scale(${zoom})`}}>
-          <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 900 420">
+      <div ref={canvasRef} className="relative" onDragOver={(e)=>{if(paletteDrag)e.preventDefault();}} onDrop={(e)=>{e.preventDefault();if(!paletteDrag)return;const rect=canvasRef.current?.getBoundingClientRect();addFlowNode(paletteDrag,Math.max(0,(e.clientX-(rect?.left||0))/zoom-90),Math.max(0,(e.clientY-(rect?.top||0))/zoom-55));setPaletteDrag(null);}} style={{width:1200*zoom,height:760*zoom}}>
+        <div className="absolute left-0 top-0 origin-top-left" style={{width:1200,height:760,transform:`scale(${zoom})`}}>
+          <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 1200 760">
             {edges.map((edge)=>{const path=edgePath(edge);return path?<g key={edge.id}><path d={path.d} fill="none" stroke={edge.label==='ELSE'?'#fbbf24':edge.label==='IF true'?'#34d399':'#60a5fa'} strokeWidth="2.5"/><text x={path.x} y={path.y-8} fill="#cbd5e1" fontSize="10" textAnchor="middle">{edge.label||'flow'}</text></g>:null})}
           </svg>
           {node('trigger','01 · Trigger',triggers.find((t)=>t.value===rule.trigger)?.label||rule.trigger,'border-blue-400/60 text-blue-500',<div className="space-y-1"><select aria-label="Workflow trigger" value={rule.trigger} onChange={(e)=>onChange({trigger:e.target.value as LogicTrigger})} className="w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-700">{triggers.map((t)=><option key={t.value} value={t.value}>{t.label}</option>)}</select><p className="truncate text-[9px] text-slate-500">{rule.componentLabel}</p></div>)}
           {node('condition','02 · Condition',conditionLabel,'border-violet-400/60 text-violet-500',<div className="space-y-1"><select aria-label="Condition operator" value={rule.conditionOperator||'always'} onChange={(e)=>onChange({conditionOperator:e.target.value as VisualLogicRule['conditionOperator']})} className="w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-700"><option value="always">Always</option><option value="equals">Equals</option><option value="notEquals">Not equals</option><option value="contains">Contains</option><option value="greaterThan">Greater than</option><option value="lessThan">Less than</option><option value="isEmpty">Is empty</option><option value="isNotEmpty">Is not empty</option></select><input aria-label="Condition compare value" value={rule.conditionValue||''} onChange={(e)=>onChange({conditionValue:e.target.value})} placeholder="Compare value" className="w-full rounded-md border border-slate-200 px-1.5 py-1 text-[10px]"/></div>)}
           {node('yes','03 · IF true',labels[rule.action]||rule.action,'border-emerald-400/60 text-emerald-600',branch('yes'))}
           {node('no','04 · ELSE',rule.elseAction?(labels[rule.elseAction]||rule.elseAction):'No ELSE action','border-amber-400/60 text-amber-600',branch('no'))}
+          {flowNodes.map((item,index)=>node(item.id,String(index+5).padStart(2,'0')+' · '+item.type.toUpperCase(),item.label||(item.type==='action'?(labels[item.action||'toast']||item.action||'Action'):'Nested condition'),item.type==='action'?'border-cyan-400/60 text-cyan-600':'border-fuchsia-400/60 text-fuchsia-600',<div className="space-y-1.5" onPointerDown={(e)=>e.stopPropagation()}>{item.type==='action'?<><select aria-label="Action node type" value={item.action||'toast'} onChange={(e)=>updateFlowNode(item.id,{action:e.target.value as LogicAction})} className="w-full rounded border px-1 py-1 text-[10px]">{actions.map((a)=><option key={a.value} value={a.value}>{a.label}</option>)}</select><input aria-label="Action target" value={item.target||''} onChange={(e)=>updateFlowNode(item.id,{target:e.target.value})} placeholder="Target / state path" className="w-full rounded border px-1 py-1 text-[10px]"/><input aria-label="Action value" value={item.value||''} onChange={(e)=>updateFlowNode(item.id,{value:e.target.value})} placeholder="Value" className="w-full rounded border px-1 py-1 text-[10px]"/></>:<><select aria-label="Nested condition operator" value={item.conditionOperator||'always'} onChange={(e)=>updateFlowNode(item.id,{conditionOperator:e.target.value as VisualLogicRule['conditionOperator']})} className="w-full rounded border px-1 py-1 text-[10px]">{['always','equals','notEquals','contains','greaterThan','lessThan','isEmpty','isNotEmpty'].map((op)=><option key={op} value={op}>{op}</option>)}</select><input aria-label="Nested condition value" value={item.conditionValue||''} onChange={(e)=>updateFlowNode(item.id,{conditionValue:e.target.value})} placeholder="Compare value" className="w-full rounded border px-1 py-1 text-[10px]"/></>}<button type="button" onClick={()=>removeFlowNode(item.id)} className="text-[9px] text-rose-600">Remove node</button></div>))}
         </div>
       </div>
     </div>
     <div className="flex flex-wrap items-center gap-2">
       <button type="button" onClick={()=>{saveEdges(defaultEdges);setConnectFrom(null);}} className="rounded-md border px-2 py-1 text-[10px] font-semibold">Auto-connect defaults</button>
       <button type="button" onClick={()=>saveEdges([])} className="rounded-md border px-2 py-1 text-[10px] font-semibold">Clear all wires</button>
-      <span className="text-[10px] text-slate-500">{edges.length} connection(s)</span>
+      <span className="text-[10px] text-slate-500">{edges.length} connection(s) · {flowNodes.length} custom node(s)</span>
     </div>
-    {edges.length>0&&<div className="flex flex-wrap gap-1">{edges.map((edge)=><button key={edge.id} type="button" onClick={()=>saveEdges(edges.filter((item)=>item.id!==edge.id))} className="rounded-full bg-slate-100 px-2 py-1 text-[10px] text-slate-600 hover:bg-rose-50 hover:text-rose-600">{edge.from} → {edge.to} ×</button>)}</div>}
+    {edges.length>0&&<div className="flex flex-wrap gap-1">{edges.map((edge)=><span key={edge.id} className="inline-flex items-center rounded-full bg-slate-100 text-[10px] text-slate-600"><button type="button" onClick={()=>saveEdges(edges.map((item)=>item.id===edge.id?{...item,label:item.label==='true'?'false':item.label==='false'?'': 'true'}:item))} className="px-2 py-1">{edge.from} → {edge.to} {edge.label||'next'} · branch</button><button type="button" aria-label="Remove connection" onClick={()=>saveEdges(edges.filter((item)=>item.id!==edge.id))} className="px-1 py-1 text-rose-600">×</button></span>)}</div>}
     <section className="overflow-hidden rounded-xl border border-slate-200">
       <div className="flex items-center justify-between bg-slate-50 px-3 py-2"><span className="text-xs font-semibold text-slate-700">Live state inspector</span><button type="button" onClick={()=>sendToPreviewFrames({type:'studio:request-workflow-state'})} className="text-[10px] font-semibold text-blue-600">Refresh</button></div>
       <div className="space-y-2 p-3">
