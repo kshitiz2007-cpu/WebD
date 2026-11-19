@@ -2071,6 +2071,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
               selected={selected}
               onPreviewStyles={handlePreviewStyles}
               onCommitPatch={handleCommitPatch}
+              onCommitBatchPatches={handleCommitBatchPatches}
               onMoveSibling={handleMoveSibling}
               onDuplicate={handleDuplicate}
               onDelete={handleDelete}
