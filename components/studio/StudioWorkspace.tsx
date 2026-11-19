@@ -1611,10 +1611,14 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
     const safeAlt = asset.name.replace(/["<>]/g, '').replace(/\.[^.]+$/, '');
     const isHtml = /\.html?$/i.test(selected.filePath);
     if (mode === 'cutout' && mediaKind === 'image') {
-      const parent = selected.ancestry?.[selected.ancestry.length - 1];
-      const parentTarget = parent ? parseStudioTarget(parent.studioId) : null;
-      if (parentTarget && parentTarget.filePath === selected.filePath) {
-        handleCommitPatch(parentTarget.filePath, parentTarget.elementIndex, {
+      // Resolve the selected element's parent from the current source tree.
+      // ancestry entries intentionally carry labels/IDs only, not source indices.
+      const currentSource = project.files[selected.filePath];
+      const sourceIsHtml = /\.html?$/i.test(selected.filePath);
+      const sourceElements = currentSource ? scanElements(currentSource, sourceIsHtml) : [];
+      const parentIndex = sourceElements[selected.elementIndex]?.parentIndex ?? -1;
+      if (parentIndex >= 0) {
+        handleCommitPatch(selected.filePath, parentIndex, {
           styles: { position: 'relative', isolation: 'isolate', minHeight: 'clamp(420px, 58vw, 640px)', overflow: 'visible' },
         });
       }
@@ -1636,7 +1640,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
           ? `<img src="${asset.dataUrl}" alt="${safeAlt}" style="max-width:100%;height:auto;object-fit:contain;" />`
           : `<img src="${asset.dataUrl}" alt="${safeAlt}" style={{ maxWidth: '100%', height: 'auto', objectFit: 'contain' }} />`);
     handleInsertLayoutBlock(snippet, selected.studioId);
-  }, [selected, handleCommitPatch, handleInsertLayoutBlock]);
+  }, [selected, project.files, handleCommitPatch, handleInsertLayoutBlock]);
 
   const handleExportZip = useCallback(async () => {
     const { default: JSZip } = await import('jszip');
