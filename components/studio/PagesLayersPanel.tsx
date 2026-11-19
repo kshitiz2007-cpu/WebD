@@ -27,7 +27,7 @@ interface PagesLayersPanelProps {
   pages: ProjectPage[];
   activeRoute: string;
   onSelectPage: (route: string) => void;
-  onCreatePage?: (title: string, slug: string, template: PageTemplatePreset, customTemplateCode?: string) => boolean | { ok: boolean; error?: string };
+  onCreatePage?: (title: string, slug: string, template: PageTemplatePreset, customTemplateCode?: string, customTemplateCss?: string) => boolean | { ok: boolean; error?: string };
   isHtmlProject?: boolean;
   onCreateSiteKit?: () => boolean;
   components?: ProjectComponentInfo[];
@@ -84,6 +84,8 @@ export default function PagesLayersPanel({
   const [newPageTitle, setNewPageTitle] = useState('New Page');
   const [newPageSlug, setNewPageSlug] = useState('new-page');
   const [pageTemplate, setPageTemplate] = useState<PageTemplatePreset>('landing');
+  const [customTemplateCss, setCustomTemplateCss] = useState('');
+  const [customTemplateCssName, setCustomTemplateCssName] = useState('');
   const [customTemplateCode, setCustomTemplateCode] = useState(isHtmlProject
     ? '<main class="mx-auto max-w-6xl px-6 py-16"><h1>{{TITLE}}</h1><p>Build your custom page layout here.</p></main>'
     : '<main className="mx-auto max-w-6xl px-6 py-16"><h1 className="text-4xl font-bold">{{TITLE}}</h1><p className="mt-4 text-slate-600">Build your custom page layout here.</p></main>');
@@ -260,7 +262,7 @@ export default function PagesLayersPanel({
                   <form className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5" onSubmit={(event) => {
                     event.preventDefault();
                     setPageError('');
-                    const result = onCreatePage(newPageTitle, newPageSlug, pageTemplate, pageTemplate === 'custom' ? customTemplateCode : undefined);
+                    const result = onCreatePage(newPageTitle, newPageSlug, pageTemplate, pageTemplate === 'custom' ? customTemplateCode : undefined, pageTemplate === 'custom' ? customTemplateCss : undefined);
                     const created = typeof result === 'boolean' ? result : result.ok;
                     if (created) {
                       setShowNewPage(false);
@@ -268,6 +270,8 @@ export default function PagesLayersPanel({
                       setNewPageTitle('New Page');
                       setNewPageSlug('new-page');
                       setPageTemplate('landing');
+                      setCustomTemplateCss('');
+                      setCustomTemplateCssName('');
                     } else {
                       setPageError(typeof result === 'boolean'
                         ? 'Could not create the page. Check that the URL is unique and the pasted code is valid.'
@@ -311,6 +315,39 @@ export default function PagesLayersPanel({
                             : 'Paste a complete React page component or JSX layout fragment. A fragment is wrapped automatically. Click “Create from code” to generate and open the page.'}
                           {' '}Optional placeholders: {'{{TITLE}}'} and {'{{SLUG}}'}.
                         </span>
+                      </label>
+                    )}
+                    {pageTemplate === 'custom' && !isHtmlProject && (
+                      <label className="block text-[10px] font-semibold text-slate-600">
+                        Optional CSS file (.css)
+                        <input
+                          type="file"
+                          accept=".css,text/css"
+                          onChange={async (event) => {
+                            const file = event.target.files?.[0];
+                            if (!file) {
+                              setCustomTemplateCss('');
+                              setCustomTemplateCssName('');
+                              return;
+                            }
+                            if (!file.name.toLowerCase().endsWith('.css')) {
+                              setPageError('Please choose a .css file.');
+                              event.target.value = '';
+                              return;
+                            }
+                            try {
+                              const css = await file.text();
+                              setCustomTemplateCss(css);
+                              setCustomTemplateCssName(file.name);
+                              setPageError('');
+                            } catch {
+                              setPageError('Could not read the CSS file. Try selecting it again.');
+                            }
+                          }}
+                          className="mt-1 block w-full rounded-md border border-slate-200 bg-white p-2 text-[10px] font-normal text-slate-700 file:mr-2 file:rounded file:border-0 file:bg-indigo-50 file:px-2 file:py-1 file:text-[10px] file:font-semibold file:text-indigo-700"
+                        />
+                        {customTemplateCssName && <span className="mt-1 block font-normal text-emerald-700">Loaded: {customTemplateCssName}</span>}
+                        <span className="mt-1 block font-normal text-slate-500">WebD saves it beside the new .tsx page and adds the stylesheet import automatically.</span>
                       </label>
                     )}
                     {pageError && <p role="alert" className="text-[10px] text-rose-600">{pageError}</p>}
