@@ -1047,11 +1047,11 @@ export default function StudioWorkspace() {
           }
           detectedDependencies.set(dependency.packageName, dependency.version);
         }
-        const importPattern = /(?:from\\s*|import\\s*)['"]([^'"]+)['"]/g;
+        const importPattern = /(?:from\s*|import\s*)['"]([^'"]+)['"]/g;
         let importMatch: RegExpExecArray | null;
         while ((importMatch = importPattern.exec(componentSource)) !== null) {
           const specifier = importMatch[1];
-          if (specifier.startsWith('.') || specifier.startsWith('@/') || specifier.startsWith('react')) continue;
+          if (specifier.startsWith('.') || specifier.startsWith('@/') || specifier === 'react' || specifier === 'react-dom') continue;
           const segments = specifier.split('/');
           const packageName = specifier.startsWith('@') ? segments.slice(0, 2).join('/') : segments[0];
           if (isValidPackageName(packageName) && !detectedDependencies.has(packageName)) {
@@ -1067,31 +1067,31 @@ export default function StudioWorkspace() {
           ? 'src/components'
           : 'components';
         let componentName = componentLibraryName;
-        let componentPath = `${componentFolder}/${componentName}.tsx`;
+        let componentPath = componentFolder + '/' + componentName + '.tsx';
         let suffix = 2;
         while (nextFiles[componentPath]) {
-          componentName = `${componentLibraryName}${suffix++}`;
-          componentPath = `${componentFolder}/${componentName}.tsx`;
+          componentName = componentLibraryName + suffix++;
+          componentPath = componentFolder + '/' + componentName + '.tsx';
         }
         let sourceToSave = componentSource;
         if (componentCss?.trim()) {
-          const cssImportPattern = /import\\s+['"]((?:\\.\\.?\\/)[^'"]+\\.css)['"];?/g;
+          const cssImportPattern = /import\s+['"]((?:\.\.?\/)[^'"]+\.css)['"];?/g;
           const cssImports = [...componentSource.matchAll(cssImportPattern)];
           if (cssImports.length === 0) {
-            const cssImport = `import './${componentName}.css';`;
-            const clientDirective = sourceToSave.match(/^(['"]use client['"];?\\s*)/);
+            const cssImport = "import './" + componentName + ".css';";
+            const clientDirective = sourceToSave.match(/^(['"]use client['"];?\s*)/);
             sourceToSave = clientDirective
-              ? sourceToSave.replace(clientDirective[0], `${clientDirective[0]}${cssImport}\\n`)
-              : `${cssImport}\\n${sourceToSave}`;
-            nextFiles[`${componentFolder}/${componentName}.css`] = componentCss.trim() + '\\n';
+              ? sourceToSave.replace(clientDirective[0], clientDirective[0] + cssImport + '\n')
+              : cssImport + '\n' + sourceToSave;
+            nextFiles[componentFolder + '/' + componentName + '.css'] = componentCss.trim() + '\n';
           } else {
             for (const cssMatch of cssImports) {
-              const relativePath = cssMatch[1].replace(/^\\.\\//, '');
-              nextFiles[`${componentFolder}/${relativePath}`] = componentCss.trim() + '\\n';
+              const relativePath = cssMatch[1].replace(/^\.\//, '');
+              nextFiles[componentFolder + '/' + relativePath] = componentCss.trim() + '\n';
             }
           }
         }
-        nextFiles[componentPath] = sourceToSave.endsWith('\\n') ? sourceToSave : `${sourceToSave}\\n`;
+        nextFiles[componentPath] = sourceToSave.endsWith('\n') ? sourceToSave : sourceToSave + '\n';
         setSelected(null);
         commitFilesMutation(nextFiles, componentPath);
         for (const packageName of detectedDependencies.keys()) preloadExternalLibrary(packageName);
