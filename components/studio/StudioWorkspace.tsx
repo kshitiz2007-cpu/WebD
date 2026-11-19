@@ -818,7 +818,7 @@ export default function StudioWorkspace() {
   }, [activePage.filePath]);
 
   const handleCreatePage = useCallback(
-    (title: string, slug: string, template: PageTemplatePreset, customTemplateCode?: string): { ok: boolean; error?: string } => {
+    (title: string, slug: string, template: PageTemplatePreset, customTemplateCode?: string, customTemplateCss?: string): { ok: boolean; error?: string } => {
       try {
         const generated = createPageFile({
           framework: project.framework,
@@ -826,12 +826,14 @@ export default function StudioWorkspace() {
           slug,
           template,
           customTemplateCode,
+          customTemplateCss,
           files: project.files,
         });
         if (project.pages.some((page) => page.route === generated.route)) {
           return { ok: false, error: `The URL ${generated.route} already exists. Choose a different URL path.` };
         }
         const nextFiles = { ...project.files, [generated.filePath]: generated.code };
+        if (generated.cssFilePath && generated.cssCode !== undefined) nextFiles[generated.cssFilePath] = generated.cssCode;
         commitFilesMutation(nextFiles, generated.filePath);
         setIsolatedComponentPath(null);
         setActiveRoute(generated.route);
@@ -1742,8 +1744,8 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
                 if (isCompactViewport) setCompactLeftOpen(false);
               }}
               isHtmlProject={project.framework === 'html'}
-              onCreatePage={(title, slug, template, customTemplateCode) => {
-                const created = handleCreatePage(title, slug, template, customTemplateCode);
+              onCreatePage={(title, slug, template, customTemplateCode, customTemplateCss) => {
+                const created = handleCreatePage(title, slug, template, customTemplateCode, customTemplateCss);
                 if (created && isCompactViewport) setCompactLeftOpen(false);
                 return created;
               }}
