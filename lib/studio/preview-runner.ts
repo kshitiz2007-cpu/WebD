@@ -195,6 +195,7 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
     }
     cursor[parts[parts.length - 1]] = value;
     syncWorkflowBindings();
+    try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}
   }
   function parseWorkflowValue(value) {
     if (typeof value !== 'string') return value;
@@ -211,7 +212,12 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
     });
   }
   function runLogicRule(rule, event) {
-    if (!rule || rule.enabled === false || !conditionMatches(rule, event)) return;
+    if (!rule || rule.enabled === false) return;
+    var conditionPassed = conditionMatches(rule, event);
+    if (!conditionPassed) {
+      if (!rule.elseAction) return;
+      rule = Object.assign({}, rule, { action: rule.elseAction, target: rule.elseTarget || '', value: rule.elseValue || '', elseAction: undefined });
+    }
     var stateActions = ['setState', 'incrementState', 'addToArray', 'removeFromArray', 'persistState', 'loadState'];
     var needsTarget = ['toast', 'navigate'].indexOf(rule.action) === -1 && stateActions.indexOf(rule.action) === -1;
     var target = needsTarget ? resolveLogicTarget(rule.target) : null;
@@ -288,6 +294,7 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
         var savedState = JSON.parse(window.localStorage.getItem('webd:app-state') || '{}');
         window.__WEBD_APP_STATE__ = savedState && typeof savedState === 'object' ? savedState : {};
         syncWorkflowBindings();
+        try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}
       } catch (_) {}
     } else if (rule.action === 'navigate') {
       if (typeof rule.target === 'string' && rule.target) window.parent.postMessage({ type: 'studio:navigate', route: rule.target }, '*');
