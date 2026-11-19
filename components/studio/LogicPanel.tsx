@@ -35,6 +35,12 @@ const ACTIONS: { value: LogicAction; label: string }[] = [
   { value: 'decrement', label: 'Decrement number' },
   { value: 'navigate', label: 'Navigate to route' },
   { value: 'toast', label: 'Show toast' },
+  { value: 'setState', label: 'Set global state' },
+  { value: 'incrementState', label: 'Increment global state' },
+  { value: 'addToArray', label: 'Add item to state array' },
+  { value: 'removeFromArray', label: 'Remove item from state array' },
+  { value: 'persistState', label: 'Save state to storage' },
+  { value: 'loadState', label: 'Load state from storage' },
 ];
 
 const CONDITIONS: { value: LogicConditionOperator; label: string }[] = [
@@ -155,21 +161,22 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
                   )}
                   <p className="mt-1.5 text-[10px] text-slate-500">Condition checks the value/text of the element that triggered this rule.</p>
                 </div>
-                {!['toast'].includes(rule.action) && <div><label className={labelClass}>{rule.action === 'navigate' ? 'Route' : 'Target element'}</label><input list={rule.action === 'navigate' ? undefined : 'webd-logic-targets'} value={rule.target} onChange={(e) => updateRule(rule.id, { target: e.target.value })} placeholder={rule.action === 'navigate' ? '/about' : 'Choose an element or enter its ID'} className={inputClass} />{rule.action !== 'navigate' && <datalist id="webd-logic-targets">{availableTargets.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</datalist>}</div>}
-                {['setText', 'toast', 'increment', 'decrement'].includes(rule.action) && <div><label className={labelClass}>{rule.action === 'toast' ? 'Message' : rule.action === 'increment' || rule.action === 'decrement' ? 'Step amount' : 'New text'}</label><input value={rule.value} onChange={(e) => updateRule(rule.id, { value: e.target.value })} placeholder={rule.action === 'increment' || rule.action === 'decrement' ? '1' : 'Enter a value'} className={inputClass} /></div>}
+                {!['toast', 'setState', 'incrementState', 'addToArray', 'removeFromArray', 'persistState', 'loadState'].includes(rule.action) && <div><label className={labelClass}>{rule.action === 'navigate' ? 'Route' : 'Target element'}</label><input list={rule.action === 'navigate' ? undefined : 'webd-logic-targets'} value={rule.target} onChange={(e) => updateRule(rule.id, { target: e.target.value })} placeholder={rule.action === 'navigate' ? '/about' : 'Choose an element or enter its ID'} className={inputClass} />{rule.action !== 'navigate' && <datalist id="webd-logic-targets">{availableTargets.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</datalist>}</div>}
+                {['setText', 'toast', 'increment', 'decrement', 'setState', 'incrementState', 'addToArray', 'removeFromArray'].includes(rule.action) && <div><label className={labelClass}>{rule.action === 'toast' ? 'Message' : rule.action === 'increment' || rule.action === 'decrement' || rule.action === 'incrementState' ? 'Step amount' : rule.action === 'addToArray' || rule.action === 'removeFromArray' ? 'Item JSON / match value' : 'New value'}</label><input value={rule.value} onChange={(e) => updateRule(rule.id, { value: e.target.value })} placeholder={rule.action === 'increment' || rule.action === 'decrement' || rule.action === 'incrementState' ? '1' : rule.action === 'addToArray' ? '{"id":"sku-1","name":"Product","price":499,"quantity":1}' : 'Enter a value'} className={inputClass} /></div>}
+                {['setState', 'incrementState', 'addToArray', 'removeFromArray', 'persistState', 'loadState'].includes(rule.action) && <p className="rounded-lg bg-violet-50 p-2 text-[10px] leading-relaxed text-violet-800">Global state key: use dot paths such as <code>cart.items</code>. State is shared across pages in Preview and can be persisted to local storage.</p>}
                 {['setTextFromValue', 'setValue'].includes(rule.action) && <div><label className={labelClass}>Copy from trigger</label><select value={rule.valueSource || 'eventValue'} onChange={(e) => updateRule(rule.id, { valueSource: e.target.value as LogicValueSource })} className={inputClass}><option value="eventValue">Input / selected value</option><option value="eventText">Visible text</option><option value="literal">Fixed text</option></select>{rule.valueSource === 'literal' && <input value={rule.value} onChange={(e) => updateRule(rule.id, { value: e.target.value })} placeholder="Fixed value" className={inputClass + ' mt-2'} />}</div>}
               </div>
             ) : (
               <div className="space-y-2 bg-slate-950 p-3 text-center text-white">
-                <div className="rounded-lg border border-blue-400/40 bg-blue-500/15 p-3"><p className="text-[10px] uppercase tracking-widest text-blue-200">Trigger</p><p className="mt-1 text-sm font-semibold">{TRIGGERS.find((item) => item.value === rule.trigger)?.label}</p></div>
+                <div className="rounded-lg border border-blue-400/40 bg-blue-500/15 p-3"><p className="text-[10px] uppercase tracking-widest text-blue-200">01 · Trigger node</p><p className="mt-1 text-sm font-semibold">{TRIGGERS.find((item) => item.value === rule.trigger)?.label}</p><p className="mt-1 text-[10px] text-blue-100">{rule.componentLabel}</p></div>
                 <div className="text-slate-400">↓</div>
-                <div className="rounded-lg border border-emerald-400/40 bg-emerald-500/15 p-3"><p className="text-[10px] uppercase tracking-widest text-emerald-200">Action</p><p className="mt-1 text-sm font-semibold">{ACTIONS.find((item) => item.value === rule.action)?.label}</p>{rule.target && <p className="mt-1 truncate text-[10px] text-slate-300">{rule.target}</p>}</div>
+                <div className="rounded-lg border border-emerald-400/40 bg-emerald-500/15 p-3"><p className="text-[10px] uppercase tracking-widest text-emerald-200">02 · Action node</p><p className="mt-1 text-sm font-semibold">{ACTIONS.find((item) => item.value === rule.action)?.label}</p>{rule.target && <p className="mt-1 truncate text-[10px] text-slate-300">{rule.target}</p>}{rule.value && <p className="mt-1 truncate text-[10px] text-slate-300">{rule.value}</p>}</div>
               </div>
             )}
           </article>
         ))}
 
-        <p className="rounded-lg bg-emerald-50 p-3 text-[11px] leading-relaxed text-emerald-800">Rules execute in Preview → Interact mode. Add multiple rules to one trigger for multi-action workflows. Conditions can inspect input values; actions can copy values, set controls, update text, increment counters, navigate or show toasts. Choose a target from the element list or enter its HTML ID.</p>
+        <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-[11px] leading-relaxed text-violet-900"><p className="font-semibold">Visual workflow + shared state</p><p className="mt-1">Flow view displays each interaction as connected Trigger → Action nodes. Global state actions let workflows share data across routes. Use keys like <code>cart.items</code>; add an <b>Add item to state array</b> action, then <b>Save state to storage</b> before navigating to checkout.</p><p className="mt-2">Rules execute in Preview → Interact mode. Element actions still target canvas elements; state actions operate on the shared app state.</p></div>
       </div>
     </aside>
   );
