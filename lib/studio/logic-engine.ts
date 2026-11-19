@@ -51,6 +51,10 @@ export interface VisualLogicRule {
   conditionValue?: string;
   /** Whether an action uses the typed value or the triggering control's value/text. */
   valueSource?: LogicValueSource;
+  /** Optional ELSE branch; absent means the rule simply does nothing when its condition fails. */
+  elseAction?: LogicAction;
+  elseTarget?: string;
+  elseValue?: string;
 }
 
 const TRIGGERS = new Set<LogicTrigger>([
@@ -97,6 +101,9 @@ export function normalizeLogicRules(value: unknown): VisualLogicRule[] {
       conditionOperator,
       conditionValue: typeof rule.conditionValue === 'string' ? rule.conditionValue.slice(0, 1000) : '',
       valueSource,
+      elseAction: ACTIONS.has(rule.elseAction as LogicAction) ? rule.elseAction as LogicAction : undefined,
+      elseTarget: typeof rule.elseTarget === 'string' ? rule.elseTarget.slice(0, 512) : '',
+      elseValue: typeof rule.elseValue === 'string' ? rule.elseValue.slice(0, 4000) : '',
     }];
   });
 }
