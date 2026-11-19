@@ -1008,6 +1008,8 @@ export default function StudioWorkspace() {
       action?: 'replace' | 'insert';
       position?: ComponentInsertPosition;
       targetElementIndex?: number;
+      componentLibraryName?: string;
+      componentExportName?: string;
     }) => {
       const {
         packageName,
@@ -1019,7 +1021,53 @@ export default function StudioWorkspace() {
         action = 'insert',
         position = 'inside-end',
         targetElementIndex,
+        componentLibraryName,
+        componentExportName,
       } = params;
+
+      if (componentLibraryName && componentExportName) {
+        if (!/^[A-Z][A-Za-z0-9]*$/.test(componentLibraryName)) {
+          return { ok: false, error: 'Invalid component name.' };
+        }
+        const exportIsDefault = componentExportName === 'default';
+        if (!exportIsDefault && !/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(componentExportName)) {
+          return { ok: false, error: 'Invalid package export name.' };
+        }
+        const primitiveName = exportIsDefault
+          ? identifiers[0]
+          : `Npm${componentLibraryName}Primitive`;
+        const componentFolder = Object.keys(project.files).some((p) => p.startsWith('components/'))
+          ? 'components'
+          : Object.keys(project.files).some((p) => p.startsWith('src/components/'))
+          ? 'src/components'
+          : 'components';
+        let componentName = componentLibraryName;
+        let componentPath = `${componentFolder}/${componentName}.tsx`;
+        let suffix = 2;
+        while (project.files[componentPath]) {
+          componentName = `${componentLibraryName}${suffix++}`;
+          componentPath = `${componentFolder}/${componentName}.tsx`;
+        }
+        const packageImport = exportIsDefault
+          ? `import ${primitiveName} from '${packageName}';`
+          : `import { ${componentExportName} as ${primitiveName} } from '${packageName}';`;
+        const componentSource = `import type { ComponentProps } from 'react';
+${packageImport}
+
+export default function ${componentName}(props: ComponentProps<typeof ${primitiveName}>) {
+  return <${primitiveName} {...props} />;
+}
+`;
+        const nextFiles = {
+          ...addPackageDependencyToFiles(project.files, packageName, version),
+          [componentPath]: componentSource,
+        };
+        setSelected(null);
+        commitFilesMutation(nextFiles, componentPath);
+        preloadExternalLibrary(packageName);
+        return { ok: true };
+      }
+
       const currentTargetCode = project.files[targetFilePath];
       if (!currentTargetCode) {
         return { ok: false, error: 'Target source file not found.' };
