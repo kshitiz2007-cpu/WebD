@@ -1601,14 +1601,26 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
 
   const handleInsertMediaAsset = useCallback((asset: { name: string; type: string; dataUrl: string }) => {
     if (!selected) return;
-    if (selected.tagName.toLowerCase() === 'img' || selected.src) {
+    const mediaKind = asset.type.startsWith('video/') ? 'video' : asset.type.startsWith('audio/') ? 'audio' : 'image';
+    const selectedTag = selected.tagName.toLowerCase();
+    const matchingTag = mediaKind === 'image' ? selectedTag === 'img' : selectedTag === mediaKind;
+    if (matchingTag || (mediaKind === 'image' && selected.src)) {
       handleCommitPatch(selected.filePath, selected.elementIndex, { src: asset.dataUrl });
       return;
     }
     const safeAlt = asset.name.replace(/["<>]/g, '').replace(/\.[^.]+$/, '');
-    const snippet = /\.html?$/i.test(selected.filePath)
-      ? `<img src="${asset.dataUrl}" alt="${safeAlt}" style="max-width:100%;height:auto;object-fit:contain;" />`
-      : `<img src="${asset.dataUrl}" alt="${safeAlt}" style={{ maxWidth: '100%', height: 'auto', objectFit: 'contain' }} />`;
+    const isHtml = /\.html?$/i.test(selected.filePath);
+    const snippet = mediaKind === 'video'
+      ? (isHtml
+        ? `<video src="${asset.dataUrl}" controls playsinline style="max-width:100%;height:auto;"></video>`
+        : `<video src="${asset.dataUrl}" controls playsInline style={{ maxWidth: '100%', height: 'auto' }} />`)
+      : mediaKind === 'audio'
+        ? (isHtml
+          ? `<audio src="${asset.dataUrl}" controls style="max-width:100%;"></audio>`
+          : `<audio src="${asset.dataUrl}" controls style={{ maxWidth: '100%' }} />`)
+        : (isHtml
+          ? `<img src="${asset.dataUrl}" alt="${safeAlt}" style="max-width:100%;height:auto;object-fit:contain;" />`
+          : `<img src="${asset.dataUrl}" alt="${safeAlt}" style={{ maxWidth: '100%', height: 'auto', objectFit: 'contain' }} />`);
     handleInsertLayoutBlock(snippet, selected.studioId);
   }, [selected, handleCommitPatch, handleInsertLayoutBlock]);
 
@@ -1884,7 +1896,6 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
             onUpdateLayerTree={setLayerTree}
             onNavigateRoute={handleSelectPage}
             onCommitPatch={handleCommitPatch}
-              onCommitBatchPatches={handleCommitBatchPatches}
             onMoveSibling={handleMoveSibling}
             onDuplicate={handleDuplicate}
             onDelete={handleDelete}
