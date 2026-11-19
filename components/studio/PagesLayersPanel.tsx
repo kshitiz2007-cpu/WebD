@@ -12,6 +12,7 @@ import {
   Lock,
   PackagePlus,
   Plus,
+  Trash2,
   Unlock,
   X,
 } from 'lucide-react';
@@ -34,6 +35,7 @@ interface PagesLayersPanelProps {
   onSelectComponent?: (filePath: string) => void;
   onCreateComponent?: (name: string, preset?: ComponentTemplatePreset) => void;
   onInsertComponentOnPage?: (componentFilePath: string) => void;
+  onRemoveComponent?: (componentFilePath: string) => void;
   installedLibCount?: number;
   onOpenLibraryModal?: () => void;
   layerTree: LayerTreeNode[];
@@ -60,6 +62,7 @@ export default function PagesLayersPanel({
   onSelectComponent,
   onCreateComponent,
   onInsertComponentOnPage,
+  onRemoveComponent,
   installedLibCount = 0,
   onOpenLibraryModal,
   layerTree,
@@ -457,6 +460,26 @@ export default function PagesLayersPanel({
                           }`}
                         >
                           Insert
+                        </button>
+                      )}
+                      {onRemoveComponent && (
+                        <button
+                          type="button"
+                          aria-label={`Remove ${comp.name} component`}
+                          title={`Remove ${comp.name} from project and remove its page instances`}
+                          onClick={() => {
+                            const confirmed = window.confirm(
+                              comp.usageCount > 0
+                                ? `Remove ${comp.name} from the project? This will also remove its ${comp.usageCount} JSX instance(s) from project files.`
+                                : `Remove ${comp.name} from the project?`
+                            );
+                            if (confirmed) onRemoveComponent(comp.filePath);
+                          }}
+                          className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded ${
+                            active ? 'text-white/80 hover:bg-white/20 hover:text-white' : 'text-slate-400 hover:bg-rose-50 hover:text-rose-600'
+                          }`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       )}
                     </div>
