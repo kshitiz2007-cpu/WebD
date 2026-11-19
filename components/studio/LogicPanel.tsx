@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import LogicFlowCanvas from './LogicFlowCanvas';
 import { GitBranch, Plus, Trash2, X, Zap } from 'lucide-react';
 import type { StudioElementSnapshot } from '@/lib/studio/types';
 import type { LogicAction, LogicConditionOperator, LogicTrigger, LogicValueSource, VisualLogicRule } from '@/lib/studio/logic-engine';
@@ -167,11 +168,7 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
                 {['setTextFromValue', 'setValue'].includes(rule.action) && <div><label className={labelClass}>Copy from trigger</label><select value={rule.valueSource || 'eventValue'} onChange={(e) => updateRule(rule.id, { valueSource: e.target.value as LogicValueSource })} className={inputClass}><option value="eventValue">Input / selected value</option><option value="eventText">Visible text</option><option value="literal">Fixed text</option></select>{rule.valueSource === 'literal' && <input value={rule.value} onChange={(e) => updateRule(rule.id, { value: e.target.value })} placeholder="Fixed value" className={inputClass + ' mt-2'} />}</div>}
               </div>
             ) : (
-              <div className="space-y-2 bg-slate-950 p-3 text-center text-white">
-                <div className="rounded-lg border border-blue-400/40 bg-blue-500/15 p-3"><p className="text-[10px] uppercase tracking-widest text-blue-200">01 · Trigger node</p><p className="mt-1 text-sm font-semibold">{TRIGGERS.find((item) => item.value === rule.trigger)?.label}</p><p className="mt-1 text-[10px] text-blue-100">{rule.componentLabel}</p></div>
-                <div className="text-slate-400">↓</div>
-                <div className="rounded-lg border border-emerald-400/40 bg-emerald-500/15 p-3"><p className="text-[10px] uppercase tracking-widest text-emerald-200">02 · Action node</p><p className="mt-1 text-sm font-semibold">{ACTIONS.find((item) => item.value === rule.action)?.label}</p>{rule.target && <p className="mt-1 truncate text-[10px] text-slate-300">{rule.target}</p>}{rule.value && <p className="mt-1 truncate text-[10px] text-slate-300">{rule.value}</p>}</div>
-              </div>
+              <LogicFlowCanvas rule={rule} triggers={TRIGGERS} actions={ACTIONS} onChange={(patch) => updateRule(rule.id, patch)} />
             )}
           </article>
         ))}
