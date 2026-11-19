@@ -1213,9 +1213,14 @@ export function buildPreviewDocument(
         cleanProps = Object.assign({}, props);
         delete cleanProps['data-studio-id'];
       }
-      var rendered = Comp(cleanProps);
-      if (instId && React.isValidElement(rendered) && typeof rendered.type === 'string') {
-        return React.cloneElement(rendered, { 'data-studio-instance': instId });
+      // Render project components through React rather than invoking them as plain
+      // functions. Components such as ReactBits often use hooks; giving them their
+      // own React fiber keeps hook state, effects and error handling isolated.
+      var rendered = React.createElement(Comp, cleanProps);
+      if (instId && React.isValidElement(rendered)) {
+        return React.cloneElement(rendered, {
+          'data-studio-instance': instId
+        });
       }
       return rendered;
     };
