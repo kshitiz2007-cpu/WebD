@@ -87,6 +87,9 @@ interface ReactLibraryModalProps {
     targetElementIndex?: number;
     componentLibraryName?: string;
     componentExportName?: string;
+    componentSource?: string;
+    componentCss?: string;
+    dependencyPackages?: Array<{ packageName: string; version: string }>;
   }) => { ok: boolean; error?: string };
   onRemoveDependency: (packageName: string) => void;
 }
@@ -159,6 +162,10 @@ function ReactLibraryModalInner({
   const [npmCommand, setNpmCommand] = useState('');
   const [npmComponentName, setNpmComponentName] = useState('');
   const [npmExportName, setNpmExportName] = useState('');
+  const [reactBitsName, setReactBitsName] = useState('');
+  const [reactBitsSource, setReactBitsSource] = useState('');
+  const [reactBitsCss, setReactBitsCss] = useState('');
+  const [reactBitsDependencies, setReactBitsDependencies] = useState('');
   const [pkgName, setPkgName] = useState('');
   const [importMode, setImportMode] = useState<'named' | 'default' | 'namespace'>('named');
   const [identifiersText, setIdentifiersText] = useState('');
@@ -395,6 +402,55 @@ function ReactLibraryModalInner({
     setNpmCommand('');
     setNpmComponentName('');
     setNpmExportName('');
+  };
+
+
+  const handleReactBitsImport = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    const componentName = reactBitsName.trim();
+    const source = reactBitsSource.trim();
+    if (!/^[A-Z][A-Za-z0-9]*$/.test(componentName)) {
+      setErrorMsg('Component name must be PascalCase, e.g. AnimatedContent.');
+      return;
+    }
+    if (!source || !/(?:export\s+(?:default\s+)?(?:function|const|class)|function\s+[A-Z][A-Za-z0-9_]*)/.test(source)) {
+      setErrorMsg('Paste a React component source with an exported component (function, const, or class).');
+      return;
+    }
+    const dependencySpecs = reactBitsDependencies.split(/[\n,]+/).map((item) => item.trim()).filter(Boolean);
+    const dependencies: Array<{ packageName: string; version: string }> = [];
+    for (const spec of dependencySpecs) {
+      const slash = spec.lastIndexOf('/');
+      const at = spec.lastIndexOf('@');
+      const hasVersion = at > slash;
+      const packageName = hasVersion ? spec.slice(0, at) : spec;
+      const version = hasVersion ? spec.slice(at + 1) : 'latest';
+      if (!isValidPackageName(packageName) || !version || !/^[a-z0-9*^~><=.|+-]+$/i.test(version)) {
+        setErrorMsg(`Invalid dependency: ${spec}. Use package or package@version.`);
+        return;
+      }
+      dependencies.push({ packageName, version });
+    }
+    const res = onImportLibrary({
+      packageName: '',
+      importMode: 'named',
+      identifiers: [],
+      targetFilePath: resolvedTargetFile,
+      componentLibraryName: componentName,
+      componentSource: source,
+      componentCss: reactBitsCss.trim(),
+      dependencyPackages: dependencies,
+    });
+    if (!res.ok) {
+      setErrorMsg(res.error || 'Could not import ReactBits component.');
+      return;
+    }
+    setStatusNotice(`Imported ${componentName} into Your Components`);
+    setReactBitsName('');
+    setReactBitsSource('');
+    setReactBitsCss('');
+    setReactBitsDependencies('');
   };
 
   const handleCatalogImport = (
@@ -1033,6 +1089,39 @@ function ReactLibraryModalInner({
         {/* Tab 3: npm Packages & ESM */}
         {activeTab === 'packages' && (
           <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4 sm:p-5 studio-scroll">
+            {/* ReactBits copy/paste importer */}
+            <form onSubmit={handleReactBitsImport} className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/40 p-3.5">
+              <div>
+                <h3 className="text-xs font-semibold text-slate-900">Import ReactBits Component</h3>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                  Paste the ReactBits component source, optional CSS, and any npm dependencies. WebD saves it as a reusable component in Your Components.
+                </p>
+              </div>
+              <div>
+                <label htmlFor="reactbits-component-name" className="mb-1 block text-[11px] text-slate-600">Component name</label>
+                <input id="reactbits-component-name" value={reactBitsName} onChange={(e) => setReactBitsName(e.target.value)} placeholder="e.g. AnimatedContent" className="h-8 w-full rounded-md border border-slate-200 bg-white px-2.5 font-mono text-xs text-slate-800" />
+              </div>
+              <div>
+                <label htmlFor="reactbits-source" className="mb-1 block text-[11px] text-slate-600">React / TSX component code</label>
+                <textarea id="reactbits-source" value={reactBitsSource} onChange={(e) => setReactBitsSource(e.target.value)} rows={9} spellCheck={false} placeholder="Paste the complete ReactBits component source here..." className="w-full rounded-md border border-slate-200 bg-white p-2.5 font-mono text-[11px] leading-relaxed text-slate-800 focus:border-violet-500 focus:outline-none" />
+              </div>
+              <div>
+                <label htmlFor="reactbits-css" className="mb-1 block text-[11px] text-slate-600">CSS (optional)</label>
+                <textarea id="reactbits-css" value={reactBitsCss} onChange={(e) => setReactBitsCss(e.target.value)} rows={4} spellCheck={false} placeholder="Paste component CSS here..." className="w-full rounded-md border border-slate-200 bg-white p-2.5 font-mono text-[11px] leading-relaxed text-slate-800" />
+              </div>
+              <div>
+                <label htmlFor="reactbits-deps" className="mb-1 block text-[11px] text-slate-600">npm dependencies (comma or newline separated)</label>
+                <input id="reactbits-deps" value={reactBitsDependencies} onChange={(e) => setReactBitsDependencies(e.target.value)} placeholder="motion, gsap, three@^0.180.0" className="h-8 w-full rounded-md border border-slate-200 bg-white px-2.5 font-mono text-xs text-slate-800" />
+              </div>
+              <div className="flex justify-end">
+                <button type="submit" className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white hover:bg-violet-700">
+                  <PackagePlus className="h-3.5 w-3.5" />
+                  <span>Import to Your Components</span>
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400">Tip: include any imports and helper functions from the ReactBits copy section. Add required packages above.</p>
+            </form>
+
             {/* Install a package and register a reusable project component */}
             <form onSubmit={handleNpmComponentInstall} className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/40 p-3.5">
               <div>
