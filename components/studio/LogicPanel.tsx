@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import LogicFlowCanvas from './LogicFlowCanvas';
 import { GitBranch, Plus, Trash2, X, Zap } from 'lucide-react';
 import type { StudioElementSnapshot } from '@/lib/studio/types';
