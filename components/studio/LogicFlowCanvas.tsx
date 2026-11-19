@@ -1,128 +1,169 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { LogicAction, LogicTrigger, VisualLogicRule } from '@/lib/studio/logic-engine';
 
 type Choice<T extends string> = { value: T; label: string };
+type Point = { x: number; y: number };
+type Edge = { id: string; from: string; to: string; label?: string };
 interface Props {
   rule: VisualLogicRule;
   triggers: Choice<LogicTrigger>[];
   actions: Choice<LogicAction>[];
   onChange: (patch: Partial<VisualLogicRule>) => void;
 }
-type Point = { x: number; y: number };
-const NODE_W = 188;
-const NODE_H = 104;
-const initial = (index: number): Record<string, Point> => ({
-  trigger: { x: 22, y: 34 + index * 0 },
-  condition: { x: 260, y: 34 },
-  yes: { x: 530, y: 4 },
-  no: { x: 530, y: 164 },
-});
-const actionLabels: Record<string, string> = {
-  show: 'Show element', hide: 'Hide element', toggle: 'Toggle element', setText: 'Set text',
-  setTextFromValue: 'Copy event value', setValue: 'Set control value', increment: 'Increment',
-  decrement: 'Decrement', navigate: 'Navigate', toast: 'Show toast', setState: 'Set global state',
-  incrementState: 'Increment state', addToArray: 'Add to array', removeFromArray: 'Remove from array',
-  persistState: 'Save state', loadState: 'Load state',
+const W = 194, H = 122;
+const defaults: Record<string, Point> = {
+  trigger: { x: 30, y: 105 }, condition: { x: 300, y: 105 },
+  yes: { x: 610, y: 24 }, no: { x: 610, y: 230 },
+};
+const defaultEdges: Edge[] = [
+  { id: 'e-trigger-condition', from: 'trigger', to: 'condition' },
+  { id: 'e-condition-yes', from: 'condition', to: 'yes', label: 'IF true' },
+  { id: 'e-condition-no', from: 'condition', to: 'no', label: 'ELSE' },
+];
+const labels: Record<string, string> = {
+  show:'Show element',hide:'Hide element',toggle:'Toggle element',setText:'Set text',
+  setTextFromValue:'Copy event value',setValue:'Set control value',increment:'Increment',
+  decrement:'Decrement',navigate:'Navigate',toast:'Show toast',setState:'Set global state',
+  incrementState:'Increment state',addToArray:'Add to array',removeFromArray:'Remove from array',
+  persistState:'Save state',loadState:'Load state',
+};
+const pathGet = (root: Record<string, unknown>, path: string) => path.split('.').filter(Boolean).reduce<unknown>((v,k) => v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined, root);
+const pathSet = (root: Record<string, unknown>, path: string, value: unknown) => {
+  const keys = path.split('.').filter(Boolean); if (!keys.length) return root;
+  const next = structuredClone(root);
+  let cursor: Record<string, unknown> = next;
+  keys.slice(0,-1).forEach((key) => { if (!cursor[key] || typeof cursor[key] !== 'object') cursor[key] = {}; cursor = cursor[key] as Record<string, unknown>; });
+  cursor[keys[keys.length-1]] = value; return next;
 };
 
 export default function LogicFlowCanvas({ rule, triggers, actions, onChange }: Props) {
-  const [positions, setPositions] = useState<Record<string, Point>>(() => initial(0));
-  const [dragging, setDragging] = useState<{ node: string; x: number; y: number } | null>(null);
-  const [stateSnapshot, setStateSnapshot] = useState<Record<string, unknown> | null>(null);
-  const [inspectorError, setInspectorError] = useState('Waiting for Preview state…');
-  const [inspectorOpen, setInspectorOpen] = useState(true);
-  const canvasSize = { width: 760, height: 310 };
-
-  useEffect(() => {
-    const onMove = (event: MouseEvent) => {
-      if (!dragging) return;
-      setPositions((current) => ({
-        ...current,
-        [dragging.node]: {
-          x: Math.max(0, Math.min(canvasSize.width - NODE_W, positions[dragging.node].x + event.clientX - dragging.x)),
-          y: Math.max(0, Math.min(canvasSize.height - NODE_H, positions[dragging.node].y + event.clientY - dragging.y)),
-        },
-      }));
-      setDragging({ ...dragging, x: event.clientX, y: event.clientY });
-    };
-    const onUp = () => setDragging(null);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-  }, [dragging, canvasSize, positions]);
+  const [positions, setPositions] = useState<Record<string,Point>>(rule.flowLayout || defaults);
+  const [edges, setEdges] = useState<Edge[]>(rule.flowEdges || defaultEdges);
+  const [drag, setDrag] = useState<{id:string; x:number;y:number}|null>(null);
+  const [connectFrom, setConnectFrom] = useState<string|null>(null);
+  const [state, setState] = useState<Record<string,unknown>>({});
+  const [stateError, setStateError] = useState('Waiting for preview state…');
+  const [editPath, setEditPath] = useState('');
+  const [editValue, setEditValue] = useState('');
+  const [zoom, setZoom] = useState(1);
+  const [autoArrange, setAutoArrange] = useState(true);
+  const canvasRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const receive = (event: MessageEvent) => {
-      if (event.source !== window && event.data?.type === 'studio:workflow-state' && event.data.state && typeof event.data.state === 'object') {
-        setStateSnapshot(event.data.state);
-        setInspectorError('');
+      if (event.data?.type === 'studio:workflow-state' && event.data.state && typeof event.data.state === 'object') {
+        setState(event.data.state as Record<string,unknown>); setStateError('');
       }
     };
     window.addEventListener('message', receive);
+    window.top?.postMessage({ type: 'studio:request-workflow-state' }, '*');
     return () => window.removeEventListener('message', receive);
   }, []);
 
-  const conditionLabel = useMemo(() => ({
-    always: 'Always', equals: 'Equals', notEquals: 'Does not equal', contains: 'Contains',
-    greaterThan: 'Greater than', lessThan: 'Less than', isEmpty: 'Is empty', isNotEmpty: 'Is not empty',
-  }[rule.conditionOperator || 'always']), [rule.conditionOperator]);
+  useEffect(() => {
+    const move = (event: PointerEvent) => {
+      if (!drag) return;
+      const rect = canvasRef.current?.getBoundingClientRect(); if (!rect) return;
+      const x = (event.clientX - rect.left) / zoom, y = (event.clientY - rect.top) / zoom;
+      const next = { ...positions, [drag.id]: { x: Math.max(0,x-W/2), y: Math.max(0,y-H/2) } };
+      setPositions(next); onChange({ flowLayout: next });
+    };
+    const up = () => setDrag(null);
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+    return () => { window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
+  }, [drag,positions,zoom,onChange]);
 
-  const startDrag = (node: string) => (event: React.MouseEvent) => {
-    event.preventDefault();
-    setDragging({ node, x: event.clientX, y: event.clientY });
+  const conditionLabel = useMemo(() => ({
+    always:'Always',equals:'Equals',notEquals:'Does not equal',contains:'Contains',
+    greaterThan:'Greater than',lessThan:'Less than',isEmpty:'Is empty',isNotEmpty:'Is not empty',
+  }[rule.conditionOperator || 'always']),[rule.conditionOperator]);
+
+  const saveEdges = (next: Edge[]) => { setEdges(next); onChange({ flowEdges: next }); };
+  const connect = (to: string) => {
+    if (!connectFrom || connectFrom === to) { setConnectFrom(null); return; }
+    const id = `edge-${connectFrom}-${to}`;
+    if (!edges.some((edge) => edge.from === connectFrom && edge.to === to)) saveEdges([...edges,{id,from:connectFrom,to,label:connectFrom==='condition' ? (to==='yes'?'IF true':to==='no'?'ELSE':'') : undefined}]);
+    setConnectFrom(null);
   };
-  const node = (key: string, title: string, subtitle: string, tone: string, content?: React.ReactNode) => {
-    const point = positions[key];
-    return <div onMouseDown={startDrag(key)} style={{ left: point.x, top: point.y, width: NODE_W, minHeight: NODE_H }} className={`absolute z-10 cursor-grab select-none overflow-hidden rounded-xl border bg-white shadow-lg active:cursor-grabbing ${tone}`}>
-      <div className="border-b border-current/10 px-3 py-2 text-[10px] font-bold uppercase tracking-wider opacity-80">{title}</div>
-      <div className="px-3 py-2"><div className="text-xs font-semibold text-slate-900">{subtitle}</div>{content}</div>
-    </div>;
+  const reset = () => { setPositions(defaults); saveEdges(defaultEdges); onChange({flowLayout:defaults,flowEdges:defaultEdges}); };
+  const edgePath = (edge: Edge) => {
+    const a=positions[edge.from] || defaults[edge.from], b=positions[edge.to] || defaults[edge.to];
+    if (!a || !b) return null;
+    const x1=a.x+W, y1=a.y+H/2, x2=b.x, y2=b.y+H/2, mid=(x1+x2)/2;
+    return { d:`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`, x:mid, y:(y1+y2)/2 };
   };
-  const edge = (from: string, to: string, label?: string, color = '#64748b') => {
-    const a = positions[from], b = positions[to];
-    const x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2, x2 = b.x, y2 = b.y + NODE_H / 2;
-    const mid = (x1 + x2) / 2;
-    return <g key={from + to}><path d={`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`} fill="none" stroke={color} strokeWidth="2.5" /><path d={`M ${x2 - 7} ${y2 - 5} L ${x2} ${y2} L ${x2 - 7} ${y2 + 5}`} fill="none" stroke={color} strokeWidth="2.5" />{label && <text x={mid} y={(y1 + y2) / 2 - 8} fontSize="10" fill={color} textAnchor="middle">{label}</text>}</g>;
-  };
-  const branchEditor = (branch: 'yes' | 'no') => {
-    const isYes = branch === 'yes';
-    const action = isYes ? rule.action : (rule.elseAction || 'toast');
-    const target = isYes ? rule.target : (rule.elseTarget || '');
-    const value = isYes ? rule.value : (rule.elseValue || '');
-    const set = (patch: Partial<VisualLogicRule>) => onChange(patch);
-    return <div className="mt-2 space-y-1.5" onMouseDown={(e) => e.stopPropagation()}>
-      <select aria-label={isYes ? 'IF action' : 'ELSE action'} value={action} onChange={(e) => set(isYes ? { action: e.target.value as LogicAction } : { elseAction: e.target.value as LogicAction })} className="w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-700">
-        {actions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+  const branch = (kind:'yes'|'no') => {
+    const isYes=kind==='yes', action=isYes?rule.action:(rule.elseAction||'toast');
+    return <div className="space-y-1.5" onPointerDown={(e)=>e.stopPropagation()}>
+      <select aria-label={isYes?'IF action':'ELSE action'} value={action} onChange={(e)=>onChange(isYes?{action:e.target.value as LogicAction}:{elseAction:e.target.value as LogicAction})} className="w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-700">
+        {actions.map((a)=><option key={a.value} value={a.value}>{a.label}</option>)}
       </select>
-      <input aria-label={isYes ? 'IF target' : 'ELSE target'} value={target} onChange={(e) => set(isYes ? { target: e.target.value } : { elseTarget: e.target.value })} placeholder="Target / state key / route" className="w-full rounded-md border border-slate-200 px-1.5 py-1 text-[10px]" />
-      <input aria-label={isYes ? 'IF value' : 'ELSE value'} value={value} onChange={(e) => set(isYes ? { value: e.target.value } : { elseValue: e.target.value })} placeholder="Value (optional)" className="w-full rounded-md border border-slate-200 px-1.5 py-1 text-[10px]" />
-      {!isYes && <button type="button" onClick={() => onChange({ elseAction: undefined, elseTarget: '', elseValue: '' })} className="text-[10px] font-semibold text-rose-600">Remove ELSE branch</button>}
+      <input aria-label={isYes?'IF target':'ELSE target'} value={isYes?rule.target:(rule.elseTarget||'')} onChange={(e)=>onChange(isYes?{target:e.target.value}:{elseTarget:e.target.value})} placeholder="Target / state key / route" className="w-full rounded-md border border-slate-200 px-1.5 py-1 text-[10px]" />
+      <input aria-label={isYes?'IF value':'ELSE value'} value={isYes?rule.value:(rule.elseValue||'')} onChange={(e)=>onChange(isYes?{value:e.target.value}:{elseValue:e.target.value})} placeholder="Value (optional)" className="w-full rounded-md border border-slate-200 px-1.5 py-1 text-[10px]" />
+      {!isYes && <button type="button" onClick={()=>onChange({elseAction:undefined,elseTarget:'',elseValue:''})} className="text-[10px] text-rose-600">Remove ELSE action</button>}
     </div>;
+  };
+  const node = (id:string,title:string,subtitle:string,tone:string,body?:React.ReactNode) => {
+    const point=positions[id]||defaults[id];
+    return <div key={id} onPointerDown={(e)=>{if((e.target as HTMLElement).closest('button,input,select'))return; e.preventDefault(); setDrag({id,x:e.clientX,y:e.clientY});}} style={{left:point.x,top:point.y,width:W,minHeight:H}} className={`absolute z-10 rounded-xl border bg-white shadow-xl ${tone} ${drag?.id===id?'ring-2 ring-blue-400':''}`}>
+      <div className="flex items-center justify-between border-b border-current/10 px-3 py-2"><span className="text-[10px] font-bold uppercase tracking-wider">{title}</span><span className="text-[9px] opacity-60">DRAG</span></div>
+      <div className="px-3 py-2"><div className="mb-2 text-xs font-semibold text-slate-900">{subtitle}</div>{body}</div>
+      <button type="button" aria-label={`Connect from ${title}`} onClick={()=>setConnectFrom(id)} className={`absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-white ${connectFrom===id?'bg-fuchsia-500 ring-2 ring-fuchsia-300':'bg-blue-500'}`} />
+      <button type="button" aria-label={`Connect to ${title}`} onClick={()=>connect(id)} className={`absolute -left-2 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-white ${connectFrom?'bg-emerald-500 ring-2 ring-emerald-300':'bg-slate-400'}`} />
+    </div>;
+  };
+
+  const flatState = (value: unknown, prefix=''): Array<{path:string;value:unknown}> => {
+    if (value && typeof value==='object' && !Array.isArray(value)) return Object.entries(value as Record<string,unknown>).flatMap(([k,v])=>flatState(v,prefix?prefix+'.'+k:k));
+    return [{path:prefix||'state',value}];
+  };
+  const applyStateEdit = () => {
+    if(!editPath.trim()) return;
+    let parsed:unknown=editValue; try{parsed=JSON.parse(editValue);}catch{}
+    const next=pathSet(state,editPath.trim(),parsed); setState(next); setStateError('');
+    window.top?.postMessage({type:'studio:workflow-set-state',path:editPath.trim(),value:parsed},'*');
   };
   return <div className="space-y-3">
-    <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500"><span>Drag nodes to arrange the workflow · wires show execution paths</span><button type="button" onClick={() => setPositions(initial(0))} className="rounded-md border border-slate-200 px-2 py-1 font-semibold hover:bg-slate-50">Reset layout</button></div>
-    <div className="relative overflow-auto rounded-xl border border-slate-700 bg-slate-950" style={{ minHeight: 330 }}>
-      <div className="relative" style={{ width: Math.max(canvasSize.width, 750), height: canvasSize.height }}>
-        <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${canvasSize.width} ${canvasSize.height}`} preserveAspectRatio="none">
-          {edge('trigger', 'condition')}
-          {edge('condition', 'yes', 'IF true', '#34d399')}
-          {edge('condition', 'no', 'ELSE', '#fbbf24')}
-        </svg>
-        {node('trigger', '01 · Trigger', triggers.find((item) => item.value === rule.trigger)?.label || rule.trigger, 'border-blue-400/50 text-blue-300', <p className="mt-1 truncate text-[10px] text-slate-500">{rule.componentLabel}</p>)}
-        {node('condition', '02 · Condition', conditionLabel, 'border-violet-400/50 text-violet-300', <p className="mt-1 truncate text-[10px] text-slate-500">{rule.conditionValue || 'No comparison value'}</p>)}
-        {node('yes', '03 · IF true', actionLabels[rule.action] || rule.action, 'border-emerald-400/50 text-emerald-300', branchEditor('yes'))}
-        {node('no', '04 · ELSE', rule.elseAction ? actionLabels[rule.elseAction] || rule.elseAction : 'No action configured', 'border-amber-400/50 text-amber-300', branchEditor('no'))}
+    <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
+      <span>{connectFrom? `Connecting from ${connectFrom}: click another node's left port`:'Drag nodes · click right port then left port to connect · select a wire to remove'}</span>
+      <div className="flex items-center gap-1">
+        <button type="button" onClick={()=>setZoom(Math.max(.6,zoom-.1))} className="rounded border px-2 py-1">−</button><span>{Math.round(zoom*100)}%</span><button type="button" onClick={()=>setZoom(Math.min(1.4,zoom+.1))} className="rounded border px-2 py-1">+</button>
+        <button type="button" onClick={reset} className="rounded border px-2 py-1 font-semibold">Auto layout</button>
       </div>
     </div>
+    <div className="overflow-auto rounded-xl border border-slate-700 bg-slate-950 p-2">
+      <div ref={canvasRef} className="relative" style={{width:900*zoom,height:420*zoom}}>
+        <div className="absolute left-0 top-0 origin-top-left" style={{width:900,height:420,transform:`scale(${zoom})`}}>
+          <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 900 420">
+            {edges.map((edge)=>{const path=edgePath(edge);return path?<g key={edge.id}><path d={path.d} fill="none" stroke={edge.label==='ELSE'?'#fbbf24':edge.label==='IF true'?'#34d399':'#60a5fa'} strokeWidth="2.5"/><text x={path.x} y={path.y-8} fill="#cbd5e1" fontSize="10" textAnchor="middle">{edge.label||'flow'}</text></g>:null})}
+          </svg>
+          {node('trigger','01 · Trigger',triggers.find((t)=>t.value===rule.trigger)?.label||rule.trigger,'border-blue-400/60 text-blue-500',<p className="truncate text-[10px] text-slate-500">{rule.componentLabel}</p>)}
+          {node('condition','02 · Condition',conditionLabel,'border-violet-400/60 text-violet-500',<p className="truncate text-[10px] text-slate-500">{rule.conditionValue||'No compare value'}</p>)}
+          {node('yes','03 · IF true',labels[rule.action]||rule.action,'border-emerald-400/60 text-emerald-600',branch('yes'))}
+          {node('no','04 · ELSE',rule.elseAction?(labels[rule.elseAction]||rule.elseAction):'No ELSE action','border-amber-400/60 text-amber-600',branch('no'))}
+        </div>
+      </div>
+    </div>
+    <div className="flex flex-wrap items-center gap-2">
+      <button type="button" onClick={()=>{saveEdges(defaultEdges);setConnectFrom(null);}} className="rounded-md border px-2 py-1 text-[10px] font-semibold">Auto-connect defaults</button>
+      <button type="button" onClick={()=>saveEdges([])} className="rounded-md border px-2 py-1 text-[10px] font-semibold">Clear all wires</button>
+      <span className="text-[10px] text-slate-500">{edges.length} connection(s)</span>
+    </div>
+    {edges.length>0&&<div className="flex flex-wrap gap-1">{edges.map((edge)=><button key={edge.id} type="button" onClick={()=>saveEdges(edges.filter((item)=>item.id!==edge.id))} className="rounded-full bg-slate-100 px-2 py-1 text-[10px] text-slate-600 hover:bg-rose-50 hover:text-rose-600">{edge.from} → {edge.to} ×</button>)}</div>}
     <section className="overflow-hidden rounded-xl border border-slate-200">
-      <button type="button" onClick={() => setInspectorOpen((value) => !value)} className="flex w-full items-center justify-between bg-slate-50 px-3 py-2 text-left text-xs font-semibold text-slate-700"><span>Live state inspector</span><span>{inspectorOpen ? '−' : '+'}</span></button>
-      {inspectorOpen && <div className="p-3">
-        {inspectorError && <p className="text-[10px] text-slate-500">{inspectorError} Open Preview → Interact and trigger a workflow to stream state here.</p>}
-        <pre className="max-h-48 overflow-auto rounded-lg bg-slate-950 p-3 text-[10px] leading-relaxed text-emerald-300">{JSON.stringify(stateSnapshot || {}, null, 2)}</pre>
-        <div className="mt-2 flex justify-end"><button type="button" onClick={() => { setStateSnapshot(null); setInspectorError('Waiting for next Preview state update…'); }} className="text-[10px] font-semibold text-slate-500">Clear inspector</button></div>
-      </div>}
+      <div className="flex items-center justify-between bg-slate-50 px-3 py-2"><span className="text-xs font-semibold text-slate-700">Live state inspector</span><button type="button" onClick={()=>window.top?.postMessage({type:'studio:request-workflow-state'},'*')} className="text-[10px] font-semibold text-blue-600">Refresh</button></div>
+      <div className="space-y-2 p-3">
+        {stateError&&<p className="text-[10px] text-slate-500">{stateError} Open Preview → Interact and trigger a rule.</p>}
+        <div className="max-h-48 space-y-1 overflow-auto">{flatState(state).map(({path,value})=><div key={path} className="flex items-center justify-between gap-2 rounded bg-slate-50 px-2 py-1"><code className="min-w-0 truncate text-[10px] text-slate-600">{path}</code><span className="max-w-[55%] truncate text-[10px] text-slate-900">{typeof value==='string'?value:JSON.stringify(value)}</span></div>)}</div>
+        <div className="grid grid-cols-1 gap-1 sm:grid-cols-[1fr_1fr_auto]">
+          <input value={editPath} onChange={(e)=>setEditPath(e.target.value)} placeholder="state key e.g. cart.items" className="min-w-0 rounded-md border px-2 py-1.5 text-[10px]"/>
+          <input value={editValue} onChange={(e)=>setEditValue(e.target.value)} placeholder='JSON or text e.g. 3' className="min-w-0 rounded-md border px-2 py-1.5 text-[10px]"/>
+          <button type="button" onClick={applyStateEdit} className="rounded-md bg-blue-600 px-3 py-1.5 text-[10px] font-semibold text-white">Apply value</button>
+        </div>
+        <p className="text-[9px] text-slate-500">Enter valid JSON for arrays, objects, numbers and booleans; otherwise the value is saved as text.</p>
+      </div>
     </section>
   </div>;
 }
