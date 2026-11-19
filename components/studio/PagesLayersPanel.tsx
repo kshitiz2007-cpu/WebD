@@ -112,10 +112,10 @@ export default function PagesLayersPanel({
   const [customTemplateCssName, setCustomTemplateCssName] = useState('');
   const [dependencyCommand, setDependencyCommand] = useState('');
   const [dependencyMessage, setDependencyMessage] = useState('');
-  const dependencyReport = !isHtmlProject && pageTemplate === 'custom' ? inspectCustomReactSource(customTemplateCode, installedDependencies) : { missingPackages: [], missingHooks: [] };
   const [customTemplateCode, setCustomTemplateCode] = useState(isHtmlProject
     ? '<main class="mx-auto max-w-6xl px-6 py-16"><h1>{{TITLE}}</h1><p>Build your custom page layout here.</p></main>'
     : '<main className="mx-auto max-w-6xl px-6 py-16"><h1 className="text-4xl font-bold">{{TITLE}}</h1><p className="mt-4 text-slate-600">Build your custom page layout here.</p></main>');
+  const dependencyReport = !isHtmlProject && pageTemplate === 'custom' ? inspectCustomReactSource(customTemplateCode, installedDependencies) : { missingPackages: [], missingHooks: [] };
   const [pageError, setPageError] = useState('');
   const [siteKitError, setSiteKitError] = useState('');
   const [siteKitApplied, setSiteKitApplied] = useState(false);
