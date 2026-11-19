@@ -9,6 +9,8 @@ export interface GeneratedPageFile {
   route: string;
   filePath: string;
   code: string;
+  cssFilePath?: string;
+  cssCode?: string;
 }
 
 function escapeHtml(value: string): string {
@@ -209,6 +211,7 @@ export function createPageFile(params: {
   slug: string;
   template: PageTemplatePreset;
   customTemplateCode?: string;
+  customTemplateCss?: string;
   files: Record<string, string>;
 }): GeneratedPageFile {
   const title = params.title.trim() || toTitleCase(params.slug);
@@ -254,5 +257,28 @@ export function createPageFile(params: {
     }
   }
 
-  return { title, route, filePath, code };
+  const css = (params.customTemplateCss || '').trim();
+  let cssFilePath: string | undefined;
+  let cssCode: string | undefined;
+  if (css) {
+    if (params.framework === 'html') {
+      cssFilePath = filePath.replace(/\\.html$/i, '.css');
+      if (params.files[cssFilePath]) throw new Error(`A stylesheet already exists at ${cssFilePath}.`);
+      const href = cssFilePath.split('/').pop() || 'page.css';
+      if (code.includes('</head>')) {
+        code = code.replace('</head>', `  <link rel="stylesheet" href="./${href}" />\\n</head>`);
+      } else {
+        code = code.replace('<head>', `<head>\\n  <link rel="stylesheet" href="./${href}" />`);
+      }
+      cssCode = css;
+    } else {
+      cssFilePath = filePath.replace(/\\.(tsx|ts|jsx|js)$/i, '.css');
+      if (params.files[cssFilePath]) throw new Error(`A stylesheet already exists at ${cssFilePath}.`);
+      const importPath = './' + (cssFilePath.split('/').pop() || 'page.css');
+      code = `import '${importPath}';\\n` + code;
+      cssCode = css;
+    }
+  }
+
+  return { title, route, filePath, code, cssFilePath, cssCode };
 }
