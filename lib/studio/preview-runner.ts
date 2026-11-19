@@ -211,7 +211,7 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       else node.textContent = output;
     });
   }
-  function runLogicRule(rule, event) {
+  window.addEventListener('message', function(event) {\n    var message = event.data || {};\n    if (message.type === 'studio:request-workflow-state') {\n      try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}\n    } else if (message.type === 'studio:workflow-set-state' && typeof message.path === 'string') {\n      setStatePath(message.path, message.value);\n      try { window.localStorage.setItem('webd:app-state', JSON.stringify(getWorkflowState())); } catch (_) {}\n      try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}\n    }\n  });\n  function runLogicRule(rule, event) {
     if (!rule || rule.enabled === false) return;
     var conditionPassed = conditionMatches(rule, event);
     if (!conditionPassed) {
