@@ -41,6 +41,7 @@ interface TopToolbarProps {
   onToggleCodeDrawer: () => void;
   onOpenImportModal: () => void;
   onOpenMediaLibrary: () => void;
+  onOpenTypographyEffects: () => void;
   onExportZip: () => void;
   hasUnsavedEdits: boolean;
   showLeftPanel: boolean;
@@ -76,6 +77,7 @@ export default function TopToolbar({
   onToggleCodeDrawer,
   onOpenImportModal,
   onOpenMediaLibrary,
+  onOpenTypographyEffects,
   onExportZip,
   hasUnsavedEdits,
   showLeftPanel,
@@ -275,6 +277,17 @@ export default function TopToolbar({
 
         {/* Right: Import, Gradient CSS, Global CSS, Code Drawer, Export ZIP, Inspector Toggle */}
         <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={onOpenTypographyEffects}
+            className="inline-flex h-9 sm:h-8 items-center gap-1.5 rounded-md border border-fuchsia-200 bg-fuchsia-50 px-2 xl:px-2.5 text-xs font-medium text-fuchsia-700 hover:bg-fuchsia-100 whitespace-nowrap shrink-0"
+            title="Import fonts and apply motion text presets"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            <span className="hidden 2xl:inline">Type FX</span>
+            <span className="2xl:hidden">FX</span>
+          </button>
+
           <button
             type="button"
             onClick={onOpenMediaLibrary}
