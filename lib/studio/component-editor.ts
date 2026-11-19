@@ -26,12 +26,24 @@ function toPascalCase(raw: string): string {
 }
 
 export function extractComponentExportName(filePath: string, code: string): string {
-  const fnMatch =
-    code.match(/export\s+default\s+function\s+([A-Z][A-Za-z0-9_]*)/) ||
-    code.match(/export\s+function\s+([A-Z][A-Za-z0-9_]*)/) ||
-    code.match(/const\s+([A-Z][A-Za-z0-9_]*)\s*=/) ||
-    code.match(/function\s+([A-Z][A-Za-z0-9_]*)/);
-  if (fnMatch) return fnMatch[1];
+  // Resolve the actual exported component before scanning helper constants.
+  // ReactBits sources often declare uppercase data arrays (e.g. TILES) before
+  // the component and finish with "export default CircularCarousel;".
+  const defaultIdentifier = code.match(/\bexport\s+default\s+([A-Z][A-Za-z0-9_]*)\s*;?/);
+  if (defaultIdentifier) return defaultIdentifier[1];
+
+  const exportedFunction = code.match(/\bexport\s+(?:default\s+)?function\s+([A-Z][A-Za-z0-9_]*)/);
+  if (exportedFunction) return exportedFunction[1];
+
+  const exportedConst = code.match(/\bexport\s+(?:default\s+)?const\s+([A-Z][A-Za-z0-9_]*)\s*=/);
+  if (exportedConst) return exportedConst[1];
+
+  const componentFunction = code.match(/\bfunction\s+([A-Z][A-Za-z0-9_]*)\s*\([^)]*\)\s*(?::\s*[^={]+)?\s*\{/);
+  if (componentFunction) return componentFunction[1];
+
+  const componentArrow = code.match(/\bconst\s+([A-Z][A-Za-z0-9_]*)\s*=\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*(?::\s*[^=]+)?=>/);
+  if (componentArrow) return componentArrow[1];
+
   const base = (filePath.split('/').pop() || 'Component').replace(/\.(tsx|jsx|ts|js)$/i, '');
   return toPascalCase(base);
 }
