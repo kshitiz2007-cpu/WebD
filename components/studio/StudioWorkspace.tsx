@@ -507,6 +507,28 @@ export default function StudioWorkspace() {
     []
   );
 
+  const handleCommitBatchPatches = useCallback(
+    (filePath: string, updates: Array<{ elementIndex: number; patch: ElementSourcePatch }>) => {
+      const currentCode = project.files[filePath];
+      if (!currentCode || updates.length === 0) return;
+      const isHtml = /\\.html?$/i.test(filePath);
+      const effectiveBp = resolveEffectiveBreakpoint(alignBreakpointScope, viewport);
+      const scopedUpdates = updates.map((item) => ({
+        ...item,
+        patch: scopeElementPatchToBreakpoint({
+          code: currentCode,
+          elementIndex: item.elementIndex,
+          isHtml,
+          patch: item.patch,
+          breakpoint: effectiveBp,
+        }),
+      }));
+      const updatedCode = applyBatchElementPatches(currentCode, isHtml, scopedUpdates);
+      if (updatedCode !== currentCode) commitFilesMutation({ ...project.files, [filePath]: updatedCode }, filePath);
+    },
+    [project.files, alignBreakpointScope, viewport, commitFilesMutation]
+  );
+
   const handleCommitPatch = useCallback(
     (filePath: string, elementIndex: number, patch: ElementSourcePatch) => {
       const currentCode = project.files[filePath];
@@ -1846,6 +1868,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
             onUpdateLayerTree={setLayerTree}
             onNavigateRoute={handleSelectPage}
             onCommitPatch={handleCommitPatch}
+              onCommitBatchPatches={handleCommitBatchPatches}
             onMoveSibling={handleMoveSibling}
             onDuplicate={handleDuplicate}
             onDelete={handleDelete}
