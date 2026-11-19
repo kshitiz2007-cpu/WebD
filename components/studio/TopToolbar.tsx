@@ -6,6 +6,7 @@ import {
   Code2,
   Download,
   FolderUp,
+  Images,
   History,
   Layers,
   Monitor,
@@ -39,6 +40,7 @@ interface TopToolbarProps {
   isCodeDrawerOpen: boolean;
   onToggleCodeDrawer: () => void;
   onOpenImportModal: () => void;
+  onOpenMediaLibrary: () => void;
   onExportZip: () => void;
   hasUnsavedEdits: boolean;
   showLeftPanel: boolean;
@@ -73,6 +75,7 @@ export default function TopToolbar({
   isCodeDrawerOpen,
   onToggleCodeDrawer,
   onOpenImportModal,
+  onOpenMediaLibrary,
   onExportZip,
   hasUnsavedEdits,
   showLeftPanel,
@@ -272,6 +275,17 @@ export default function TopToolbar({
 
         {/* Right: Import, Gradient CSS, Global CSS, Code Drawer, Export ZIP, Inspector Toggle */}
         <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={onOpenMediaLibrary}
+            className="inline-flex h-9 sm:h-8 items-center gap-1.5 rounded-md border border-violet-200 bg-violet-50 px-2 xl:px-2.5 text-xs font-medium text-violet-700 hover:bg-violet-100 whitespace-nowrap shrink-0"
+            title="Open media asset library"
+          >
+            <Images className="h-3.5 w-3.5" />
+            <span className="hidden 2xl:inline">Media Library</span>
+            <span className="2xl:hidden">Media</span>
+          </button>
+
           <button
             type="button"
             onClick={onOpenImportModal}
