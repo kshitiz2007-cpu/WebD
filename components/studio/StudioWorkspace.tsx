@@ -1599,7 +1599,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
     []
   );
 
-  const handleInsertMediaAsset = useCallback((asset: { name: string; type: string; dataUrl: string }) => {
+  const handleInsertMediaAsset = useCallback((asset: { name: string; type: string; dataUrl: string }, mode: 'normal' | 'cutout' = 'normal') => {
     if (!selected) return;
     const mediaKind = asset.type.startsWith('video/') ? 'video' : asset.type.startsWith('audio/') ? 'audio' : 'image';
     const selectedTag = selected.tagName.toLowerCase();
@@ -1610,6 +1610,20 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
     }
     const safeAlt = asset.name.replace(/["<>]/g, '').replace(/\.[^.]+$/, '');
     const isHtml = /\.html?$/i.test(selected.filePath);
+    if (mode === 'cutout' && mediaKind === 'image') {
+      const parent = selected.ancestry?.[selected.ancestry.length - 1];
+      const parentTarget = parent ? parseStudioTarget(parent.studioId) : null;
+      if (parentTarget && parentTarget.filePath === selected.filePath) {
+        handleCommitPatch(parentTarget.filePath, parentTarget.elementIndex, {
+          styles: { position: 'relative', isolation: 'isolate', minHeight: 'clamp(420px, 58vw, 640px)', overflow: 'visible' },
+        });
+      }
+      const snippet = isHtml
+        ? `<img src="${asset.dataUrl}" alt="${safeAlt}" style="position:absolute;left:4%;bottom:0;width:min(44%,520px);height:92%;max-width:none;object-fit:contain;object-position:center bottom;z-index:2;filter:drop-shadow(0 22px 34px rgba(0,0,0,.38));background:transparent;border:0;border-radius:0;" />`
+        : `<img src="${asset.dataUrl}" alt="${safeAlt}" style={{ position: 'absolute', left: '4%', bottom: 0, width: 'min(44%, 520px)', height: '92%', maxWidth: 'none', objectFit: 'contain', objectPosition: 'center bottom', zIndex: 2, filter: 'drop-shadow(0 22px 34px rgba(0,0,0,.38))', background: 'transparent', border: 0, borderRadius: 0 }} />`;
+      handleInsertLayoutBlock(snippet, selected.studioId);
+      return;
+    }
     const snippet = mediaKind === 'video'
       ? (isHtml
         ? `<video src="${asset.dataUrl}" controls playsinline style="max-width:100%;height:auto;"></video>`
