@@ -148,6 +148,7 @@ interface StyleInspectorPanelProps {
   selected: StudioElementSnapshot | null;
   onPreviewStyles: (studioId: string, styles: Record<string, string | null>) => void;
   onCommitPatch: (filePath: string, elementIndex: number, patch: ElementSourcePatch) => void;
+  onCommitBatchPatches?: (filePath: string, updates: Array<{ elementIndex: number; patch: ElementSourcePatch }>) => void;
   onMoveSibling: (filePath: string, elementIndex: number, targetIndex: number) => void;
   onDuplicate: (filePath: string, elementIndex: number) => void;
   onDelete: (filePath: string, elementIndex: number) => void;
@@ -217,6 +218,7 @@ export default function StyleInspectorPanel({
   selected,
   onPreviewStyles,
   onCommitPatch,
+  onCommitBatchPatches,
   onMoveSibling,
   onDuplicate,
   onDelete,
@@ -2266,6 +2268,112 @@ export default function StyleInspectorPanel({
 
           return (
             <div className="space-y-4">
+              {/* No-code layered visual composition presets */}
+              <section className="space-y-2.5 rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-violet-600" />
+                  <div>
+                    <h3 className="text-[11px] font-semibold text-slate-800">Visual Composition</h3>
+                    <p className="text-[10px] text-slate-500">Apply ready-made layered effects to the selected element.</p>
+                  </div>
+                </div>
+                {(() => {
+                  const parent = selected.ancestry?.[selected.ancestry.length - 1];
+                  const parentTarget = parent ? parseStudioTarget(parent.studioId) : null;
+                  const isImage = selected.tagName.toLowerCase() === 'img' || Boolean(selected.src);
+                  const applyPreset = (kind: 'cutout' | 'glass' | 'backdrop') => {
+                    const updates: Array<{ elementIndex: number; patch: ElementSourcePatch }> = [];
+                    const parentStyles: Record<string, string | null> = {
+                      position: 'relative',
+                      isolation: 'isolate',
+                    };
+                    let elementStyles: Record<string, string | null> = {};
+                    if (kind === 'cutout') {
+                      elementStyles = {
+                        position: 'absolute',
+                        left: '4%',
+                        bottom: '0',
+                        width: 'min(44%, 520px)',
+                        height: '92%',
+                        maxWidth: 'none',
+                        objectFit: 'contain',
+                        objectPosition: 'center bottom',
+                        zIndex: '2',
+                        filter: 'drop-shadow(0 22px 34px rgba(0,0,0,.38))',
+                        background: 'transparent',
+                        border: '0',
+                        borderRadius: '0',
+                      };
+                      Object.assign(parentStyles, {
+                        minHeight: 'clamp(420px, 58vw, 640px)',
+                        overflow: 'visible',
+                      });
+                    } else if (kind === 'glass') {
+                      elementStyles = {
+                        position: 'absolute',
+                        right: '4%',
+                        top: '8%',
+                        width: 'min(66%, 700px)',
+                        minHeight: '72%',
+                        boxSizing: 'border-box',
+                        padding: 'clamp(22px, 4vw, 52px)',
+                        border: '1px solid rgba(255,255,255,.18)',
+                        borderRadius: '28px',
+                        backgroundColor: 'rgba(25, 27, 31, .58)',
+                        backdropFilter: 'blur(18px) saturate(135%)',
+                        WebkitBackdropFilter: 'blur(18px) saturate(135%)',
+                        boxShadow: '0 24px 70px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.12)',
+                        color: '#f8fafc',
+                        zIndex: '1',
+                      };
+                      Object.assign(parentStyles, {
+                        minHeight: 'clamp(420px, 58vw, 640px)',
+                        overflow: 'visible',
+                      });
+                    } else {
+                      elementStyles = {
+                        position: 'relative',
+                        isolation: 'isolate',
+                        overflow: 'hidden',
+                        minHeight: 'clamp(420px, 58vw, 640px)',
+                        padding: 'clamp(28px, 5vw, 64px)',
+                        borderRadius: '30px',
+                        backgroundColor: '#111214',
+                        backgroundImage: 'radial-gradient(ellipse at 12% 18%, rgba(176,104,55,.28), transparent 34%), radial-gradient(ellipse at 88% 78%, rgba(65,83,103,.3), transparent 38%), linear-gradient(135deg, #17191c, #08090b)',
+                      };
+                    }
+                    updates.push({ elementIndex: selected.elementIndex, patch: { styles: elementStyles } });
+                    if (kind !== 'backdrop' && parentTarget && parentTarget.filePath === selected.filePath) {
+                      updates.push({ elementIndex: parentTarget.elementIndex, patch: { styles: parentStyles } });
+                    }
+                    if (onCommitBatchPatches) onCommitBatchPatches(selected.filePath, updates);
+                    else onCommitPatch(selected.filePath, selected.elementIndex, { styles: elementStyles });
+                  };
+                  return (
+                    <>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button type="button" disabled={!isImage} onClick={() => applyPreset('cutout')} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-left text-[10px] font-semibold text-slate-700 hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-40">
+                          <span className="block text-violet-600">01 · Image cutout</span>
+                          <span className="mt-0.5 block font-normal text-slate-500">Float image over parent</span>
+                        </button>
+                        <button type="button" onClick={() => applyPreset('glass')} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-left text-[10px] font-semibold text-slate-700 hover:border-violet-300 hover:bg-violet-50">
+                          <span className="block text-violet-600">02 · Glass card</span>
+                          <span className="mt-0.5 block font-normal text-slate-500">Blur, transparency & depth</span>
+                        </button>
+                        <button type="button" onClick={() => applyPreset('backdrop')} className="col-span-2 rounded-lg border border-slate-200 bg-white px-2 py-2 text-left text-[10px] font-semibold text-slate-700 hover:border-violet-300 hover:bg-violet-50">
+                          <span className="block text-violet-600">03 · Decorative backdrop</span>
+                          <span className="mt-0.5 block font-normal text-slate-500">Layered ambient gradients and dark surface</span>
+                        </button>
+                      </div>
+                      <p className="text-[10px] leading-4 text-slate-500">
+                        Suggested order: select the section for Backdrop, select the text/card for Glass card, then select a transparent PNG/WebP chef image for Image cutout. Select a direct child of the section so WebD can position it relative to its parent.
+                      </p>
+                      {!parentTarget && <p className="text-[10px] text-amber-700">Parent layer could not be detected. The selected element preset will still apply; set its parent container to Position: Relative in Layout.</p>}
+                    </>
+                  );
+                })()}
+              </section>
+
               {/* Source Component Context */}
               <section className="space-y-2 border-b border-slate-100 pb-4">
                 <h3 className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
