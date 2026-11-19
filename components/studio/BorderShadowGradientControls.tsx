@@ -72,15 +72,26 @@ export default function BorderShadowGradientControls({ selectionKey, borderWidth
           <span className="text-[10px] text-slate-400">Stop {index + 1}</span>
         </div>
       ))}
-      {stops.length < 4 && (
-        <button
-          type="button"
-          onClick={() => (kind === 'border' ? setBorderStops : setShadowStops)((current) => [...current, '#F59E0B'])}
-          className="text-[10px] font-semibold text-blue-600 hover:underline"
-        >
-          + Add 4th color stop
-        </button>
-      )}
+      <div className="flex items-center gap-3">
+        {stops.length < 4 && (
+          <button
+            type="button"
+            onClick={() => (kind === 'border' ? setBorderStops : setShadowStops)((current) => [...current, '#F59E0B'])}
+            className="text-[10px] font-semibold text-blue-600 hover:underline"
+          >
+            + Add 4th color stop
+          </button>
+        )}
+        {stops.length > 3 && (
+          <button
+            type="button"
+            onClick={() => (kind === 'border' ? setBorderStops : setShadowStops)((current) => current.slice(0, 3))}
+            className="text-[10px] font-semibold text-rose-600 hover:underline"
+          >
+            Remove 4th stop
+          </button>
+        )}
+      </div>
     </div>
   );
 
@@ -120,6 +131,10 @@ export default function BorderShadowGradientControls({ selectionKey, borderWidth
           <label className="space-y-1 text-[10px] text-slate-600">
             Blur ({blur}px)
             <input type="range" min="4" max="64" value={blur} onChange={(event) => setBlur(Number(event.target.value))} className="w-full accent-blue-600" />
+          </label>
+          <label className="col-span-2 space-y-1 text-[10px] text-slate-600">
+            Spread ({spread}px)
+            <input type="range" min="0" max="12" value={spread} onChange={(event) => setSpread(Number(event.target.value))} className="w-full accent-blue-600" />
           </label>
         </div>
         <div className="h-9 rounded-md border border-slate-200 bg-white" style={{ boxShadow: shadow }} />
