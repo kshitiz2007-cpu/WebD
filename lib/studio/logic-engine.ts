@@ -131,7 +131,7 @@ export function normalizeLogicRules(value: unknown): VisualLogicRule[] {
         if (!node || typeof node !== 'object' || typeof node.id !== 'string' || !['action','condition'].includes(String(node.type))) return [];
         const n = node as Record<string, unknown>;
         return [{
-          id: n.id.slice(0,100),
+          id: (n.id as string).slice(0,100),
           type: n.type as VisualFlowNode['type'],
           label: typeof n.label === 'string' ? n.label.slice(0,120) : '',
           action: ACTIONS.has(n.action as LogicAction) ? n.action as LogicAction : undefined,
