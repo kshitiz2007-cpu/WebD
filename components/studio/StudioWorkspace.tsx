@@ -68,6 +68,7 @@ import {
   parsePackageDependencies,
   removePackageDependencyFromFiles,
   scanExternalImportsInSource,
+  isValidPackageName,
 } from '@/lib/studio/library-importer';
 import {
   ReactUiLibraryEntry,
@@ -1010,6 +1011,9 @@ export default function StudioWorkspace() {
       targetElementIndex?: number;
       componentLibraryName?: string;
       componentExportName?: string;
+      componentSource?: string;
+      componentCss?: string;
+      dependencyPackages?: Array<{ packageName: string; version: string }>;
     }) => {
       const {
         packageName,
@@ -1022,8 +1026,49 @@ export default function StudioWorkspace() {
         position = 'inside-end',
         targetElementIndex,
         componentLibraryName,
-        componentExportName,
+
+        componentSource,
+        componentCss,
+        dependencyPackages = [],
       } = params;
+
+      if (componentSource && componentLibraryName) {
+        if (!/^[A-Z][A-Za-z0-9]*$/.test(componentLibraryName)) {
+          return { ok: false, error: 'Invalid component name. Use PascalCase.' };
+        }
+        if (!/(?:export\s+(?:default\s+)?(?:function|const|class)|function\s+[A-Z][A-Za-z0-9_]*)/.test(componentSource)) {
+          return { ok: false, error: 'Component source must include an exported React component.' };
+        }
+        let nextFiles = { ...project.files };
+        for (const dependency of dependencyPackages) {
+          if (!isValidPackageName(dependency.packageName)) {
+            return { ok: false, error: `Invalid npm dependency: ${dependency.packageName}` };
+          }
+          nextFiles = addPackageDependencyToFiles(nextFiles, dependency.packageName, dependency.version);
+        }
+        const componentFolder = Object.keys(nextFiles).some((p) => p.startsWith('components/'))
+          ? 'components'
+          : Object.keys(nextFiles).some((p) => p.startsWith('src/components/'))
+          ? 'src/components'
+          : 'components';
+        let componentName = componentLibraryName;
+        let componentPath = `${componentFolder}/${componentName}.tsx`;
+        let suffix = 2;
+        while (nextFiles[componentPath]) {
+          componentName = `${componentLibraryName}${suffix++}`;
+          componentPath = `${componentFolder}/${componentName}.tsx`;
+        }
+        nextFiles[componentPath] = componentSource.endsWith('\n') ? componentSource : `${componentSource}\n`;
+        if (componentCss?.trim()) {
+          const cssPath = Object.keys(nextFiles).find((p) => /(?:^|\/)(?:globals|global|index)\.css$/i.test(p)) || 'app/globals.css';
+          const existingCss = nextFiles[cssPath] || '';
+          nextFiles[cssPath] = `${existingCss}${existingCss.trim() ? '\n\n' : ''}/* ReactBits: ${componentName} */\n${componentCss.trim()}\n`;
+        }
+        setSelected(null);
+        commitFilesMutation(nextFiles, componentPath);
+        for (const dependency of dependencyPackages) preloadExternalLibrary(dependency.packageName);
+        return { ok: true };
+      }
 
       if (componentLibraryName && componentExportName) {
         if (!/^[A-Z][A-Za-z0-9]*$/.test(componentLibraryName)) {
