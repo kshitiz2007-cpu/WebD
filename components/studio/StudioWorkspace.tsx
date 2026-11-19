@@ -1026,7 +1026,7 @@ export default function StudioWorkspace() {
         position = 'inside-end',
         targetElementIndex,
         componentLibraryName,
-
+        componentExportName,
         componentSource,
         componentCss,
         dependencyPackages = [],
