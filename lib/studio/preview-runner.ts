@@ -31,7 +31,7 @@ function resolveVirtualModulePath(
     return null;
   }
 
-  const exts = ['', '.tsx', '.ts', '.jsx', '.js', '.json', '.css', '/index.tsx', '/index.ts', '/index.jsx', '/index.js'];
+  const exts = ['', '.tsx', '.ts', '.jsx', '.js', '.json', '.css', '.module.css', '.scss', '.sass', '.less', '/index.tsx', '/index.ts', '/index.jsx', '/index.js', '/index.css'];
   for (const ext of exts) {
     const full = candidateBase + ext;
     if (files[full] !== undefined) return full;
@@ -40,8 +40,53 @@ function resolveVirtualModulePath(
 }
 
 function hasFileCandidate(base: string, files: Record<string, string>): boolean {
-  const exts = ['', '.tsx', '.ts', '.jsx', '.js', '.json', '.css', '/index.tsx', '/index.ts', '/index.jsx', '/index.js'];
+  const exts = ['', '.tsx', '.ts', '.jsx', '.js', '.json', '.css', '.module.css', '.scss', '.sass', '.less', '/index.tsx', '/index.ts', '/index.jsx', '/index.js', '/index.css'];
   return exts.some((ext) => files[base + ext] !== undefined);
+}
+
+function collectImportedStyles(
+  files: Record<string, string>,
+  sourceEntries: Array<[string, string]>
+): { css: string; cssModules: Record<string, Record<string, string>> } {
+  const visited = new Set<string>();
+  const cssParts: string[] = [];
+  const cssModules: Record<string, Record<string, string>> = {};
+  const pending: Array<{ from: string; specifier: string }> = [];
+  const importPattern = /(?:from\\s*|import\\s*)['"]([^'"]+)['"]/g;
+
+  for (const [filePath, source] of sourceEntries) {
+    let match: RegExpExecArray | null;
+    while ((match = importPattern.exec(source)) !== null) {
+      if (match[1].startsWith('.') || match[1].startsWith('@/')) pending.push({ from: filePath, specifier: match[1] });
+    }
+  }
+
+  while (pending.length) {
+    const item = pending.shift()!;
+    const resolved = resolveVirtualModulePath(item.from, item.specifier, files);
+    if (!resolved || visited.has(resolved) || !/\\.(?:css|scss|sass|less)$/i.test(resolved)) continue;
+    visited.add(resolved);
+    const content = files[resolved] || '';
+    if (!content.trim()) continue;
+
+    if (/\\.module\\.css$/i.test(resolved)) {
+      const names = new Set<string>();
+      const classPattern = /\\.([_a-zA-Z][\\w-]*)/g;
+      let classMatch: RegExpExecArray | null;
+      while ((classMatch = classPattern.exec(content)) !== null) names.add(classMatch[1]);
+      cssModules[resolved] = Object.fromEntries([...names].map((name) => [name, name]));
+    } else {
+      cssParts.push(content.replace(/@import\\s+["']tailwindcss["']\\s*;/g, ''));
+    }
+
+    const nestedPattern = /@import\\s+(?:url\\(\\s*)?["']([^"']+)["']\\s*\\)?/g;
+    let nested: RegExpExecArray | null;
+    while ((nested = nestedPattern.exec(content)) !== null) {
+      if (nested[1].startsWith('.') || nested[1].startsWith('@/')) pending.push({ from: resolved, specifier: nested[1] });
+    }
+  }
+
+  return { css: cssParts.join('\\n'), cssModules };
 }
 
 export interface CompiledPreviewBundle {
@@ -973,6 +1018,7 @@ export interface ReactPreviewPayload {
   modules: Record<string, string>;
   resMap: Record<string, Record<string, string>>;
   jsonFiles: Record<string, string>;
+  cssModules: Record<string, Record<string, string>>;
   activeRoute: string;
   entryFile: string;
   layoutFile: string | null;
@@ -990,18 +1036,19 @@ export function compileReactPreviewPayload(
   const isolateComponent = Boolean(options?.isolateComponent);
   const compiledModules: Record<string, string> = {};
 
-  const userCss = project.globalCssPaths
+  const sourceEntries = Object.entries(project.files).filter(([path]) =>
+    /\\.(tsx|ts|jsx|js)$/i.test(path)
+  );
+  const importedStyles = collectImportedStyles(project.files, sourceEntries);
+  const globalCss = project.globalCssPaths
     .map((p) => {
       const css = project.files[p] || '';
       return css
-        .replace(/@import\s+["']tailwindcss["']\s*;/g, '')
-        .replace(/@tailwind\s+[^;]+;/g, '');
+        .replace(/@import\\s+["']tailwindcss["']\\s*;/g, '')
+        .replace(/@tailwind\\s+[^;]+;/g, '');
     })
-    .join('\n');
-
-  const sourceEntries = Object.entries(project.files).filter(([path]) =>
-    /\.(tsx|ts|jsx|js)$/i.test(path)
-  );
+    .join('\\n');
+  const userCss = [globalCss, importedStyles.css].filter(Boolean).join('\\n');
 
   for (const [filePath, code] of sourceEntries) {
     const isJsx = /\.(tsx|jsx)$/i.test(filePath);
@@ -1055,6 +1102,7 @@ export function compileReactPreviewPayload(
     modules: compiledModules,
     resMap: resolutionMap,
     jsonFiles,
+    cssModules: importedStyles.cssModules,
     activeRoute: activePage.route,
     entryFile: activePage.filePath,
     layoutFile,
@@ -1133,6 +1181,7 @@ export function buildPreviewDocument(
   var MODULES = ${escapeScriptClose(JSON.stringify(payload.modules))};
   var RES_MAP = ${escapeScriptClose(JSON.stringify(payload.resMap))};
   var JSON_FILES = ${escapeScriptClose(JSON.stringify(payload.jsonFiles))};
+  var CSS_MODULES = ${escapeScriptClose(JSON.stringify(payload.cssModules))};
   var ACTIVE_ROUTE = ${JSON.stringify(payload.activeRoute)};
   var ENTRY_FILE = ${JSON.stringify(payload.entryFile)};
   var ISOLATE_COMPONENT = ${JSON.stringify(payload.isolateComponent)};
@@ -1433,10 +1482,15 @@ export function buildPreviewDocument(
     var mod = { exports: {} };
     CACHE[filePath] = mod;
     var localRequire = function(spec) {
+      var resolved = RES_MAP[filePath] && RES_MAP[filePath][spec];
+      if (resolved && /\\.module\\.css$/i.test(resolved)) {
+        return CSS_MODULES[resolved]
+          ? Object.assign({ __esModule: true, default: CSS_MODULES[resolved] }, CSS_MODULES[resolved])
+          : { __esModule: true, default: {} };
+      }
       var builtIn = resolveBuiltIn(spec);
       if (builtIn) return builtIn;
       if (ExternalLibs[spec]) return ExternalLibs[spec];
-      var resolved = RES_MAP[filePath] && RES_MAP[filePath][spec];
       if (resolved) return loadModule(resolved);
       if (!spec.startsWith('.') && !spec.startsWith('@/') && !REQUESTED_LIBS[spec]) {
         REQUESTED_LIBS[spec] = true;
@@ -1563,6 +1617,7 @@ export function buildPreviewDocument(
         MODULES = p.modules || MODULES;
         RES_MAP = p.resMap || RES_MAP;
         JSON_FILES = p.jsonFiles || JSON_FILES;
+        CSS_MODULES = p.cssModules || CSS_MODULES;
         ACTIVE_ROUTE = p.activeRoute || ACTIVE_ROUTE;
         ENTRY_FILE = p.entryFile || ENTRY_FILE;
         LAYOUT_FILE = p.layoutFile !== undefined ? p.layoutFile : LAYOUT_FILE;
