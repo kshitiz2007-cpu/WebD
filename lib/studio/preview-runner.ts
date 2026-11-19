@@ -1293,7 +1293,7 @@ export function buildPreviewDocument(
   function useStudioMotionValue(initial) { var ref = React.useRef(null); if (!ref.current) ref.current = createStudioMotionValue(initial); return ref.current; }
   function useStudioTransform(inputs, transform) {
     var ref = React.useRef(null); var list = Array.isArray(inputs) ? inputs : [inputs];
-    var read = function() { return transform.apply(null, list.map(function(v) { return v && typeof v.get === 'function' ? v.get() : v; })); };
+    var read = function() { var values = list.map(function(v) { return v && typeof v.get === 'function' ? v.get() : v; }); return Array.isArray(inputs) ? transform(values) : transform(values[0]); };
     if (!ref.current) ref.current = createStudioMotionValue(read());
     React.useEffect(function() { var update = function() { ref.current.set(read()); };
       var cleanups = list.map(function(v) { return v && typeof v.onChange === 'function' ? v.onChange(update) : function() {}; });
