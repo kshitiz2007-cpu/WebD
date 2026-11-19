@@ -411,6 +411,7 @@ export default function StyleInspectorPanel({
     const colors = borderGradientStops.slice(0, borderGradientStopCount).map((color) => normalizeHex(color));
     commitStyles({
       borderStyle: 'solid',
+      borderWidth: `${Math.max(1, Number(borderWidthDraft) || 1)}px`,
       borderImageSource: `linear-gradient(${borderGradientAngle}deg, ${colors.join(', ')})`,
       borderImageSlice: '1',
     });
