@@ -23,11 +23,33 @@ import {
 import { LayerTreeNode, ProjectPage } from '@/lib/studio/types';
 import type { PageTemplatePreset } from '@/lib/studio/page-generator';
 
+
+const REACT_HOOK_NAMES = ['useState', 'useEffect', 'useLayoutEffect', 'useRef', 'useMemo', 'useCallback', 'useReducer', 'useContext', 'useId', 'useTransition', 'useDeferredValue', 'useSyncExternalStore'];
+const BUILTIN_IMPORTS = new Set(['react', 'react-dom', 'next', 'next/link', 'next/image', 'next/navigation', 'next/headers', 'next/font/google']);
+
+function inspectCustomReactSource(source: string, installed: Record<string, string>) {
+  const imports = [...source.matchAll(/(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?['"]([^'"]+)['"]/g)];
+  const importedPackages = new Set<string>();
+  for (const match of imports) {
+    const specifier = match[1];
+    if (!specifier || specifier.startsWith('.') || specifier.startsWith('@/') || specifier.startsWith('~/')) continue;
+    const parts = specifier.split('/');
+    const packageName = specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+    if (!BUILTIN_IMPORTS.has(specifier) && !BUILTIN_IMPORTS.has(packageName)) importedPackages.add(packageName);
+  }
+  const reactImport = source.match(/import\s+(?:\{([^}]+)\}|React(?:\s*,\s*\{([^}]+)\})?)\s+from\s+['"]react['"]/);
+  const importedHooks = new Set((reactImport?.[1] || reactImport?.[2] || '').split(',').map((part) => part.trim().split(/\s+as\s+/).pop() || '').filter(Boolean));
+  const usedHooks = REACT_HOOK_NAMES.filter((hook) => new RegExp('\\b' + hook + '\\b').test(source) && !new RegExp('React\\.' + hook + '\\b').test(source));
+  return { missingPackages: [...importedPackages].filter((name) => !installed[name]), missingHooks: usedHooks.filter((hook) => !importedHooks.has(hook)) };
+}
+
 interface PagesLayersPanelProps {
   pages: ProjectPage[];
   activeRoute: string;
   onSelectPage: (route: string) => void;
   onCreatePage?: (title: string, slug: string, template: PageTemplatePreset, customTemplateCode?: string, customTemplateCss?: string) => boolean | { ok: boolean; error?: string };
+  installedDependencies?: Record<string, string>;
+  onInstallNpmCommand?: (command: string) => boolean | { ok: boolean; error?: string };
   isHtmlProject?: boolean;
   onCreateSiteKit?: () => boolean;
   components?: ProjectComponentInfo[];
@@ -55,6 +77,8 @@ export default function PagesLayersPanel({
   activeRoute,
   onSelectPage,
   onCreatePage,
+  installedDependencies = {},
+  onInstallNpmCommand,
   isHtmlProject = false,
   onCreateSiteKit,
   components = [],
@@ -86,6 +110,9 @@ export default function PagesLayersPanel({
   const [pageTemplate, setPageTemplate] = useState<PageTemplatePreset>('landing');
   const [customTemplateCss, setCustomTemplateCss] = useState('');
   const [customTemplateCssName, setCustomTemplateCssName] = useState('');
+  const [dependencyCommand, setDependencyCommand] = useState('');
+  const [dependencyMessage, setDependencyMessage] = useState('');
+  const dependencyReport = !isHtmlProject && pageTemplate === 'custom' ? inspectCustomReactSource(customTemplateCode, installedDependencies) : { missingPackages: [], missingHooks: [] };
   const [customTemplateCode, setCustomTemplateCode] = useState(isHtmlProject
     ? '<main class="mx-auto max-w-6xl px-6 py-16"><h1>{{TITLE}}</h1><p>Build your custom page layout here.</p></main>'
     : '<main className="mx-auto max-w-6xl px-6 py-16"><h1 className="text-4xl font-bold">{{TITLE}}</h1><p className="mt-4 text-slate-600">Build your custom page layout here.</p></main>');
@@ -316,6 +343,50 @@ export default function PagesLayersPanel({
                           {' '}Optional placeholders: {'{{TITLE}}'} and {'{{SLUG}}'}.
                         </span>
                       </label>
+                    )}
+                    {pageTemplate === 'custom' && !isHtmlProject && (
+                      <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-semibold text-amber-950">Code dependency &amp; hook check</span>
+                          <span className="text-[10px] text-amber-800">{dependencyReport.missingPackages.length + dependencyReport.missingHooks.length} missing</span>
+                        </div>
+                        {dependencyReport.missingPackages.length === 0 && dependencyReport.missingHooks.length === 0 ? (
+                          <p className="text-[10px] leading-4 text-emerald-700">No missing npm imports or common React hooks detected in the pasted code.</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {dependencyReport.missingPackages.map((name) => (
+                              <div key={name} className="flex items-center justify-between gap-2 rounded bg-white px-2 py-1.5 text-[10px]">
+                                <span className="font-mono font-semibold text-rose-700">{name}</span>
+                                <button type="button" onClick={() => setDependencyCommand('npm install ' + name)} className="font-semibold text-indigo-700 underline">Use install command</button>
+                              </div>
+                            ))}
+                            {dependencyReport.missingHooks.length > 0 && (
+                              <div className="rounded bg-white p-2 text-[10px] leading-4 text-amber-900">
+                                <strong>Missing React hook imports:</strong> {dependencyReport.missingHooks.join(', ')}
+                                <p className="mt-1 text-slate-600">These are built into React; no npm install is needed. Add this to the top of your code:</p>
+                                <code className="mt-1 block break-all rounded bg-slate-100 p-1">{"import { " + dependencyReport.missingHooks.join(', ') + " } from 'react';"}</code>
+                                <button type="button" onClick={() => setCustomTemplateCode((code) => "import { " + dependencyReport.missingHooks.join(', ') + " } from 'react';\n" + code)} className="mt-1 font-semibold text-indigo-700 underline">Add hook imports to code</button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {onInstallNpmCommand && (
+                          <div className="space-y-1.5 border-t border-amber-200 pt-2">
+                            <label className="block text-[10px] font-semibold text-slate-700">Install / add missing dependency with npm command</label>
+                            <div className="flex gap-1.5">
+                              <input value={dependencyCommand} onChange={(event) => { setDependencyCommand(event.target.value); setDependencyMessage(''); }} placeholder="npm install package-name" className="h-8 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 font-mono text-[10px] text-slate-800" />
+                              <button type="button" onClick={() => {
+                                const result = onInstallNpmCommand(dependencyCommand);
+                                const ok = typeof result === 'boolean' ? result : result.ok;
+                                setDependencyMessage(ok ? 'Dependency added to project package.json.' : (typeof result === 'boolean' ? 'Invalid npm command. Use one package: npm install package-name.' : (result.error || 'Could not add dependency.')));
+                                if (ok) setDependencyCommand('');
+                              }} className="shrink-0 rounded-md bg-indigo-600 px-2.5 text-[10px] font-semibold text-white">Add</button>
+                            </div>
+                            {dependencyMessage && <p role="status" className="text-[10px] text-slate-700">{dependencyMessage}</p>}
+                            <p className="text-[9px] leading-4 text-slate-500">Checks static imports in your TSX and compares package names with package.json. Runtime-only or dynamic imports may need manual review.</p>
+                          </div>
+                        )}
+                      </div>
                     )}
                     {pageTemplate === 'custom' && !isHtmlProject && (
                       <label className="block text-[10px] font-semibold text-slate-600">
