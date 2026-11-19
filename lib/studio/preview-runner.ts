@@ -1038,7 +1038,7 @@ export function compileReactPreviewPayload(
   const compiledModules: Record<string, string> = {};
 
   const sourceEntries = Object.entries(project.files).filter(([path]) =>
-    /\\.(tsx|ts|jsx|js)$/i.test(path)
+    /\.(tsx|ts|jsx|js)$/i.test(path)
   );
   const importedStyles = collectImportedStyles(project.files, sourceEntries);
   const globalCss = project.globalCssPaths
