@@ -1036,7 +1036,7 @@ export default function StudioWorkspace() {
         if (!/^[A-Z][A-Za-z0-9]*$/.test(componentLibraryName)) {
           return { ok: false, error: 'Invalid component name. Use PascalCase.' };
         }
-        if (!/(?:export\s+(?:default\s+)?(?:function|const|class)|(?:const|function)\s+[A-Z][A-Za-z0-9_]*|export\s+default\s+[A-Z][A-Za-z0-9_]*)/.test(componentSource)) {
+        if (!/(?:\bexport\s+default\b|\bexport\s*\{[\s\S]*?\})/.test(componentSource) || !/<[A-Za-z][^>]*>/.test(componentSource)) {
           return { ok: false, error: 'Component source must include an exported React component.' };
         }
         let nextFiles = { ...project.files };
