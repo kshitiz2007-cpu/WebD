@@ -194,7 +194,10 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       cursor = cursor[parts[i]];
     }
     cursor[parts[parts.length - 1]] = value;
+    // Persist every shared-state mutation so cart data survives preview iframe reloads and route changes.
+    try { window.localStorage.setItem('webd:app-state', JSON.stringify(getWorkflowState())); } catch (_) {}
     syncWorkflowBindings();
+    try { syncCartUI(); } catch (_) {}
     try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}
   }
   function parseWorkflowValue(value) {
@@ -211,6 +214,104 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       else node.textContent = output;
     });
   }
+  function getCartItems() {
+    var items = getStatePath('cart.items');
+    return Array.isArray(items) ? items : [];
+  }
+  function getCartTotal(items) {
+    return items.reduce(function(total, item) {
+      var price = Number(item && (item.price != null ? item.price : item.amount) || 0);
+      var quantity = Math.max(1, Number(item && item.quantity || 1));
+      return total + (Number.isFinite(price) ? price * quantity : 0);
+    }, 0);
+  }
+  function formatCartMoney(value) {
+    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
+  }
+  function renderCartUI() {
+    var items = getCartItems();
+    var total = getCartTotal(items);
+    var explicitItems = document.querySelectorAll('[data-studio-cart-items]');
+    var explicitTotals = document.querySelectorAll('[data-studio-cart-total]');
+    var explicitCounts = document.querySelectorAll('[data-studio-cart-count]');
+    var explicitEmpty = document.querySelectorAll('[data-studio-cart-empty]');
+    Array.prototype.forEach.call(explicitItems, function(container) {
+      container.textContent = '';
+      items.forEach(function(item, index) {
+        var row = document.createElement('div');
+        row.className = 'studio-cart-row';
+        var title = document.createElement('span');
+        title.textContent = String(item.name || item.title || item.id || 'Item');
+        var price = document.createElement('span');
+        price.textContent = formatCartMoney(Number(item.price || item.amount || 0) * Math.max(1, Number(item.quantity || 1)));
+        var minus = document.createElement('button');
+        minus.type = 'button'; minus.textContent = '−'; minus.setAttribute('data-studio-cart-action', 'decrease'); minus.setAttribute('data-studio-cart-index', String(index));
+        var qty = document.createElement('span'); qty.textContent = String(Math.max(1, Number(item.quantity || 1)));
+        var plus = document.createElement('button');
+        plus.type = 'button'; plus.textContent = '+'; plus.setAttribute('data-studio-cart-action', 'increase'); plus.setAttribute('data-studio-cart-index', String(index));
+        var remove = document.createElement('button');
+        remove.type = 'button'; remove.textContent = 'Remove'; remove.setAttribute('data-studio-cart-action', 'remove'); remove.setAttribute('data-studio-cart-index', String(index));
+        row.appendChild(title); row.appendChild(minus); row.appendChild(qty); row.appendChild(plus); row.appendChild(price); row.appendChild(remove);
+        container.appendChild(row);
+      });
+    });
+    Array.prototype.forEach.call(explicitTotals, function(node) { node.textContent = formatCartMoney(total); });
+    Array.prototype.forEach.call(explicitCounts, function(node) { node.textContent = String(items.reduce(function(n, item) { return n + Math.max(1, Number(item.quantity || 1)); }, 0)); });
+    Array.prototype.forEach.call(explicitEmpty, function(node) { node.hidden = items.length > 0; });
+    // Generated checkout templates often contain a static empty-bag message. Turn that panel into a live cart.
+    if (/checkout|cart|bag/i.test(String(ACTIVE_ROUTE || ''))) {
+      var emptyMessage = Array.from(document.querySelectorAll('p,h1,h2,h3,h4,div,span')).find(function(node) {
+        if (node.children.length > 3) return false;
+        var text = String(node.textContent || '').trim();
+        return /your bag is looking a little empty|your cart is empty|bag is empty|cart is empty/i.test(text) && text.length < 180;
+      });
+      if (emptyMessage && !document.querySelector('[data-studio-cart-autoui]')) {
+        var panel = emptyMessage.parentElement;
+        if (panel && panel.parentElement && panel.textContent.length < 500) panel = panel.parentElement;
+        if (panel) {
+          panel.setAttribute('data-studio-cart-autoui', 'true');
+          panel.textContent = '';
+          var heading = document.createElement('h2'); heading.textContent = items.length ? 'Your order' : 'Your bag is looking a little empty.';
+          heading.style.cssText = 'font-weight:700;text-align:center;margin:8px 0 18px;';
+          panel.appendChild(heading);
+          var list = document.createElement('div'); list.setAttribute('data-studio-cart-items', ''); list.style.cssText = 'display:grid;gap:12px;';
+          panel.appendChild(list);
+          var totalLine = document.createElement('div'); totalLine.style.cssText = 'display:flex;justify-content:space-between;font-weight:700;margin-top:18px;padding-top:12px;border-top:1px solid #ffffff22;';
+          var totalLabel = document.createElement('span'); totalLabel.textContent = 'Total';
+          var totalValue = document.createElement('span'); totalValue.setAttribute('data-studio-cart-total', '');
+          totalLine.appendChild(totalLabel); totalLine.appendChild(totalValue); panel.appendChild(totalLine);
+          var emptyCta = document.createElement('p'); emptyCta.textContent = 'Add dishes from the menu to see them here.'; emptyCta.setAttribute('data-studio-cart-empty', '');
+          emptyCta.style.cssText = 'text-align:center;opacity:.7;margin-top:12px;';
+          panel.appendChild(emptyCta);
+        }
+      }
+    }
+    var autoPanel = document.querySelector('[data-studio-cart-autoui]');
+    if (autoPanel) {
+      var autoHeading = autoPanel.querySelector('h2');
+      if (autoHeading) autoHeading.textContent = items.length ? 'Your order' : 'Your bag is looking a little empty.';
+      var autoEmpty = autoPanel.querySelector('[data-studio-cart-empty]');
+      if (autoEmpty) autoEmpty.hidden = items.length > 0;
+    }
+  }
+  document.addEventListener('click', function(event) {
+    var button = event.target && event.target.closest ? event.target.closest('[data-studio-cart-action]') : null;
+    if (!button) return;
+    var index = Number(button.getAttribute('data-studio-cart-index'));
+    var items = getCartItems().slice();
+    if (!Number.isInteger(index) || !items[index]) return;
+    var action = button.getAttribute('data-studio-cart-action');
+    if (action === 'remove') items.splice(index, 1);
+    else {
+      var quantity = Math.max(1, Number(items[index].quantity || 1));
+      if (action === 'increase') items[index] = Object.assign({}, items[index], { quantity: quantity + 1 });
+      if (action === 'decrease') {
+        if (quantity <= 1) items.splice(index, 1);
+        else items[index] = Object.assign({}, items[index], { quantity: quantity - 1 });
+      }
+    }
+    setStatePath('cart.items', items);
+  }, true);
   window.addEventListener('message', function(event) {\n    var message = event.data || {};\n    if (message.type === 'studio:request-workflow-state') {\n      try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}\n    } else if (message.type === 'studio:workflow-set-state' && typeof message.path === 'string') {\n      setStatePath(message.path, message.value);\n      try { window.localStorage.setItem('webd:app-state', JSON.stringify(getWorkflowState())); } catch (_) {}\n      try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}\n    }\n  });\n  function runFlowGraph(rule, event) {
     var nodes = Array.isArray(rule.flowNodes) ? rule.flowNodes : [];
     var edges = Array.isArray(rule.flowEdges) ? rule.flowEdges : [];
@@ -319,7 +420,26 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
     } else if (rule.action === 'addToArray') {
       var currentArray = getStatePath(rule.target);
       if (!Array.isArray(currentArray)) currentArray = [];
-      currentArray.push(parseWorkflowValue(rule.value));
+      var incomingItem = parseWorkflowValue(rule.value);
+      if (incomingItem && typeof incomingItem === 'object' && !Array.isArray(incomingItem)) {
+        var incomingId = incomingItem.id != null ? String(incomingItem.id) : '';
+        var incomingName = incomingItem.name != null ? String(incomingItem.name) : '';
+        var existingIndex = currentArray.findIndex(function(item) {
+          if (!item || typeof item !== 'object') return false;
+          if (incomingId) return String(item.id) === incomingId;
+          return incomingName && String(item.name || '') === incomingName;
+        });
+        if (existingIndex >= 0) {
+          var existingItem = currentArray[existingIndex];
+          currentArray[existingIndex] = Object.assign({}, existingItem, {
+            quantity: Math.max(1, Number(existingItem.quantity || 1) + Number(incomingItem.quantity || 1))
+          });
+        } else {
+          currentArray.push(Object.assign({}, incomingItem, { quantity: Math.max(1, Number(incomingItem.quantity || 1)) }));
+        }
+      } else {
+        currentArray.push(incomingItem);
+      }
       setStatePath(rule.target, currentArray);
     } else if (rule.action === 'removeFromArray') {
       var removeArray = getStatePath(rule.target);
