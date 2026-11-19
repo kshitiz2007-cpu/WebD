@@ -54,7 +54,9 @@ export interface VisualLogicRule {
   /** Optional ELSE branch; absent means the rule simply does nothing when its condition fails. */
   elseAction?: LogicAction;
   elseTarget?: string;
-  elseValue?: string;\n  flowLayout?: Record<string, { x: number; y: number }>;\n  flowEdges?: Array<{ id: string; from: string; to: string; label?: string }>;
+  elseValue?: string;
+  flowLayout?: Record<string, { x: number; y: number }>;
+  flowEdges?: Array<{ id: string; from: string; to: string; label?: string }>;
 }
 
 const TRIGGERS = new Set<LogicTrigger>([
@@ -103,7 +105,14 @@ export function normalizeLogicRules(value: unknown): VisualLogicRule[] {
       valueSource,
       elseAction: ACTIONS.has(rule.elseAction as LogicAction) ? rule.elseAction as LogicAction : undefined,
       elseTarget: typeof rule.elseTarget === 'string' ? rule.elseTarget.slice(0, 512) : '',
-      elseValue: typeof rule.elseValue === 'string' ? rule.elseValue.slice(0, 4000) : '',\n      flowLayout: rule.flowLayout && typeof rule.flowLayout === 'object' ? Object.fromEntries(Object.entries(rule.flowLayout as Record<string, unknown>).flatMap(([key, point]) => {\n        if (!point || typeof point !== 'object') return [];\n        const candidate = point as Record<string, unknown>;\n        return typeof candidate.x === 'number' && Number.isFinite(candidate.x) && typeof candidate.y === 'number' && Number.isFinite(candidate.y)\n          ? [[key.slice(0, 80), { x: Math.max(0, Math.min(5000, candidate.x)), y: Math.max(0, Math.min(5000, candidate.y)) }]] : [];\n      })) : undefined,\n      flowEdges: Array.isArray(rule.flowEdges) ? rule.flowEdges.filter((edge): edge is {id:string;from:string;to:string;label?:string} => !!edge && typeof edge.id === 'string' && typeof edge.from === 'string' && typeof edge.to === 'string').slice(0,100) : undefined,
+      elseValue: typeof rule.elseValue === 'string' ? rule.elseValue.slice(0, 4000) : '',
+      flowLayout: rule.flowLayout && typeof rule.flowLayout === 'object' ? Object.fromEntries(Object.entries(rule.flowLayout as Record<string, unknown>).flatMap(([key, point]) => {
+        if (!point || typeof point !== 'object') return [];
+        const candidate = point as Record<string, unknown>;
+        return typeof candidate.x === 'number' && Number.isFinite(candidate.x) && typeof candidate.y === 'number' && Number.isFinite(candidate.y)
+          ? [[key.slice(0, 80), { x: Math.max(0, Math.min(5000, candidate.x)), y: Math.max(0, Math.min(5000, candidate.y)) }]] : [];
+      })) : undefined,
+      flowEdges: Array.isArray(rule.flowEdges) ? rule.flowEdges.filter((edge): edge is {id:string;from:string;to:string;label?:string} => !!edge && typeof edge.id === 'string' && typeof edge.from === 'string' && typeof edge.to === 'string').slice(0,100) : undefined,
     }];
   });
 }
