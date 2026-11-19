@@ -169,9 +169,51 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       target.dispatchEvent(new Event('change', { bubbles: true }));
     } else target.textContent = next;
   }
+  // Shared visual-workflow state. Dot paths (for example cart.items) are safe data keys, never code.
+  function getWorkflowState() {
+    if (!window.__WEBD_APP_STATE__ || typeof window.__WEBD_APP_STATE__ !== 'object') {
+      var restored = {};
+      try { restored = JSON.parse(window.localStorage.getItem('webd:app-state') || '{}') || {}; } catch (_) {}
+      window.__WEBD_APP_STATE__ = restored && typeof restored === 'object' ? restored : {};
+    }
+    return window.__WEBD_APP_STATE__;
+  }
+  function getStatePath(path) {
+    var cursor = getWorkflowState();
+    String(path || '').split('.').filter(Boolean).forEach(function(part) {
+      cursor = cursor && typeof cursor === 'object' ? cursor[part] : undefined;
+    });
+    return cursor;
+  }
+  function setStatePath(path, value) {
+    var parts = String(path || '').split('.').filter(Boolean);
+    if (!parts.length) return;
+    var cursor = getWorkflowState();
+    for (var i = 0; i < parts.length - 1; i++) {
+      if (!cursor[parts[i]] || typeof cursor[parts[i]] !== 'object') cursor[parts[i]] = {};
+      cursor = cursor[parts[i]];
+    }
+    cursor[parts[parts.length - 1]] = value;
+    syncWorkflowBindings();
+  }
+  function parseWorkflowValue(value) {
+    if (typeof value !== 'string') return value;
+    try { return JSON.parse(value); } catch (_) { return value; }
+  }
+  function syncWorkflowBindings() {
+    var nodes = document.querySelectorAll('[data-studio-bind]');
+    Array.prototype.forEach.call(nodes, function(node) {
+      var value = getStatePath(node.getAttribute('data-studio-bind'));
+      if (value === undefined || value === null) return;
+      var output = Array.isArray(value) || (typeof value === 'object') ? JSON.stringify(value) : String(value);
+      if ('value' in node && /^(INPUT|TEXTAREA|SELECT)$/.test(node.tagName)) setControlValue(node, output);
+      else node.textContent = output;
+    });
+  }
   function runLogicRule(rule, event) {
     if (!rule || rule.enabled === false || !conditionMatches(rule, event)) return;
-    var needsTarget = ['toast', 'navigate'].indexOf(rule.action) === -1;
+    var stateActions = ['setState', 'incrementState', 'addToArray', 'removeFromArray', 'persistState', 'loadState'];
+    var needsTarget = ['toast', 'navigate'].indexOf(rule.action) === -1 && stateActions.indexOf(rule.action) === -1;
     var target = needsTarget ? resolveLogicTarget(rule.target) : null;
     if (needsTarget && !target) {
       window.parent.postMessage({ type: 'studio:logic-warning', message: 'Logic target not found: ' + (rule.target || '(empty)') }, '*');
@@ -215,6 +257,38 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       if (!Number.isFinite(step)) step = 1;
       if (!Number.isFinite(current)) current = 0;
       setControlValue(target, String(current + (rule.action === 'increment' ? step : -step)));
+    } else if (rule.action === 'setState') {
+      setStatePath(rule.target, parseWorkflowValue(rule.value));
+    } else if (rule.action === 'incrementState') {
+      var stateNumber = Number(getStatePath(rule.target) || 0);
+      var stateStep = Number(rule.value || 1);
+      if (!Number.isFinite(stateNumber)) stateNumber = 0;
+      if (!Number.isFinite(stateStep)) stateStep = 1;
+      setStatePath(rule.target, stateNumber + stateStep);
+    } else if (rule.action === 'addToArray') {
+      var currentArray = getStatePath(rule.target);
+      if (!Array.isArray(currentArray)) currentArray = [];
+      currentArray.push(parseWorkflowValue(rule.value));
+      setStatePath(rule.target, currentArray);
+    } else if (rule.action === 'removeFromArray') {
+      var removeArray = getStatePath(rule.target);
+      if (!Array.isArray(removeArray)) removeArray = [];
+      var removeValue = parseWorkflowValue(rule.value);
+      removeArray = removeArray.filter(function(item) {
+        if (item && typeof item === 'object' && removeValue && typeof removeValue === 'object' && removeValue.id !== undefined) return String(item.id) !== String(removeValue.id);
+        return String(item) !== String(removeValue);
+      });
+      setStatePath(rule.target, removeArray);
+    } else if (rule.action === 'persistState') {
+      try { window.localStorage.setItem('webd:app-state', JSON.stringify(getWorkflowState())); } catch (_) {
+        window.parent.postMessage({ type: 'studio:logic-warning', message: 'Could not persist app state. Check storage availability.' }, '*');
+      }
+    } else if (rule.action === 'loadState') {
+      try {
+        var savedState = JSON.parse(window.localStorage.getItem('webd:app-state') || '{}');
+        window.__WEBD_APP_STATE__ = savedState && typeof savedState === 'object' ? savedState : {};
+        syncWorkflowBindings();
+      } catch (_) {}
     } else if (rule.action === 'navigate') {
       if (typeof rule.target === 'string' && rule.target) window.parent.postMessage({ type: 'studio:navigate', route: rule.target }, '*');
     } else if (rule.action === 'toast') {
