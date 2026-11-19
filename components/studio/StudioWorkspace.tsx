@@ -350,16 +350,6 @@ export default function StudioWorkspace() {
       });
   }, []);
 
-  const handleInstallPageDependency = useCallback((command: string): { ok: boolean; error?: string } => {
-    const parsed = parseNpmInstallCommand(command);
-    if (!parsed) return { ok: false, error: 'Use a single package command, e.g. npm install package-name or npm i package-name.' };
-    if (packageDependencies[parsed.packageName]) return { ok: true };
-    const nextFiles = addPackageDependencyToFiles(project.files, parsed.packageName, parsed.version);
-    commitFilesMutation(nextFiles, activePage.filePath);
-    preloadExternalLibrary(parsed.packageName);
-    return { ok: true };
-  }, [packageDependencies, project.files, commitFilesMutation, activePage.filePath, preloadExternalLibrary]);
-
   useEffect(() => {
     const onLibRequest = (ev: MessageEvent) => {
       const msg = ev.data || {};
@@ -428,6 +418,16 @@ export default function StudioWorkspace() {
     },
     [project.files]
   );
+
+  const handleInstallPageDependency = useCallback((command: string): { ok: boolean; error?: string } => {
+    const parsed = parseNpmInstallCommand(command);
+    if (!parsed) return { ok: false, error: 'Use a single package command, e.g. npm install package-name or npm i package-name.' };
+    if (packageDependencies[parsed.packageName]) return { ok: true };
+    const nextFiles = addPackageDependencyToFiles(project.files, parsed.packageName, parsed.version);
+    commitFilesMutation(nextFiles, activePage.filePath);
+    preloadExternalLibrary(parsed.packageName);
+    return { ok: true };
+  }, [packageDependencies, project.files, commitFilesMutation, activePage.filePath, preloadExternalLibrary]);
 
   const logicTargets = useMemo(() => {
     const items: Array<{ id: string; label: string }> = [];
