@@ -228,7 +228,7 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
   function formatCartMoney(value) {
     return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
   }
-  function renderCartUI() {
+  function syncCartUI() {
     var items = getCartItems();
     var total = getCartTotal(items);
     var explicitItems = document.querySelectorAll('[data-studio-cart-items]');
@@ -1886,6 +1886,7 @@ export function buildPreviewDocument(
     studioRoot = ReactDOMClient.createRoot(rootNode);
     studioRoot.render(React.createElement(StudioRoot));
     setTimeout(function() {
+      try { syncCartUI(); } catch (_) {}
       window.postMessage({ type: 'studio:ping-tree' }, '*');
       if (${JSON.stringify(Boolean(selectedStudioId))}) {
         window.postMessage({ type: 'studio:select-by-id', studioId: ${JSON.stringify(selectedStudioId)}, scroll: false }, '*');
