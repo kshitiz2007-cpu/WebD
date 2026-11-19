@@ -1327,7 +1327,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
       if (!cssPath) return { ok: false, error: 'This project has no CSS file to register the font. Add a global CSS file first.' };
       const currentCss = project.files[cssPath] || '';
       const importRule = `@import '${cssImport}';`;
-      const nextCss = currentCss.includes(importRule) ? currentCss : `${importRule}\\n${currentCss}`;
+      const nextCss = currentCss.includes(importRule) ? currentCss : `${importRule}\n${currentCss}`;
       let nextFiles = addPackageDependencyToFiles(project.files, parsed.packageName, parsed.version);
       nextFiles[cssPath] = nextCss;
       if (selected) {
