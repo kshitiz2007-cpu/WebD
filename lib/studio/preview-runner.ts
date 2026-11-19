@@ -294,6 +294,37 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       if (autoEmpty) autoEmpty.hidden = items.length > 0;
     }
   }
+  // Automatically capture common product-card CTA buttons, so users do not need to configure a Logic rule for every product.
+  document.addEventListener('click', function(event) {
+    var button = event.target && event.target.closest ? event.target.closest('button,a,[role="button"]') : null;
+    if (!button || button.hasAttribute('data-studio-cart-action')) return;
+    var label = String(button.textContent || '').replace(/\\s+/g, ' ').trim();
+    if (!/^(add to cart|add to bag|order this dish|add item|add)$/i.test(label)) return;
+    var card = button.closest('article,li,[data-product],.product-card,.menu-item');
+    var cursor = button;
+    for (var depth = 0; !card && cursor && depth < 6; depth++, cursor = cursor.parentElement) {
+      var text = String(cursor.textContent || '');
+      if (text.length > 25 && text.length < 700 && /(?:[$₹€£]\\s?\\d|\\d+\\s?(?:INR|USD))/i.test(text)) card = cursor;
+    }
+    if (!card) return;
+    var cardText = String(card.textContent || '').replace(/\\s+/g, ' ').trim();
+    var heading = card.querySelector('h1,h2,h3,h4,h5,[data-product-name]');
+    var name = String(heading && heading.textContent || '').trim();
+    if (!name) {
+      var parts = cardText.split(/(?=[₹$€£]\\s?\\d)/);
+      name = (parts[0] || '').replace(label, '').trim().slice(0, 100);
+    }
+    if (!name) name = 'Menu item';
+    var priceMatch = cardText.match(/[₹$€£]\\s?(\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)/);
+    if (!priceMatch) priceMatch = cardText.match(/(\\d+(?:\\.\\d{1,2})?)\\s?(?:INR|USD)/i);
+    var price = priceMatch ? Number(priceMatch[1].replace(/,/g, '')) : 0;
+    var id = String(card.getAttribute('data-product-id') || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''));
+    var current = getCartItems().slice();
+    var index = current.findIndex(function(item) { return item && String(item.id || item.name || '').toLowerCase() === String(id || name).toLowerCase(); });
+    if (index >= 0) current[index] = Object.assign({}, current[index], { quantity: Math.max(1, Number(current[index].quantity || 1) + 1) });
+    else current.push({ id: id, name: name, price: Number.isFinite(price) ? price : 0, quantity: 1 });
+    setStatePath('cart.items', current);
+  }, true);
   document.addEventListener('click', function(event) {
     var button = event.target && event.target.closest ? event.target.closest('[data-studio-cart-action]') : null;
     if (!button) return;
@@ -312,7 +343,21 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
     }
     setStatePath('cart.items', items);
   }, true);
-  window.addEventListener('message', function(event) {\n    var message = event.data || {};\n    if (message.type === 'studio:request-workflow-state') {\n      try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}\n    } else if (message.type === 'studio:workflow-set-state' && typeof message.path === 'string') {\n      setStatePath(message.path, message.value);\n      try { window.localStorage.setItem('webd:app-state', JSON.stringify(getWorkflowState())); } catch (_) {}\n      try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}\n    }\n  });\n  function runFlowGraph(rule, event) {
+  window.addEventListener('message', function(event) {\n    var message = event.data || {};\n    if (message.type === 'studio:request-workflow-state') {\n      try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}\n    } else if (message.type === 'studio:workflow-set-state' && typeof message.path === 'string') {\n      setStatePath(message.path, message.value);\n      try { window.localStorage.setItem('webd:app-state', JSON.stringify(getWorkflowState())); } catch (_) {}\n      try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}\n    }\n  });\n  // Checkout templates often mount their content after the initial iframe paint.
+  // Re-run cart binding after React updates so the empty-state panel is replaced when data arrives.
+  try {
+    var cartObserver = new MutationObserver(function() {
+      if (window.__studioCartRenderQueued) return;
+      window.__studioCartRenderQueued = true;
+      Promise.resolve().then(function() {
+        window.__studioCartRenderQueued = false;
+        try { syncCartUI(); } catch (_) {}
+      });
+    });
+    cartObserver.observe(document.documentElement, { childList: true, subtree: true });
+  } catch (_) {}
+  try { setTimeout(function() { syncCartUI(); }, 300); } catch (_) {}
+  function runFlowGraph(rule, event) {
     var nodes = Array.isArray(rule.flowNodes) ? rule.flowNodes : [];
     var edges = Array.isArray(rule.flowEdges) ? rule.flowEdges : [];
     var byId = {};
