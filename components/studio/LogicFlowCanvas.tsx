@@ -30,7 +30,10 @@ const labels: Record<string, string> = {
   persistState:'Save state',loadState:'Load state',
 };
 const pathGet = (root: Record<string, unknown>, path: string) => path.split('.').filter(Boolean).reduce<unknown>((v,k) => v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined, root);
-const sendToPreviewFrames = (message: Record<string, unknown>) => {\n  try { Array.from(window.frames).forEach((frame) => frame.postMessage(message, '*')); } catch {}\n};\nconst pathSet = (root: Record<string, unknown>, path: string, value: unknown) => {
+const sendToPreviewFrames = (message: Record<string, unknown>) => {
+  try { Array.from(window.frames).forEach((frame) => frame.postMessage(message, '*')); } catch {}
+};
+const pathSet = (root: Record<string, unknown>, path: string, value: unknown) => {
   const keys = path.split('.').filter(Boolean); if (!keys.length) return root;
   const next = structuredClone(root);
   let cursor: Record<string, unknown> = next;
