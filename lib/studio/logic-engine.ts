@@ -17,7 +17,13 @@ export type LogicAction =
   | 'increment'
   | 'decrement'
   | 'navigate'
-  | 'toast';
+  | 'toast'
+  | 'setState'
+  | 'incrementState'
+  | 'addToArray'
+  | 'removeFromArray'
+  | 'persistState'
+  | 'loadState';
 
 export type LogicConditionOperator =
   | 'always'
@@ -53,6 +59,7 @@ const TRIGGERS = new Set<LogicTrigger>([
 const ACTIONS = new Set<LogicAction>([
   'show', 'hide', 'toggle', 'setText', 'setTextFromValue', 'setValue',
   'increment', 'decrement', 'navigate', 'toast',
+  'setState', 'incrementState', 'addToArray', 'removeFromArray', 'persistState', 'loadState',
 ]);
 const CONDITIONS = new Set<LogicConditionOperator>([
   'always', 'equals', 'notEquals', 'contains', 'greaterThan',
