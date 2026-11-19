@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import GradientEditor from './GradientEditor';
+import BorderShadowGradientControls from './BorderShadowGradientControls';
 import {
   SHADOW_PRESETS,
   boxShadowToElevationHint,
@@ -743,6 +744,14 @@ export default function StyleInspectorPanel({
                 }
               />
             </section>
+
+            <BorderShadowGradientControls
+              key={selected.studioId}
+              selectionKey={selected.studioId}
+              borderWidth={Number(borderWidthDraft) || 1}
+              onPreview={(styles) => onPreviewStyles(selected.studioId, styles)}
+              onCommit={commitStyles}
+            />
 
             {/* Border & Radius & Shadow */}
             <section className="space-y-3">
