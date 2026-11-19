@@ -1040,11 +1040,26 @@ export default function StudioWorkspace() {
           return { ok: false, error: 'Component source must include an exported React component.' };
         }
         let nextFiles = { ...project.files };
+        const detectedDependencies = new Map<string, string>();
         for (const dependency of dependencyPackages) {
           if (!isValidPackageName(dependency.packageName)) {
             return { ok: false, error: `Invalid npm dependency: ${dependency.packageName}` };
           }
-          nextFiles = addPackageDependencyToFiles(nextFiles, dependency.packageName, dependency.version);
+          detectedDependencies.set(dependency.packageName, dependency.version);
+        }
+        const importPattern = /(?:from\\s*|import\\s*)['"]([^'"]+)['"]/g;
+        let importMatch: RegExpExecArray | null;
+        while ((importMatch = importPattern.exec(componentSource)) !== null) {
+          const specifier = importMatch[1];
+          if (specifier.startsWith('.') || specifier.startsWith('@/') || specifier.startsWith('react')) continue;
+          const segments = specifier.split('/');
+          const packageName = specifier.startsWith('@') ? segments.slice(0, 2).join('/') : segments[0];
+          if (isValidPackageName(packageName) && !detectedDependencies.has(packageName)) {
+            detectedDependencies.set(packageName, 'latest');
+          }
+        }
+        for (const [packageName, packageVersion] of detectedDependencies) {
+          nextFiles = addPackageDependencyToFiles(nextFiles, packageName, packageVersion);
         }
         const componentFolder = Object.keys(nextFiles).some((p) => p.startsWith('components/'))
           ? 'components'
@@ -1058,15 +1073,28 @@ export default function StudioWorkspace() {
           componentName = `${componentLibraryName}${suffix++}`;
           componentPath = `${componentFolder}/${componentName}.tsx`;
         }
-        nextFiles[componentPath] = componentSource.endsWith('\n') ? componentSource : `${componentSource}\n`;
+        let sourceToSave = componentSource;
         if (componentCss?.trim()) {
-          const cssPath = Object.keys(nextFiles).find((p) => /(?:^|\/)(?:globals|global|index)\.css$/i.test(p)) || 'app/globals.css';
-          const existingCss = nextFiles[cssPath] || '';
-          nextFiles[cssPath] = `${existingCss}${existingCss.trim() ? '\n\n' : ''}/* ReactBits: ${componentName} */\n${componentCss.trim()}\n`;
+          const cssImportPattern = /import\\s+['"]((?:\\.\\.?\\/)[^'"]+\\.css)['"];?/g;
+          const cssImports = [...componentSource.matchAll(cssImportPattern)];
+          if (cssImports.length === 0) {
+            const cssImport = `import './${componentName}.css';`;
+            const clientDirective = sourceToSave.match(/^(['"]use client['"];?\\s*)/);
+            sourceToSave = clientDirective
+              ? sourceToSave.replace(clientDirective[0], `${clientDirective[0]}${cssImport}\\n`)
+              : `${cssImport}\\n${sourceToSave}`;
+            nextFiles[`${componentFolder}/${componentName}.css`] = componentCss.trim() + '\\n';
+          } else {
+            for (const cssMatch of cssImports) {
+              const relativePath = cssMatch[1].replace(/^\\.\\//, '');
+              nextFiles[`${componentFolder}/${relativePath}`] = componentCss.trim() + '\\n';
+            }
+          }
         }
+        nextFiles[componentPath] = sourceToSave.endsWith('\\n') ? sourceToSave : `${sourceToSave}\\n`;
         setSelected(null);
         commitFilesMutation(nextFiles, componentPath);
-        for (const dependency of dependencyPackages) preloadExternalLibrary(dependency.packageName);
+        for (const packageName of detectedDependencies.keys()) preloadExternalLibrary(packageName);
         return { ok: true };
       }
 
