@@ -243,7 +243,7 @@ export default function StyleInspectorPanel({
   pseudoState = 'default',
   onChangePseudoState,
 }: StyleInspectorPanelProps) {
-  const [activeTab, setActiveTab] = useState<'style' | 'layout' | 'type' | 'comp'>('style');
+  const [activeTab, setActiveTab] = useState<'style' | 'layout' | 'type' | 'comp' | 'fit'>('style');
   const [textDraft, setTextDraft] = useState(selected?.textContent || '');
   const [textColorHex, setTextColorHex] = useState('#0F172A');
   const [borderColorHex, setBorderColorHex] = useState('#E2E8F0');
@@ -260,6 +260,8 @@ export default function StyleInspectorPanel({
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
   const [prevSelectedKey, setPrevSelectedKey] = useState<string | null>(null);
+  const [fitWidthDraft, setFitWidthDraft] = useState('100%');
+  const [fitHeightDraft, setFitHeightDraft] = useState('420px');
 
   const rawRadius = selected
     ? parsePxNumber(selected.inlineStyles['border-radius'] || selected.computedStyles.borderRadius) || '0'
@@ -296,6 +298,8 @@ export default function StyleInspectorPanel({
       setOpacityDraft(String(rawOpacity));
       setElevationDraft(String(rawElevation));
       setShadowCssDraft(rawBoxShadow);
+      setFitWidthDraft(selected.inlineStyles.width || '100%');
+      setFitHeightDraft(selected.inlineStyles.height || (selected.className.toLowerCase().includes('circular-carousel') ? 'min(70vh, 620px)' : 'auto'));
       setClassDraft(selected.className || '');
       setHrefDraft(selected.href || '');
       setSrcDraft(selected.src || '');
@@ -555,7 +559,7 @@ export default function StyleInspectorPanel({
 
         {/* Inspector Section Tabs */}
         <div
-          className="mt-2.5 grid grid-cols-4 rounded-lg border border-slate-200 bg-slate-100 p-0.5"
+          className="mt-2.5 grid grid-cols-5 rounded-lg border border-slate-200 bg-slate-100 p-0.5"
           role="tablist"
           aria-label="Inspector sections"
         >
@@ -600,6 +604,20 @@ export default function StyleInspectorPanel({
           >
             <Type className="h-3 w-3" />
             <span>Text</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'fit'}
+            onClick={() => setActiveTab('fit')}
+            className={`inline-flex items-center justify-center gap-1 rounded-md py-1 text-[11px] font-medium whitespace-nowrap ${
+              activeTab === 'fit'
+                ? 'bg-white text-emerald-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <span>↔</span>
+            <span>Fit</span>
           </button>
           <button
             type="button"
@@ -2184,6 +2202,55 @@ export default function StyleInspectorPanel({
             </div>
           </section>
         )}
+
+        {activeTab === 'fit' && (() => {
+          const parentWidth = Math.round(selected.parentRect?.width || selected.viewportSize?.width || 0);
+          const parentHeight = Math.round(selected.parentRect?.height || 0);
+          const elementWidth = Math.round(selected.rect?.width || 0);
+          const elementHeight = Math.round(selected.rect?.height || 0);
+          const isCarousel = /circular-carousel/i.test(selected.className || '');
+          const recommendedHeight = isCarousel ? 'min(70vh, 620px)' : parentHeight > 0 ? '100%' : 'auto';
+          const applyFit = (width: string, height: string, minHeight: string, maxWidth: string) => {
+            commitStyles({ width, height, minHeight: minHeight || null, maxWidth, boxSizing: 'border-box', flexShrink: '0' });
+          };
+          const fitButton = 'rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[11px] font-medium text-slate-700 hover:border-indigo-300 hover:bg-indigo-50';
+          return (
+            <section className="space-y-3 p-3">
+              <div>
+                <h3 className="text-xs font-semibold text-slate-900">Component Fit & Responsive Size</h3>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">Component ka size uske parent container ke actual dimensions ke comparison mein adjust karo. Changes saved source styles mein apply honge.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+                <div><p className="text-[10px] text-slate-500">Parent width</p><p className="text-sm font-semibold tabular-nums text-slate-800">{parentWidth ? parentWidth + 'px' : 'Not measured'}</p></div>
+                <div><p className="text-[10px] text-slate-500">Parent height</p><p className="text-sm font-semibold tabular-nums text-slate-800">{parentHeight ? parentHeight + 'px' : 'Auto / not set'}</p></div>
+                <div><p className="text-[10px] text-slate-500">Component width</p><p className="text-xs font-medium tabular-nums text-slate-700">{elementWidth}px</p></div>
+                <div><p className="text-[10px] text-slate-500">Component height</p><p className="text-xs font-medium tabular-nums text-slate-700">{elementHeight}px</p></div>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-semibold text-slate-700">Suggested settings</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" className={fitButton} onClick={() => applyFit('100%', recommendedHeight, isCarousel ? '420px' : '0px', '100%')}>Recommended fit</button>
+                  <button type="button" className={fitButton} onClick={() => applyFit('100%', 'auto', '0px', '100%')}>Fit parent width</button>
+                  <button type="button" className={fitButton} onClick={() => applyFit('100%', parentHeight > 0 ? '100%' : '70vh', isCarousel ? '420px' : '280px', '100%')}>Fill container</button>
+                  <button type="button" className={fitButton} onClick={() => applyFit('min(100%, 720px)', '420px', '320px', '100%')}>Centered / compact</button>
+                </div>
+                {isCarousel && <p className="rounded-md bg-emerald-50 px-2.5 py-2 text-[10px] leading-relaxed text-emerald-800">CircularCarousel detected: its original CSS uses height: 100%. The recommended preset adds a 420px minimum and responsive height.</p>}
+                {parentHeight === 0 && <p className="rounded-md bg-amber-50 px-2.5 py-2 text-[10px] leading-relaxed text-amber-800">Parent height is currently auto. A child set to height: 100% may collapse; choose Recommended fit or set a custom height.</p>}
+              </div>
+              <div className="space-y-2 rounded-lg border border-slate-200 p-2.5">
+                <p className="text-[11px] font-semibold text-slate-700">Custom dimensions</p>
+                <label className="block space-y-1"><span className="text-[10px] text-slate-500">Width (px, %, vw, or CSS value)</span><input value={fitWidthDraft} onChange={(event) => setFitWidthDraft(event.target.value)} className="h-9 w-full rounded-md border border-slate-200 px-2 text-xs" placeholder="100%" /></label>
+                <label className="block space-y-1"><span className="text-[10px] text-slate-500">Height (px, %, vh, or CSS value)</span><input value={fitHeightDraft} onChange={(event) => setFitHeightDraft(event.target.value)} className="h-9 w-full rounded-md border border-slate-200 px-2 text-xs" placeholder="420px" /></label>
+                <button type="button" className="w-full rounded-md bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700" onClick={() => {
+                  const validCssSize = (value: string) => /^(auto|0|\d+(?:\.\d+)?(?:px|%|vw|vh|rem|em)|min\(.+\)|max\(.+\)|clamp\(.+\))$/i.test(value.trim());
+                  if (!validCssSize(fitWidthDraft) || !validCssSize(fitHeightDraft)) return;
+                  applyFit(fitWidthDraft.trim(), fitHeightDraft.trim(), isCarousel ? '320px' : '0px', '100%');
+                }}>Apply custom size</button>
+              </div>
+              <p className="text-[10px] leading-relaxed text-slate-400">Tip: responsive width should usually be 100% with max-width 100%. Set a definite height only for visual components that need a stage, canvas, carousel or background area.</p>
+            </section>
+          );
+        })()}
 
         {activeTab === 'comp' && (() => {
           const ownerComponent = components.find((c) => c.filePath === selected.filePath);
