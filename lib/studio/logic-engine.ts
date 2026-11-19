@@ -54,7 +54,7 @@ export interface VisualLogicRule {
   /** Optional ELSE branch; absent means the rule simply does nothing when its condition fails. */
   elseAction?: LogicAction;
   elseTarget?: string;
-  elseValue?: string;
+  elseValue?: string;\n  flowLayout?: Record<string, { x: number; y: number }>;\n  flowEdges?: Array<{ id: string; from: string; to: string; label?: string }>;
 }
 
 const TRIGGERS = new Set<LogicTrigger>([
@@ -103,7 +103,7 @@ export function normalizeLogicRules(value: unknown): VisualLogicRule[] {
       valueSource,
       elseAction: ACTIONS.has(rule.elseAction as LogicAction) ? rule.elseAction as LogicAction : undefined,
       elseTarget: typeof rule.elseTarget === 'string' ? rule.elseTarget.slice(0, 512) : '',
-      elseValue: typeof rule.elseValue === 'string' ? rule.elseValue.slice(0, 4000) : '',
+      elseValue: typeof rule.elseValue === 'string' ? rule.elseValue.slice(0, 4000) : '',\n      flowLayout: rule.flowLayout && typeof rule.flowLayout === 'object' ? rule.flowLayout as Record<string, {x:number;y:number}> : undefined,\n      flowEdges: Array.isArray(rule.flowEdges) ? rule.flowEdges.filter((edge): edge is {id:string;from:string;to:string;label?:string} => !!edge && typeof edge.id === 'string' && typeof edge.from === 'string' && typeof edge.to === 'string').slice(0,100) : undefined,
     }];
   });
 }
