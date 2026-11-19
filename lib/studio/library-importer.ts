@@ -284,9 +284,9 @@ export interface ParsedNpmInstallCommand {
 /** Accept one-package npm install commands, including scoped packages and explicit versions. */
 export function parseNpmInstallCommand(command: string): ParsedNpmInstallCommand | null {
   const trimmed = command.trim();
-  const match = trimmed.match(/^(?:npm\\s+(?:install|i))\\s+(.+)$/i);
+  const match = trimmed.match(/^(?:npm\s+(?:install|i))\s+(.+)$/i);
   if (!match) return null;
-  const args = match[1].trim().split(/\\s+/);
+  const args = match[1].trim().split(/\s+/);
   const packageArgs = args.filter((arg) => !arg.startsWith('-'));
   if (args.some((arg) => arg.startsWith('-')) || packageArgs.length !== 1) return null;
   const spec = packageArgs[0];
