@@ -347,7 +347,14 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
   // Re-run cart binding after React updates so the empty-state panel is replaced when data arrives.
   try {
     var cartObserver = new MutationObserver(function() {
+      if (document.querySelector('[data-studio-cart-autoui]')) return;
       if (window.__studioCartRenderQueued) return;
+      var hasEmptyCartMessage = Array.from(document.querySelectorAll('p,h1,h2,h3,h4,div,span')).some(function(node) {
+        if (node.children.length > 3) return false;
+        var text = String(node.textContent || '').trim();
+        return /your bag is looking a little empty|your cart is empty|bag is empty|cart is empty/i.test(text) && text.length < 180;
+      });
+      if (!hasEmptyCartMessage) return;
       window.__studioCartRenderQueued = true;
       Promise.resolve().then(function() {
         window.__studioCartRenderQueued = false;
