@@ -75,6 +75,7 @@ function collectImportedStyles(
       let classMatch: RegExpExecArray | null;
       while ((classMatch = classPattern.exec(content)) !== null) names.add(classMatch[1]);
       cssModules[resolved] = Object.fromEntries([...names].map((name) => [name, name]));
+      cssParts.push(content);
     } else {
       cssParts.push(content.replace(/@import\s+["']tailwindcss["']\s*;/g, ''));
     }
