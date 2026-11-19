@@ -83,6 +83,8 @@ export default function LogicFlowCanvas({ rule, triggers, actions, onChange }: P
   const saveEdges = (next: Edge[]) => { setEdges(next); onChange({ flowEdges: next }); };
   const connect = (to: string) => {
     if (!connectFrom || connectFrom === to) { setConnectFrom(null); return; }
+    const valid = (connectFrom === 'trigger' && to === 'condition') || (connectFrom === 'condition' && (to === 'yes' || to === 'no'));
+    if (!valid) { setConnectFrom(null); return; }
     const id = `edge-${connectFrom}-${to}`;
     if (!edges.some((edge) => edge.from === connectFrom && edge.to === to)) saveEdges([...edges,{id,from:connectFrom,to,label:connectFrom==='condition' ? (to==='yes'?'IF true':to==='no'?'ELSE':'') : undefined}]);
     setConnectFrom(null);
