@@ -1044,11 +1044,11 @@ export function compileReactPreviewPayload(
     .map((p) => {
       const css = project.files[p] || '';
       return css
-        .replace(/@import\\s+["']tailwindcss["']\\s*;/g, '')
-        .replace(/@tailwind\\s+[^;]+;/g, '');
+        .replace(/@import\s+["']tailwindcss["']\s*;/g, '')
+        .replace(/@tailwind\s+[^;]+;/g, '');
     })
-    .join('\\n');
-  const userCss = [globalCss, importedStyles.css].filter(Boolean).join('\\n');
+    .join('\n');
+  const userCss = [globalCss, importedStyles.css].filter(Boolean).join('\n');
 
   for (const [filePath, code] of sourceEntries) {
     const isJsx = /\.(tsx|jsx)$/i.test(filePath);
