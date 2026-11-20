@@ -24,6 +24,7 @@ import {
 import GradientEditor from './GradientEditor';
 import BorderShadowGradientControls from './BorderShadowGradientControls';
 import ImageBlendDesigner from './ImageBlendDesigner';
+import DesignTokensPresets from './DesignTokensPresets';
 import {
   SHADOW_PRESETS,
   boxShadowToElevationHint,
@@ -725,6 +726,8 @@ export default function StyleInspectorPanel({
 
         {activeTab === 'style' && (
           <>
+            <DesignTokensPresets key={selected.studioId + '-tokens'} selectionKey={selected.studioId} onPreview={(styles) => onPreviewStyles(selected.studioId, styles)} onCommit={commitStyles} />
+
             <section className="space-y-2 border-b border-slate-100 pb-4">
               <h3 className="text-[11px] font-semibold text-slate-700">
                 Fill &amp; Multi-Stop Gradient
