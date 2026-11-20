@@ -104,7 +104,21 @@ export default function MediaLibraryModal({
   };
 
   useEffect(() => {
-    if (open) { void refresh(); setNotice(''); }
+    if (!open) return;
+    let active = true;
+    readAssets()
+      .then((list) => {
+        if (!active) return;
+        setAssets(list);
+        setNotice('');
+      })
+      .catch((error) => {
+        if (!active) return;
+        setNotice(error instanceof Error ? error.message : 'Could not load media library.');
+      });
+    return () => {
+      active = false;
+    };
   }, [open]);
 
   const folders = useMemo(() => ['All assets', ...Array.from(new Set(assets.map((a) => a.folder || 'General'))).sort()], [assets]);

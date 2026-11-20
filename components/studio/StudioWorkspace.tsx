@@ -1,9 +1,31 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Code2, GitBranch, Layers, LayoutGrid, Monitor, Palette, SlidersHorizontal, Smartphone, Sparkles, Tablet } from 'lucide-react';
+import { Code2, Layers, Search, SlidersHorizontal, Wrench } from 'lucide-react';
 import LogicPanel from './LogicPanel';
+import AnimationStudioPanel from './AnimationStudioPanel';
+import ExportProductionModal from './ExportProductionModal';
+import CanvasContextMenu from './CanvasContextMenu';
+import CommandPaletteModal from './CommandPaletteModal';
+import MobileToolsSheet from './MobileToolsSheet';
 import { normalizeLogicRules, type VisualLogicRule } from '@/lib/studio/logic-engine';
+import {
+  ElementAnimationConfig,
+  buildAnimationClassesAndStyles,
+  countAnimatedElementsInFiles,
+  mergeMotionCssIntoGlobalCss,
+} from '@/lib/studio/animation-studio';
+import {
+  isVirtualMediaDataUrlFile,
+  registerMediaAssetInProjectFiles,
+} from '@/lib/studio/media-pipeline';
+import { StudioCommandItem } from '@/lib/studio/command-palette';
+import {
+  CopiedStyleClipboard,
+  buildCopiedStylePayload,
+  buildPasteStylePatch,
+  suggestExtractedComponentName,
+} from '@/lib/studio/workspace-actions';
 import TopToolbar from './TopToolbar';
 import PagesLayersPanel from './PagesLayersPanel';
 import VisualCanvas from './VisualCanvas';
@@ -13,7 +35,7 @@ import GlobalStylesPanel from './GlobalStylesPanel';
 import ImportProjectModal from './ImportProjectModal';
 import DraftsModal from './DraftsModal';
 import ReactLibraryModal from './ReactLibraryModal';
-import LayoutBuilderPanel from './LayoutBuilderPanel';
+import LayoutBuilderPanel, { LAYOUT_BLOCKS } from './LayoutBuilderPanel';
 import SmartAlignerPanel from './SmartAlignerPanel';
 import CodeDrawer from './CodeDrawer';
 import MediaLibraryModal from './MediaLibraryModal';
@@ -123,6 +145,8 @@ export default function StudioWorkspace() {
   const [layerTree, setLayerTree] = useState<LayerTreeNode[]>([]);
   const [isCodeDrawerOpen, setIsCodeDrawerOpen] = useState(false);
   const [isLogicPanelOpen, setIsLogicPanelOpen] = useState(false);
+  const [isMotionPanelOpen, setIsMotionPanelOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [codeDrawerFile, setCodeDrawerFile] = useState<string>('app/page.tsx');
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isMediaLibraryOpen, setIsMediaLibraryOpen] = useState(false);
@@ -132,7 +156,7 @@ export default function StudioWorkspace() {
   const [compiledTailwindCss, setCompiledTailwindCss] = useState<string>('');
   const [desktopLeftOpen, setDesktopLeftOpen] = useState<boolean>(true);
   const [desktopRightOpen, setDesktopRightOpen] = useState<boolean>(true);
-  const [desktopGradientOpen, setDesktopGradientOpen] = useState<boolean>(true);
+  const [desktopGradientOpen, setDesktopGradientOpen] = useState<boolean>(false);
   const [desktopGlobalStylesOpen, setDesktopGlobalStylesOpen] = useState<boolean>(false);
   const [desktopSmartAlignerOpen, setDesktopSmartAlignerOpen] = useState<boolean>(false);
   const [compactLeftOpen, setCompactLeftOpen] = useState<boolean>(false);
@@ -145,6 +169,17 @@ export default function StudioWorkspace() {
   const [isolatedComponentPath, setIsolatedComponentPath] = useState<string | null>(null);
   const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
   const [isLayoutBuilderOpen, setIsLayoutBuilderOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
+  const [copiedStyle, setCopiedStyle] = useState<CopiedStyleClipboard | null>(null);
+  const [contextMenuState, setContextMenuState] = useState<{
+    target: StudioElementSnapshot;
+    x: number;
+    y: number;
+    trigger: 'contextmenu' | 'longpress' | 'button';
+  } | null>(null);
+  const [actionToast, setActionToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
   const [externalLibVersion, setExternalLibVersion] = useState(0);
   const [pendingSelectStudioId, setPendingSelectStudioId] = useState<string | null>(null);
   const [lastPageTarget, setLastPageTarget] = useState<{
@@ -365,11 +400,16 @@ export default function StudioWorkspace() {
   const cssSignature = useMemo(() => {
     const cssText = project.globalCssPaths.map((p) => project.files[p] || '').join('\n');
     const sourceText = Object.entries(project.files)
-      .filter(([p]) => /\.(tsx|jsx|ts|js|html)$/i.test(p))
+      .filter(([p, c]) => /\.(tsx|jsx|ts|js|html)$/i.test(p) && !isVirtualMediaDataUrlFile(p, c))
       .map(([, c]) => c)
       .join('\n');
     return { cssText, sourceText };
   }, [project.files, project.globalCssPaths]);
+
+  const animatedSummary = useMemo(
+    () => countAnimatedElementsInFiles(project.files),
+    [project.files]
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -492,6 +532,12 @@ export default function StudioWorkspace() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setContextMenuState(null);
+        setIsCommandPaletteOpen((open) => !open);
+        return;
+      }
       const target = e.target as HTMLElement | null;
       if (
         target &&
@@ -511,6 +557,20 @@ export default function StudioWorkspace() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleUndo, handleRedo]);
+
+  const showToastFeedback = useCallback((message: string) => {
+    setActionToast(message);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => {
+      setActionToast(null);
+    }, 2400);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   const handlePreviewStyles = useCallback(
     (studioId: string, styles: Record<string, string | null>) => {
@@ -609,6 +669,55 @@ export default function StudioWorkspace() {
     commitFilesMutation({ ...project.files, [cssPath]: updatedCss, [selected.filePath]: updatedSource }, selected.filePath);
     setIsTypographyEffectsOpen(false);
   }, [selected, project.files, project.globalCssPaths, commitFilesMutation]);
+
+  const handleReplayAnimations = useCallback(() => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: 'studio:replay-animations' },
+      '*'
+    );
+  }, []);
+
+  const handleApplyElementAnimation = useCallback(
+    (config: ElementAnimationConfig) => {
+      if (!selected) return;
+      const source = project.files[selected.filePath];
+      if (!source) return;
+      const isHtml = /\.html?$/i.test(selected.filePath);
+      const { className, styles, hasAnimation } = buildAnimationClassesAndStyles(
+        selected.className,
+        config
+      );
+      const updatedSource = applyElementPatchToSource(
+        source,
+        selected.elementIndex,
+        isHtml,
+        { className, styles }
+      );
+      const nextFiles: Record<string, string> = {
+        ...project.files,
+        [selected.filePath]: updatedSource,
+      };
+      if (hasAnimation) {
+        const cssPath =
+          project.globalCssPaths.find((p) => Boolean(project.files[p])) ||
+          Object.keys(project.files).find((p) => /\.css$/i.test(p));
+        if (cssPath) {
+          nextFiles[cssPath] = mergeMotionCssIntoGlobalCss(project.files[cssPath] || '');
+        }
+      }
+      setPendingSelectStudioId(selected.studioId);
+      commitFilesMutation(nextFiles, selected.filePath);
+      if (hasAnimation) {
+        window.setTimeout(() => {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: 'studio:replay-animations' },
+            '*'
+          );
+        }, 120);
+      }
+    },
+    [selected, project.files, project.globalCssPaths, commitFilesMutation]
+  );
 
   const handleMoveSibling = useCallback(
     (filePath: string, elementIndex: number, targetIndex: number) => {
@@ -1750,65 +1859,109 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
     []
   );
 
-  const handleInsertMediaAsset = useCallback((asset: { name: string; type: string; dataUrl: string }, mode: 'normal' | 'cutout' = 'normal') => {
-    if (!selected) return;
-    const mediaKind = asset.type.startsWith('video/') ? 'video' : asset.type.startsWith('audio/') ? 'audio' : 'image';
-    const selectedTag = selected.tagName.toLowerCase();
-    const matchingTag = mediaKind === 'image' ? selectedTag === 'img' : selectedTag === mediaKind;
-    if (matchingTag || (mediaKind === 'image' && selected.src)) {
-      handleCommitPatch(selected.filePath, selected.elementIndex, { src: asset.dataUrl });
-      return;
-    }
-    const safeAlt = asset.name.replace(/["<>]/g, '').replace(/\.[^.]+$/, '');
-    const isHtml = /\.html?$/i.test(selected.filePath);
-    if (mode === 'cutout' && mediaKind === 'image') {
-      // Resolve the selected element's parent from the current source tree.
-      // ancestry entries intentionally carry labels/IDs only, not source indices.
-      const currentSource = project.files[selected.filePath];
-      const sourceIsHtml = /\.html?$/i.test(selected.filePath);
-      const sourceElements = currentSource ? scanElements(currentSource, sourceIsHtml) : [];
-      const parentIndex = sourceElements[selected.elementIndex]?.parentIndex ?? -1;
-      if (parentIndex >= 0) {
-        handleCommitPatch(selected.filePath, parentIndex, {
-          styles: { position: 'relative', isolation: 'isolate', minHeight: 'clamp(420px, 58vw, 640px)', overflow: 'visible' },
-        });
-      }
-      const snippet = isHtml
-        ? `<img src="${asset.dataUrl}" alt="${safeAlt}" style="position:absolute;left:4%;bottom:0;width:min(44%,520px);height:92%;max-width:none;object-fit:contain;object-position:center bottom;z-index:2;filter:drop-shadow(0 22px 34px rgba(0,0,0,.38));background:transparent;border:0;border-radius:0;" />`
-        : `<img src="${asset.dataUrl}" alt="${safeAlt}" style={{ position: 'absolute', left: '4%', bottom: 0, width: 'min(44%, 520px)', height: '92%', maxWidth: 'none', objectFit: 'contain', objectPosition: 'center bottom', zIndex: 2, filter: 'drop-shadow(0 22px 34px rgba(0,0,0,.38))', background: 'transparent', border: 0, borderRadius: 0 }} />`;
-      handleInsertLayoutBlock(snippet, selected.studioId);
-      return;
-    }
-    const snippet = mediaKind === 'video'
-      ? (isHtml
-        ? `<video src="${asset.dataUrl}" controls playsinline style="max-width:100%;height:auto;"></video>`
-        : `<video src="${asset.dataUrl}" controls playsInline style={{ maxWidth: '100%', height: 'auto' }} />`)
-      : mediaKind === 'audio'
-        ? (isHtml
-          ? `<audio src="${asset.dataUrl}" controls style="max-width:100%;"></audio>`
-          : `<audio src="${asset.dataUrl}" controls style={{ maxWidth: '100%' }} />`)
-        : (isHtml
-          ? `<img src="${asset.dataUrl}" alt="${safeAlt}" style="max-width:100%;height:auto;object-fit:contain;" />`
-          : `<img src="${asset.dataUrl}" alt="${safeAlt}" style={{ maxWidth: '100%', height: 'auto', objectFit: 'contain' }} />`);
-    handleInsertLayoutBlock(snippet, selected.studioId);
-  }, [selected, project.files, handleCommitPatch, handleInsertLayoutBlock]);
+  const handleInsertMediaAsset = useCallback(
+    (asset: { name: string; type: string; dataUrl: string }, mode: 'normal' | 'cutout' = 'normal') => {
+      if (!selected) return;
+      const registered = registerMediaAssetInProjectFiles(
+        project.files,
+        project.framework,
+        asset
+      );
+      const cleanSrc = registered.publicUrl;
+      const mediaKind = asset.type.startsWith('video/')
+        ? 'video'
+        : asset.type.startsWith('audio/')
+        ? 'audio'
+        : 'image';
+      const selectedTag = selected.tagName.toLowerCase();
+      const matchingTag = mediaKind === 'image' ? selectedTag === 'img' : selectedTag === mediaKind;
+      const currentSource = registered.nextFiles[selected.filePath];
+      if (!currentSource) return;
+      const isHtml = /\.html?$/i.test(selected.filePath);
 
-  const handleExportZip = useCallback(async () => {
-    const { default: JSZip } = await import('jszip');
-    const zip = new JSZip();
-    for (const [path, content] of Object.entries(project.files)) {
-      zip.file(path, content);
-    }
-    const blob = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${project.name || 'studio-project'}-modified.zip`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }, [project]);
+      if (matchingTag || (mediaKind === 'image' && selected.src)) {
+        const updatedCode = applyElementPatchToSource(
+          currentSource,
+          selected.elementIndex,
+          isHtml,
+          { src: cleanSrc }
+        );
+        commitFilesMutation(
+          { ...registered.nextFiles, [selected.filePath]: updatedCode },
+          selected.filePath
+        );
+        return;
+      }
+
+      const safeAlt = asset.name.replace(/["<>]/g, '').replace(/\.[^.]+$/, '');
+      let workingSource = currentSource;
+      let targetIndex = selected.elementIndex;
+
+      if (mode === 'cutout' && mediaKind === 'image') {
+        const sourceElements = scanElements(workingSource, isHtml);
+        const parentIndex = sourceElements[selected.elementIndex]?.parentIndex ?? -1;
+        if (parentIndex >= 0) {
+          workingSource = applyElementPatchToSource(workingSource, parentIndex, isHtml, {
+            styles: {
+              position: 'relative',
+              isolation: 'isolate',
+              minHeight: 'clamp(420px, 58vw, 640px)',
+              overflow: 'visible',
+            },
+          });
+        }
+        const snippet = isHtml
+          ? `<img src="${cleanSrc}" alt="${safeAlt}" style="position:absolute;left:4%;bottom:0;width:min(44%,520px);height:92%;max-width:none;object-fit:contain;object-position:center bottom;z-index:2;filter:drop-shadow(0 22px 34px rgba(0,0,0,.38));background:transparent;border:0;border-radius:0;" />`
+          : `<img src="${cleanSrc}" alt="${safeAlt}" style={{ position: 'absolute', left: '4%', bottom: 0, width: 'min(44%, 520px)', height: '92%', maxWidth: 'none', objectFit: 'contain', objectPosition: 'center bottom', zIndex: 2, filter: 'drop-shadow(0 22px 34px rgba(0,0,0,.38))', background: 'transparent', border: 0, borderRadius: 0 }} />`;
+        const updated = insertJsxSnippetIntoSource({
+          targetCode: workingSource,
+          targetElementIndex: targetIndex,
+          position: 'after',
+          jsxSnippet: isHtml ? snippet.replace(/\bclassName=/g, 'class=') : snippet,
+        });
+        if (!updated || updated === workingSource) return;
+        setSelected(null);
+        setMultiSelected([]);
+        commitFilesMutation(
+          { ...registered.nextFiles, [selected.filePath]: updated },
+          selected.filePath
+        );
+        return;
+      }
+
+      const snippet =
+        mediaKind === 'video'
+          ? isHtml
+            ? `<video src="${cleanSrc}" controls playsinline style="max-width:100%;height:auto;"></video>`
+            : `<video src="${cleanSrc}" controls playsInline style={{ maxWidth: '100%', height: 'auto' }} />`
+          : mediaKind === 'audio'
+          ? isHtml
+            ? `<audio src="${cleanSrc}" controls style="max-width:100%;"></audio>`
+            : `<audio src="${cleanSrc}" controls style={{ maxWidth: '100%' }} />`
+          : isHtml
+          ? `<img src="${cleanSrc}" alt="${safeAlt}" style="max-width:100%;height:auto;object-fit:contain;" />`
+          : `<img src="${cleanSrc}" alt="${safeAlt}" style={{ maxWidth: '100%', height: 'auto', objectFit: 'contain' }} />`;
+
+      const updated = insertJsxSnippetIntoSource({
+        targetCode: workingSource,
+        targetElementIndex: targetIndex,
+        position: 'after',
+        jsxSnippet: isHtml ? snippet.replace(/\bclassName=/g, 'class=') : snippet,
+      });
+      if (!updated || updated === workingSource) return;
+      setSelected(null);
+      setMultiSelected([]);
+      commitFilesMutation(
+        { ...registered.nextFiles, [selected.filePath]: updated },
+        selected.filePath
+      );
+    },
+    [selected, project.files, project.framework, commitFilesMutation]
+  );
+
+  const handleOpenExportModal = useCallback(() => {
+    setIsExportModalOpen(true);
+  }, []);
 
   const handleRevertFile = useCallback(
     (path: string) => {
@@ -1906,6 +2059,624 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
     clearAutosaveProgress();
   }, []);
 
+  const handleCopyElementStyles = useCallback(
+    (target: StudioElementSnapshot) => {
+      const payload = buildCopiedStylePayload(target);
+      setCopiedStyle(payload);
+      showToastFeedback(`Copied styles from <${target.tagName}>`);
+    },
+    [showToastFeedback]
+  );
+
+  const handlePasteElementStyles = useCallback(
+    (target: StudioElementSnapshot) => {
+      if (!copiedStyle) return;
+      const patch = buildPasteStylePatch(copiedStyle, target.inlineStyles);
+      if (!patch.className && !patch.styles) {
+        showToastFeedback('No reusable styles to paste');
+        return;
+      }
+      handleCommitPatch(target.filePath, target.elementIndex, patch);
+      showToastFeedback(`Pasted styles onto <${target.tagName}>`);
+    },
+    [copiedStyle, handleCommitPatch, showToastFeedback]
+  );
+
+  const handleWrapTargetElement = useCallback(
+    (target: StudioElementSnapshot, layout: WrapContainerLayout) => {
+      const canUseMulti =
+        multiSelected.length >= 2 &&
+        multiSelected.some((m) => m.studioId === target.studioId) &&
+        Boolean(multiSelected[0].parentStudioId) &&
+        multiSelected.every(
+          (m) =>
+            m.filePath === multiSelected[0].filePath &&
+            m.parentStudioId === multiSelected[0].parentStudioId
+        );
+
+      if (canUseMulti) {
+        handleWrapMultiSelected(layout);
+        showToastFeedback(`Wrapped ${multiSelected.length} elements in ${layout}`);
+        return;
+      }
+
+      const code = project.files[target.filePath];
+      if (!code) return;
+      const isHtml = /\.html?$/i.test(target.filePath);
+      const updated = wrapElementsInContainer(code, isHtml, [target.elementIndex], layout);
+      if (updated === code) {
+        showToastFeedback('Select an inner element to wrap in a container');
+        return;
+      }
+      setSelected(null);
+      setMultiSelected([]);
+      commitFilesMutation({ ...project.files, [target.filePath]: updated }, target.filePath);
+      showToastFeedback(`Wrapped <${target.tagName}> in ${layout}`);
+    },
+    [multiSelected, handleWrapMultiSelected, project.files, commitFilesMutation, showToastFeedback]
+  );
+
+  const handleOpenLogicForTarget = useCallback((target?: StudioElementSnapshot | null) => {
+    if (target) setSelected(target);
+    setIsMotionPanelOpen(false);
+    setCompactLeftOpen(false);
+    setCompactRightOpen(false);
+    setCompactGradientOpen(false);
+    setCompactGlobalStylesOpen(false);
+    setCompactSmartAlignerOpen(false);
+    setIsLogicPanelOpen(true);
+  }, []);
+
+  const handleOpenMotionForTarget = useCallback((target?: StudioElementSnapshot | null) => {
+    if (target) setSelected(target);
+    setIsLogicPanelOpen(false);
+    setCompactLeftOpen(false);
+    setCompactRightOpen(false);
+    setCompactGradientOpen(false);
+    setCompactGlobalStylesOpen(false);
+    setCompactSmartAlignerOpen(false);
+    setIsMotionPanelOpen(true);
+  }, []);
+
+  const handleContextMenuElement = useCallback(
+    (payload: {
+      element: StudioElementSnapshot;
+      x: number;
+      y: number;
+      trigger: 'contextmenu' | 'longpress' | 'button';
+    }) => {
+      setContextMenuState({
+        target: payload.element,
+        x: payload.x,
+        y: payload.y,
+        trigger: payload.trigger,
+      });
+    },
+    []
+  );
+
+  const commandPaletteItems = useMemo<StudioCommandItem[]>(() => {
+    const items: StudioCommandItem[] = [];
+
+    if (selected) {
+      const target = selected;
+      const canExtract = /\.(tsx|jsx)$/i.test(target.filePath);
+      items.push(
+        {
+          id: 'el:copy-styles',
+          label: `Copy Styles from <${target.tagName}>`,
+          description: 'Copy Tailwind classes and inline visual styles',
+          category: 'element',
+          keywords: ['copy', 'styles', 'css', 'class', 'clipboard'],
+          iconKey: 'copy',
+        },
+        {
+          id: 'el:paste-styles',
+          label: `Paste Styles onto <${target.tagName}>`,
+          description: copiedStyle
+            ? `Apply copied styles from <${copiedStyle.sourceTagName}>`
+            : 'Copy styles from an element first',
+          category: 'element',
+          keywords: ['paste', 'styles', 'apply', 'css'],
+          disabled: !copiedStyle,
+          iconKey: 'paste',
+        },
+        {
+          id: 'el:wrap-row',
+          label: `Wrap <${target.tagName}> in Flex Row`,
+          description: 'Wrap selection inside a responsive horizontal flex container',
+          category: 'element',
+          keywords: ['wrap', 'flex', 'row', 'container', 'horizontal'],
+          iconKey: 'wrap',
+        },
+        {
+          id: 'el:wrap-col',
+          label: `Wrap <${target.tagName}> in Flex Column`,
+          description: 'Wrap selection inside a vertical flex stack',
+          category: 'element',
+          keywords: ['wrap', 'flex', 'column', 'stack', 'vertical'],
+          iconKey: 'wrap',
+        },
+        {
+          id: 'el:wrap-grid-2',
+          label: `Wrap <${target.tagName}> in 2-Col Grid`,
+          description: 'Wrap selection inside a 2-column CSS grid container',
+          category: 'element',
+          keywords: ['wrap', 'grid', '2', 'columns'],
+          iconKey: 'wrap',
+        },
+        {
+          id: 'el:wrap-grid-3',
+          label: `Wrap <${target.tagName}> in 3-Col Grid`,
+          description: 'Wrap selection inside a 3-column CSS grid container',
+          category: 'element',
+          keywords: ['wrap', 'grid', '3', 'columns'],
+          iconKey: 'wrap',
+        },
+        {
+          id: 'el:replace-react-ui',
+          label: `Replace <${target.tagName}> with React UI Block`,
+          description: 'Open React Lib UI to replace or insert around selection',
+          category: 'element',
+          keywords: ['replace', 'react', 'ui', 'library', 'component', 'swap'],
+          iconKey: 'library',
+        },
+        {
+          id: 'el:add-logic',
+          label: `Add Logic Rule to <${target.tagName}>`,
+          description: 'Attach click, input, condition, or navigation logic',
+          category: 'element',
+          keywords: ['logic', 'rule', 'flow', 'click', 'interaction'],
+          iconKey: 'logic',
+        },
+        {
+          id: 'el:animate',
+          label: `Animate <${target.tagName}> in Motion Studio`,
+          description: 'Add scroll-reveal, hover, or ambient animations',
+          category: 'element',
+          keywords: ['animate', 'motion', 'scroll', 'reveal', 'hover'],
+          iconKey: 'motion',
+        },
+        {
+          id: 'el:extract-component',
+          label: `Extract <${target.tagName}> as Reusable Component`,
+          description: canExtract
+            ? 'Create a new reusable TSX component from this element'
+            : 'Available for React TSX/JSX files',
+          category: 'element',
+          keywords: ['extract', 'component', 'refactor', 'reusable'],
+          disabled: !canExtract,
+          iconKey: 'component',
+        },
+        {
+          id: 'el:duplicate',
+          label: `Duplicate <${target.tagName}>`,
+          description: 'Clone selected element immediately after itself',
+          category: 'element',
+          keywords: ['duplicate', 'clone', 'copy'],
+          iconKey: 'duplicate',
+        },
+        {
+          id: 'el:delete',
+          label: `Delete <${target.tagName}>`,
+          description: 'Remove selected element from source code',
+          category: 'element',
+          keywords: ['delete', 'remove', 'trash'],
+          iconKey: 'delete',
+        }
+      );
+    }
+
+    items.push(
+      {
+        id: 'tool:layout-blocks',
+        label: 'Open Layout Blocks Builder',
+        description: 'Drag or tap responsive sections, grids, headings & buttons',
+        category: 'tools',
+        keywords: ['layout', 'blocks', 'insert', 'section', 'grid'],
+        iconKey: 'layout',
+      },
+      {
+        id: 'tool:react-lib-ui',
+        label: 'Open React Lib UI Catalog',
+        description: 'Choose, insert, or replace UI blocks and npm React libraries',
+        category: 'tools',
+        keywords: ['react', 'lib', 'ui', 'catalog', 'components', 'npm'],
+        iconKey: 'library',
+      },
+      {
+        id: 'tool:motion-studio',
+        label: 'Motion Studio (Scroll & Micro-Interactions)',
+        description: 'Configure scroll-reveal entrances, hover effects & ambient loops',
+        category: 'tools',
+        keywords: ['motion', 'animation', 'scroll', 'reveal', 'hover', 'stagger'],
+        iconKey: 'motion',
+      },
+      {
+        id: 'tool:logic-builder',
+        label: 'Logic Builder & Flow View',
+        description: 'Connect clicks, inputs, state, conditions & navigation flows',
+        category: 'tools',
+        keywords: ['logic', 'flow', 'rules', 'state', 'interactive'],
+        iconKey: 'logic',
+      },
+      {
+        id: 'tool:smart-align',
+        label: 'Smart Align (Mobile & Desktop)',
+        description: 'Auto-align containers, cards, widths & spacing cleanly',
+        category: 'tools',
+        keywords: ['smart', 'align', 'responsive', 'spacing', 'cleanup'],
+        iconKey: 'align',
+      },
+      {
+        id: 'tool:global-css',
+        label: 'Global CSS & Design Tokens',
+        description: 'Edit CSS variables, colors, radii & project stylesheets',
+        category: 'tools',
+        keywords: ['global', 'css', 'tokens', 'variables', 'theme', 'styles'],
+        iconKey: 'palette',
+      },
+      {
+        id: 'tool:gradient-css',
+        label: 'Gradient CSS Editor (3-Stop & 4-Stop)',
+        description: 'Design multi-stop linear/radial gradients and text fills',
+        category: 'tools',
+        keywords: ['gradient', 'css', 'colors', 'stops', 'background'],
+        iconKey: 'gradient',
+      },
+      {
+        id: 'tool:media-library',
+        label: 'Media Asset Library',
+        description: 'Upload and insert images/videos with clean /assets paths',
+        category: 'tools',
+        keywords: ['media', 'image', 'video', 'assets', 'upload'],
+        iconKey: 'images',
+      },
+      {
+        id: 'tool:type-fx',
+        label: 'Type FX & Google Fonts',
+        description: 'Import Google Fonts and apply kinetic typography presets',
+        category: 'tools',
+        keywords: ['type', 'fx', 'fonts', 'typography', 'google'],
+        iconKey: 'sparkles',
+      },
+      {
+        id: 'tool:code-editor',
+        label: 'Toggle Live Monaco Code Editor',
+        description: 'Inspect and edit source files with live preview sync',
+        category: 'tools',
+        keywords: ['code', 'monaco', 'source', 'editor', 'tsx', 'html'],
+        iconKey: 'code',
+      },
+      {
+        id: 'tool:style-inspector',
+        label: 'Toggle Style Inspector Panel',
+        description: 'Fine-tune fill, layout, typography, borders & shadows',
+        category: 'tools',
+        keywords: ['inspector', 'style', 'properties', 'panel'],
+        iconKey: 'inspector',
+      },
+      {
+        id: 'tool:pages-layers',
+        label: 'Toggle Pages & Layers Panel',
+        description: 'Browse pages, reusable components, and DOM layer tree',
+        category: 'tools',
+        keywords: ['pages', 'layers', 'tree', 'components', 'sidebar'],
+        iconKey: 'layers',
+      },
+      {
+        id: 'tool:export-production',
+        label: 'Export Production ZIP',
+        description: 'Compile logic runtime, motion CSS & binary /assets into ZIP',
+        category: 'tools',
+        keywords: ['export', 'zip', 'production', 'download', 'compile'],
+        iconKey: 'export',
+      },
+      {
+        id: 'tool:import-project',
+        label: 'Import ZIP or GitHub Repository',
+        description: 'Load an existing Next.js, React, or HTML project into studio',
+        category: 'tools',
+        keywords: ['import', 'zip', 'github', 'repo', 'load'],
+        iconKey: 'import',
+      },
+      {
+        id: 'tool:save-draft',
+        label: 'Save Draft Snapshot',
+        description: 'Save current project state to browser drafts',
+        category: 'tools',
+        keywords: ['save', 'draft', 'snapshot', 'checkpoint'],
+        iconKey: 'save',
+      },
+      {
+        id: 'tool:open-drafts',
+        label: `Open Saved Drafts (${savedDrafts.length})`,
+        description: 'Restore a saved snapshot or autosaved session',
+        category: 'tools',
+        keywords: ['drafts', 'history', 'restore', 'versions'],
+        iconKey: 'drafts',
+      }
+    );
+
+    for (const block of LAYOUT_BLOCKS) {
+      items.push({
+        id: `block:${block.id}`,
+        label: `Insert ${block.label} Block`,
+        description: block.description,
+        category: 'blocks',
+        keywords: ['insert', 'add', 'block', 'layout', block.id, block.label.toLowerCase()],
+        iconKey: 'block',
+      });
+    }
+
+    items.push(
+      {
+        id: 'canvas:design-mode',
+        label: 'Switch to Design Mode',
+        description: 'Select, resize, drag, right-click and restyle elements',
+        category: 'canvas',
+        keywords: ['design', 'edit', 'mode'],
+        iconKey: 'inspector',
+      },
+      {
+        id: 'canvas:preview-mode',
+        label: 'Switch to Interactive Preview Mode',
+        description: 'Test clicks, forms, routes, logic rules & animations live',
+        category: 'canvas',
+        keywords: ['preview', 'interact', 'play', 'test'],
+        iconKey: 'play',
+      },
+      {
+        id: 'canvas:vp-desktop',
+        label: 'Viewport: Desktop (1280px)',
+        description: 'Preview canvas at standard desktop width',
+        category: 'canvas',
+        keywords: ['viewport', 'desktop', '1280', 'screen'],
+        iconKey: 'viewport',
+      },
+      {
+        id: 'canvas:vp-tablet',
+        label: 'Viewport: Tablet (768px)',
+        description: 'Preview canvas at tablet width',
+        category: 'canvas',
+        keywords: ['viewport', 'tablet', '768', 'ipad'],
+        iconKey: 'viewport',
+      },
+      {
+        id: 'canvas:vp-mobile',
+        label: 'Viewport: Mobile (390px)',
+        description: 'Preview canvas at smartphone width',
+        category: 'canvas',
+        keywords: ['viewport', 'mobile', '390', 'phone'],
+        iconKey: 'viewport',
+      },
+      {
+        id: 'canvas:replay-motion',
+        label: 'Replay Canvas Animations',
+        description: 'Re-trigger scroll-reveal entrance animations on stage',
+        category: 'canvas',
+        keywords: ['replay', 'animations', 'motion', 'preview'],
+        iconKey: 'replay',
+      },
+      {
+        id: 'canvas:undo',
+        label: 'Undo Last Change',
+        description: 'Revert the previous studio edit',
+        category: 'canvas',
+        shortcut: '⌘Z',
+        disabled: historyPast.length === 0,
+        keywords: ['undo', 'revert', 'back'],
+        iconKey: 'undo',
+      },
+      {
+        id: 'canvas:redo',
+        label: 'Redo Change',
+        description: 'Re-apply the last undone edit',
+        category: 'canvas',
+        shortcut: '⇧⌘Z',
+        disabled: historyFuture.length === 0,
+        keywords: ['redo', 'forward'],
+        iconKey: 'redo',
+      }
+    );
+
+    for (const page of project.pages) {
+      items.push({
+        id: `page:${page.route}`,
+        label: `Go to Page: ${page.title}`,
+        description: `${page.route} · ${page.filePath}`,
+        category: 'pages',
+        keywords: ['page', 'route', 'open', 'navigate', page.title.toLowerCase(), page.route],
+        iconKey: 'page',
+      });
+    }
+
+    for (const comp of projectComponents) {
+      items.push({
+        id: `comp:${comp.filePath}`,
+        label: `Isolate Component: <${comp.name} />`,
+        description: comp.filePath,
+        category: 'pages',
+        keywords: ['component', 'isolate', comp.name.toLowerCase(), comp.filePath],
+        iconKey: 'component',
+      });
+    }
+
+    return items;
+  }, [
+    selected,
+    copiedStyle,
+    savedDrafts.length,
+    historyPast.length,
+    historyFuture.length,
+    project.pages,
+    projectComponents,
+  ]);
+
+  const handleExecuteCommand = useCallback(
+    (commandId: string) => {
+      if (commandId.startsWith('block:')) {
+        const blockId = commandId.slice('block:'.length);
+        const block = LAYOUT_BLOCKS.find((b) => b.id === blockId);
+        if (block) {
+          handleInsertLayoutBlock(block.snippet);
+          showToastFeedback(`Inserted ${block.label} block`);
+        }
+        return;
+      }
+      if (commandId.startsWith('page:')) {
+        handleSelectPage(commandId.slice('page:'.length));
+        return;
+      }
+      if (commandId.startsWith('comp:')) {
+        handleSelectComponent(commandId.slice('comp:'.length));
+        return;
+      }
+
+      switch (commandId) {
+        case 'el:copy-styles':
+          if (selected) handleCopyElementStyles(selected);
+          break;
+        case 'el:paste-styles':
+          if (selected) handlePasteElementStyles(selected);
+          break;
+        case 'el:wrap-row':
+          if (selected) handleWrapTargetElement(selected, 'row');
+          break;
+        case 'el:wrap-col':
+          if (selected) handleWrapTargetElement(selected, 'col');
+          break;
+        case 'el:wrap-grid-2':
+          if (selected) handleWrapTargetElement(selected, 'grid-2');
+          break;
+        case 'el:wrap-grid-3':
+          if (selected) handleWrapTargetElement(selected, 'grid-3');
+          break;
+        case 'el:replace-react-ui':
+          setIsLibraryModalOpen(true);
+          break;
+        case 'el:add-logic':
+          if (selected) handleOpenLogicForTarget(selected);
+          break;
+        case 'el:animate':
+          if (selected) handleOpenMotionForTarget(selected);
+          break;
+        case 'el:extract-component':
+          if (selected) {
+            const suggested = suggestExtractedComponentName(selected.tagName, selected.textContent);
+            handleExtractComponent(selected.filePath, selected.elementIndex, suggested);
+            showToastFeedback(`Extracted <${suggested} /> component`);
+          }
+          break;
+        case 'el:duplicate':
+          if (selected) handleDuplicate(selected.filePath, selected.elementIndex);
+          break;
+        case 'el:delete':
+          if (selected) handleDelete(selected.filePath, selected.elementIndex);
+          break;
+        case 'tool:layout-blocks':
+          setIsLayoutBuilderOpen((v) => !v);
+          break;
+        case 'tool:react-lib-ui':
+          setIsLibraryModalOpen(true);
+          break;
+        case 'tool:motion-studio':
+          setIsLogicPanelOpen(false);
+          setIsMotionPanelOpen((v) => !v);
+          break;
+        case 'tool:logic-builder':
+          setIsMotionPanelOpen(false);
+          setIsLogicPanelOpen((v) => !v);
+          break;
+        case 'tool:smart-align':
+          handleToggleSmartAligner();
+          break;
+        case 'tool:global-css':
+          handleToggleGlobalStylesPanel();
+          break;
+        case 'tool:gradient-css':
+          handleToggleGradientPanel();
+          break;
+        case 'tool:media-library':
+          setIsMediaLibraryOpen(true);
+          break;
+        case 'tool:type-fx':
+          setIsTypographyEffectsOpen(true);
+          break;
+        case 'tool:code-editor':
+          setIsCodeDrawerOpen((v) => !v);
+          break;
+        case 'tool:style-inspector':
+          handleToggleRightPanel();
+          break;
+        case 'tool:pages-layers':
+          handleToggleLeftPanel();
+          break;
+        case 'tool:export-production':
+          handleOpenExportModal();
+          break;
+        case 'tool:import-project':
+          setIsImportOpen(true);
+          break;
+        case 'tool:save-draft':
+          handleQuickSaveDraft();
+          break;
+        case 'tool:open-drafts':
+          setIsDraftsOpen(true);
+          break;
+        case 'canvas:design-mode':
+          setInteractionMode('design');
+          break;
+        case 'canvas:preview-mode':
+          setInteractionMode('interact');
+          break;
+        case 'canvas:vp-desktop':
+          setViewport('desktop');
+          break;
+        case 'canvas:vp-tablet':
+          setViewport('tablet');
+          break;
+        case 'canvas:vp-mobile':
+          setViewport('mobile');
+          break;
+        case 'canvas:replay-motion':
+          handleReplayAnimations();
+          break;
+        case 'canvas:undo':
+          handleUndo();
+          break;
+        case 'canvas:redo':
+          handleRedo();
+          break;
+      }
+    },
+    [
+      selected,
+      handleInsertLayoutBlock,
+      showToastFeedback,
+      handleSelectPage,
+      handleSelectComponent,
+      handleCopyElementStyles,
+      handlePasteElementStyles,
+      handleWrapTargetElement,
+      handleOpenLogicForTarget,
+      handleOpenMotionForTarget,
+      handleExtractComponent,
+      handleDuplicate,
+      handleDelete,
+      handleToggleSmartAligner,
+      handleToggleGlobalStylesPanel,
+      handleToggleGradientPanel,
+      handleToggleRightPanel,
+      handleToggleLeftPanel,
+      handleOpenExportModal,
+      handleQuickSaveDraft,
+      handleReplayAnimations,
+      handleUndo,
+      handleRedo,
+    ]
+  );
+
   return (
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-slate-50 text-slate-900">
       <TopToolbar
@@ -1926,18 +2697,35 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         onOpenImportModal={() => setIsImportOpen(true)}
         onOpenMediaLibrary={() => setIsMediaLibraryOpen(true)}
         onOpenTypographyEffects={() => setIsTypographyEffectsOpen(true)}
-        onExportZip={handleExportZip}
+        onOpenLayoutBuilder={() => setIsLayoutBuilderOpen((v) => !v)}
+        onOpenLibraryModal={() => setIsLibraryModalOpen(true)}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        onExportZip={handleOpenExportModal}
         hasUnsavedEdits={hasUnsavedEdits}
         showLeftPanel={showLeftPanel}
         onToggleLeftPanel={handleToggleLeftPanel}
         showRightPanel={showRightPanel}
         onToggleRightPanel={handleToggleRightPanel}
+        showSmartAligner={showSmartAligner}
+        onToggleSmartAligner={handleToggleSmartAligner}
         showGradientPanel={showGradientPanel}
         onToggleGradientPanel={handleToggleGradientPanel}
         showGlobalStylesPanel={showGlobalStylesPanel}
         onToggleGlobalStylesPanel={handleToggleGlobalStylesPanel}
         showLogicPanel={isLogicPanelOpen}
-        onToggleLogicPanel={() => setIsLogicPanelOpen((v) => !v)}
+        onToggleLogicPanel={() => {
+          setIsLogicPanelOpen((v) => {
+            if (!v) setIsMotionPanelOpen(false);
+            return !v;
+          });
+        }}
+        showMotionPanel={isMotionPanelOpen}
+        onToggleMotionPanel={() => {
+          setIsMotionPanelOpen((v) => {
+            if (!v) setIsLogicPanelOpen(false);
+            return !v;
+          });
+        }}
         savedDraftsCount={savedDrafts.length}
         justSavedDraft={justSavedDraft}
         onQuickSaveDraft={handleQuickSaveDraft}
@@ -2018,7 +2806,8 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
             showGradientPanel ||
             showGlobalStylesPanel ||
             showSmartAligner ||
-            isLogicPanelOpen) && (
+            isLogicPanelOpen ||
+            isMotionPanelOpen) && (
             <button
               type="button"
               aria-label="Close panel drawer"
@@ -2029,20 +2818,13 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
                 setCompactGlobalStylesOpen(false);
                 setCompactSmartAlignerOpen(false);
                 setIsLogicPanelOpen(false);
+                setIsMotionPanelOpen(false);
               }}
               className="absolute inset-0 z-30 bg-slate-900/30"
             />
           )}
 
         <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setIsLayoutBuilderOpen((open) => !open)}
-            aria-pressed={isLayoutBuilderOpen}
-            className={`absolute right-3 top-3 z-20 inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold shadow-sm transition-colors ${isLayoutBuilderOpen ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white/95 text-slate-700 hover:bg-white'}`}
-          >
-            <LayoutGrid className="h-4 w-4" /> Layout
-          </button>
           {isLayoutBuilderOpen && (
             <LayoutBuilderPanel
               onClose={() => setIsLayoutBuilderOpen(false)}
@@ -2088,9 +2870,14 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
                 : null
             }
             onOpenLibraryModal={() => setIsLibraryModalOpen(true)}
+            onOpenLayoutBuilder={() => setIsLayoutBuilderOpen((v) => !v)}
             externalLibVersion={externalLibVersion}
             showSmartAligner={showSmartAligner}
             onToggleSmartAligner={handleToggleSmartAligner}
+            onOpenMotionStudio={() => handleOpenMotionForTarget(selected)}
+            onReplayAnimations={handleReplayAnimations}
+            onContextMenuElement={handleContextMenuElement}
+            onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
           />
 
           {/* Smart Aligner Panel (docked on desktop) */}
@@ -2131,6 +2918,19 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
                 availableTargets={logicTargets}
                 onChange={handleLogicRulesChange}
                 onClose={() => setIsLogicPanelOpen(false)}
+              />
+            </div>
+          )}
+
+          {/* Scroll & Micro-Interaction Motion Studio (docked on desktop) */}
+          {!isCompactViewport && isMotionPanelOpen && (
+            <div className="absolute inset-y-0 right-0 z-40 flex shadow-xl">
+              <AnimationStudioPanel
+                selected={selected}
+                animatedSummary={animatedSummary}
+                onApplyAnimation={handleApplyElementAnimation}
+                onReplayAnimations={handleReplayAnimations}
+                onClose={() => setIsMotionPanelOpen(false)}
               />
             </div>
           )}
@@ -2244,6 +3044,20 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
           </div>
         )}
 
+        {/* Scroll & Micro-Interaction Motion Studio (bottom sheet / drawer on compact screens) */}
+        {isCompactViewport && isMotionPanelOpen && (
+          <div className={isPhoneViewport ? 'absolute inset-x-0 bottom-0 z-40 flex h-[74vh] max-h-[620px] rounded-t-2xl shadow-2xl overflow-hidden' : 'absolute inset-y-0 right-0 z-40 flex shadow-xl'}>
+            <AnimationStudioPanel
+              selected={selected}
+              animatedSummary={animatedSummary}
+              onApplyAnimation={handleApplyElementAnimation}
+              onReplayAnimations={handleReplayAnimations}
+              onClose={() => setIsMotionPanelOpen(false)}
+              isBottomSheet={isPhoneViewport}
+            />
+          </div>
+        )}
+
         {/* Right Panel: docked on >=1024px, slide-over drawer on tablet, bottom sheet on phone */}
         {showRightPanel && (
           <div
@@ -2300,152 +3114,84 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         )}
       </div>
 
-      {/* Thumb-friendly Bottom Control Dock on mobile & split-pane viewports (<1024px) */}
+      {/* Ergonomic Thumb-Zone Bottom Control Dock on mobile & tablet viewports (<1024px) */}
       <nav
         aria-label="Mobile studio controls"
-        className="flex lg:hidden shrink-0 items-center justify-between gap-1 border-t border-slate-200 bg-white px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]"
+        className="grid lg:hidden shrink-0 grid-cols-5 items-center gap-1 border-t border-slate-200 bg-white px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]"
       >
         <button
           type="button"
           onClick={handleToggleLeftPanel}
-          aria-label="Toggle layers panel"
           aria-pressed={showLeftPanel}
-          className={`inline-flex h-9 items-center gap-1 rounded-lg border px-2 text-xs font-medium whitespace-nowrap transition-colors ${
+          className={`flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-semibold transition-colors ${
             showLeftPanel
-              ? 'border-blue-600 bg-blue-50 text-blue-700'
-              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+              ? 'bg-blue-50 text-blue-700'
+              : 'text-slate-600 active:bg-slate-100'
           }`}
         >
           <Layers className="h-4 w-4 shrink-0" />
-          <span className="hidden sm:inline">Layers</span>
+          <span>Layers</span>
         </button>
 
-        <div
-          className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5"
-          role="group"
-          aria-label="Mobile viewport preset"
+        <button
+          type="button"
+          onClick={() => setIsMobileToolsOpen(true)}
+          aria-pressed={isMobileToolsOpen}
+          className={`flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-semibold transition-colors ${
+            isMobileToolsOpen ||
+            showSmartAligner ||
+            showGradientPanel ||
+            showGlobalStylesPanel ||
+            isLogicPanelOpen ||
+            isMotionPanelOpen
+              ? 'bg-indigo-50 text-indigo-700'
+              : 'text-slate-600 active:bg-slate-100'
+          }`}
         >
-          <button
-            type="button"
-            aria-label="Desktop viewport"
-            aria-pressed={viewport === 'desktop'}
-            onClick={() => setViewport('desktop')}
-            className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
-              viewport === 'desktop'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Monitor className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            aria-label="Tablet viewport"
-            aria-pressed={viewport === 'tablet'}
-            onClick={() => setViewport('tablet')}
-            className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
-              viewport === 'tablet'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Tablet className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            aria-label="Mobile viewport"
-            aria-pressed={viewport === 'mobile'}
-            onClick={() => setViewport('mobile')}
-            className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
-              viewport === 'mobile'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Smartphone className="h-4 w-4" />
-          </button>
-        </div>
+          <Wrench className="h-4 w-4 shrink-0" />
+          <span>Tools</span>
+        </button>
 
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setIsLogicPanelOpen((v) => !v)}
-            aria-pressed={isLogicPanelOpen}
-            aria-label="Toggle logic builder"
-            className={`inline-flex h-9 items-center gap-1 rounded-lg border px-2 text-xs font-medium whitespace-nowrap transition-colors ${isLogicPanelOpen ? 'border-violet-600 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
-          >
-            <GitBranch className="h-3.5 w-3.5 shrink-0" />
-            <span className="hidden sm:inline">Logic</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleToggleGradientPanel}
-            aria-pressed={showGradientPanel}
-            aria-label="Toggle 3-stop and 4-stop gradient CSS panel"
-            className={`inline-flex h-9 items-center gap-1 rounded-lg border px-2 text-xs font-medium whitespace-nowrap transition-colors ${
-              showGradientPanel
-                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            <Sparkles className="h-3.5 w-3.5 shrink-0" />
-            <span className="hidden sm:inline">CSS</span>
-          </button>
+        <button
+          type="button"
+          onClick={() => setIsCommandPaletteOpen(true)}
+          className="flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-xl bg-slate-100 text-[10px] font-semibold text-slate-800 active:bg-slate-200"
+        >
+          <Search className="h-4 w-4 shrink-0 text-blue-600" />
+          <span>Commands</span>
+        </button>
 
-          <button
-            type="button"
-            onClick={handleToggleGlobalStylesPanel}
-            aria-pressed={showGlobalStylesPanel}
-            aria-label="Toggle global styles manager"
-            className={`inline-flex h-9 items-center gap-1 rounded-lg border px-2 text-xs font-medium whitespace-nowrap transition-colors ${
-              showGlobalStylesPanel
-                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            <Palette className="h-3.5 w-3.5 shrink-0" />
-            <span className="hidden sm:inline">Global</span>
-          </button>
+        <button
+          type="button"
+          onClick={handleToggleRightPanel}
+          aria-pressed={showRightPanel}
+          className={`flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-[10px] font-semibold transition-colors ${
+            selected && !showRightPanel
+              ? 'bg-blue-600 text-white shadow-xs'
+              : showRightPanel
+              ? 'bg-blue-50 text-blue-700'
+              : 'text-slate-600 active:bg-slate-100'
+          }`}
+        >
+          <SlidersHorizontal className="h-4 w-4 shrink-0" />
+          <span className="max-w-full truncate">
+            {selected ? `<${selected.tagName}>` : 'Style'}
+          </span>
+        </button>
 
-          <button
-            type="button"
-            onClick={handleToggleRightPanel}
-            aria-pressed={showRightPanel}
-            className={`inline-flex h-9 max-w-[116px] items-center gap-1 rounded-lg px-2 text-xs font-semibold whitespace-nowrap transition-colors ${
-              selected && !showRightPanel
-                ? 'bg-blue-600 text-white shadow-xs hover:bg-blue-700'
-                : showRightPanel
-                ? 'border border-blue-600 bg-blue-50 text-blue-700'
-                : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{selected ? `Style <${selected.tagName}>` : 'Style'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsCodeDrawerOpen((v) => !v)}
-            aria-pressed={isCodeDrawerOpen}
-            aria-label="Toggle live code drawer"
-            className={`relative inline-flex h-9 items-center gap-1 rounded-lg border px-2 text-xs font-medium whitespace-nowrap transition-colors ${
-              isCodeDrawerOpen
-                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            <Code2 className="h-4 w-4 shrink-0" />
-            <span className="hidden sm:inline">
-              Code{hasUnsavedEdits ? ' *' : ''}
-            </span>
-            {hasUnsavedEdits && (
-              <span
-                aria-hidden="true"
-                className="sm:hidden absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-blue-600"
-              />
-            )}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setIsCodeDrawerOpen((v) => !v)}
+          aria-pressed={isCodeDrawerOpen}
+          className={`relative flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-semibold transition-colors ${
+            isCodeDrawerOpen
+              ? 'bg-blue-50 text-blue-700'
+              : 'text-slate-600 active:bg-slate-100'
+          }`}
+        >
+          <Code2 className="h-4 w-4 shrink-0" />
+          <span>Code{hasUnsavedEdits ? '*' : ''}</span>
+        </button>
       </nav>
 
       <TypographyEffectsModal
@@ -2511,6 +3257,92 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         onImportLibrary={handleImportReactLibrary}
         onRemoveDependency={handleRemoveDependency}
       />
+
+      <ExportProductionModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        project={project}
+        logicRules={logicRules}
+      />
+
+      <CanvasContextMenu
+        isOpen={Boolean(contextMenuState)}
+        isTouchSheet={isPhoneViewport || contextMenuState?.trigger === 'longpress'}
+        position={contextMenuState ? { x: contextMenuState.x, y: contextMenuState.y } : { x: 0, y: 0 }}
+        target={contextMenuState?.target || null}
+        multiCount={multiSelected.length}
+        copiedStyle={copiedStyle}
+        canExtractComponent={Boolean(
+          contextMenuState && /\.(tsx|jsx)$/i.test(contextMenuState.target.filePath)
+        )}
+        onClose={() => setContextMenuState(null)}
+        onCopyStyles={handleCopyElementStyles}
+        onPasteStyles={handlePasteElementStyles}
+        onWrapLayout={handleWrapTargetElement}
+        onReplaceWithReactUi={(target) => {
+          setSelected(target);
+          setIsLibraryModalOpen(true);
+        }}
+        onAddLogicRule={handleOpenLogicForTarget}
+        onAnimateElement={handleOpenMotionForTarget}
+        onExtractComponent={(target, name) => {
+          handleExtractComponent(target.filePath, target.elementIndex, name);
+          showToastFeedback(`Extracted <${name} /> component`);
+        }}
+        onSelectParent={(parentStudioId) => handleSelectLayer(parentStudioId)}
+        onDuplicate={(target) => handleDuplicate(target.filePath, target.elementIndex)}
+        onDelete={(target) => handleDelete(target.filePath, target.elementIndex)}
+      />
+
+      <CommandPaletteModal
+        isOpen={isCommandPaletteOpen}
+        items={commandPaletteItems}
+        selectedLabel={selected ? `<${selected.tagName}> in ${selected.filePath}` : null}
+        onExecuteCommand={handleExecuteCommand}
+        onClose={() => setIsCommandPaletteOpen(false)}
+      />
+
+      <MobileToolsSheet
+        isOpen={isMobileToolsOpen}
+        onClose={() => setIsMobileToolsOpen(false)}
+        viewport={viewport}
+        onChangeViewport={setViewport}
+        canUndo={historyPast.length > 0}
+        canRedo={historyFuture.length > 0}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        justSavedDraft={justSavedDraft}
+        savedDraftsCount={savedDrafts.length}
+        onQuickSaveDraft={handleQuickSaveDraft}
+        onOpenDraftsModal={() => setIsDraftsOpen(true)}
+        onOpenImportModal={() => setIsImportOpen(true)}
+        onOpenLayoutBuilder={() => setIsLayoutBuilderOpen(true)}
+        onOpenLibraryModal={() => setIsLibraryModalOpen(true)}
+        onOpenMediaLibrary={() => setIsMediaLibraryOpen(true)}
+        onOpenTypographyEffects={() => setIsTypographyEffectsOpen(true)}
+        showSmartAligner={showSmartAligner}
+        onToggleSmartAligner={handleToggleSmartAligner}
+        showGradientPanel={showGradientPanel}
+        onToggleGradientPanel={handleToggleGradientPanel}
+        showGlobalStylesPanel={showGlobalStylesPanel}
+        onToggleGlobalStylesPanel={handleToggleGlobalStylesPanel}
+        showLogicPanel={isLogicPanelOpen}
+        onToggleLogicPanel={() => handleOpenLogicForTarget(selected)}
+        showMotionPanel={isMotionPanelOpen}
+        onToggleMotionPanel={() => handleOpenMotionForTarget(selected)}
+        onReplayAnimations={handleReplayAnimations}
+      />
+
+      {actionToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="studio-action-toast"
+          className="pointer-events-none fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-medium text-white shadow-xl lg:bottom-6"
+        >
+          {actionToast}
+        </div>
+      )}
     </div>
   );
 }

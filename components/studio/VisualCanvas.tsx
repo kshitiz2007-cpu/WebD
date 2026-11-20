@@ -7,16 +7,22 @@ import {
   ArrowLeft,
   ArrowUp,
   BoxSelect,
+  ChevronDown,
   ChevronRight,
+  Clapperboard,
   Columns2,
   Component,
   Copy,
+  Eye,
   Grid3x3,
   GripVertical,
+  LayoutGrid,
   Magnet,
+  MoreHorizontal,
   Move,
   PackagePlus,
   Plus,
+  RotateCcw,
   Ruler,
   Trash2,
   Wand2,
@@ -98,6 +104,16 @@ interface VisualCanvasProps {
   externalLibVersion?: number;
   showSmartAligner?: boolean;
   onToggleSmartAligner?: () => void;
+  onOpenLayoutBuilder?: () => void;
+  onOpenMotionStudio?: () => void;
+  onReplayAnimations?: () => void;
+  onContextMenuElement?: (payload: {
+    element: StudioElementSnapshot;
+    x: number;
+    y: number;
+    trigger: 'contextmenu' | 'longpress' | 'button';
+  }) => void;
+  onOpenCommandPalette?: () => void;
 }
 
 function parseStudioTarget(id: string): { filePath: string; elementIndex: number } | null {
@@ -162,6 +178,11 @@ export default function VisualCanvas({
   externalLibVersion = 0,
   showSmartAligner = false,
   onToggleSmartAligner,
+  onOpenLayoutBuilder,
+  onOpenMotionStudio,
+  onReplayAnimations,
+  onContextMenuElement,
+  onOpenCommandPalette,
 }: VisualCanvasProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const mounted = React.useSyncExternalStore(
@@ -201,6 +222,26 @@ export default function VisualCanvas({
   const [marqueeBox, setMarqueeBox] = useState<ElementRect | null>(null);
   const [spacePanActive, setSpacePanActive] = useState(false);
   const [splitView, setSplitView] = useState(false);
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const viewMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!viewMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (viewMenuRef.current && !viewMenuRef.current.contains(e.target as Node)) {
+        setViewMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setViewMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [viewMenuOpen]);
 
   const nudgeTimerRef = useRef<number | null>(null);
   const nudgePendingRef = useRef<{
@@ -326,6 +367,7 @@ export default function VisualCanvas({
     pendingSelectStudioId,
     logicRules,
   });
+  const scaleRef = useRef<number>(scale);
   const callbacksRef = useRef({
     onUpdateLayerTree,
     onSelectElement,
@@ -333,6 +375,8 @@ export default function VisualCanvas({
     onCommitPatch,
     onNavigateRoute,
     onClearPendingSelect,
+    onContextMenuElement,
+    onOpenCommandPalette,
   });
 
   useEffect(() => {
@@ -341,6 +385,7 @@ export default function VisualCanvas({
       readyDocKeyRef.current = null;
     }
     docKeyRef.current = docKey;
+    scaleRef.current = scale;
     selectedIdRef.current = selected?.studioId || null;
     latestStateRef.current = {
       project,
@@ -361,6 +406,8 @@ export default function VisualCanvas({
       onCommitPatch,
       onNavigateRoute,
       onClearPendingSelect,
+      onContextMenuElement,
+      onOpenCommandPalette,
     };
   });
 
@@ -377,6 +424,7 @@ export default function VisualCanvas({
           type: 'studio:hot-update-html',
           bodyHtml: htmlPayload.bodyHtml,
           userCss: htmlPayload.userCss,
+          assetMap: htmlPayload.assetMap,
           tailwindCss: latestStateRef.current.compiledTailwindCss,
           selectStudioId: pendingSelectStudioId || null,
         },
@@ -443,6 +491,7 @@ export default function VisualCanvas({
                     type: 'studio:hot-update-html',
                     bodyHtml: latest.htmlPayload.bodyHtml,
                     userCss: latest.htmlPayload.userCss,
+                    assetMap: latest.htmlPayload.assetMap,
                     tailwindCss: latest.compiledTailwindCss,
                     selectStudioId: latest.pendingSelectStudioId || null,
                   },
@@ -509,6 +558,23 @@ export default function VisualCanvas({
           targetIndex: msg.targetIndex,
           rect: msg.indicatorRect || null,
         });
+      } else if (msg.type === 'studio:context-menu' && msg.element) {
+        setHoverInfo(null);
+        setRectOverride({ studioId: msg.element.studioId, rect: msg.element.rect });
+        callbacksRef.current.onSelectElement(msg.element, false, true);
+        const frame = iframeRef.current;
+        const fr = frame ? frame.getBoundingClientRect() : { left: 0, top: 0 };
+        const curScale = scaleRef.current || 1;
+        const absX = fr.left + (Number(msg.clientX) || 0) * curScale;
+        const absY = fr.top + (Number(msg.clientY) || 0) * curScale;
+        callbacksRef.current.onContextMenuElement?.({
+          element: msg.element,
+          x: absX,
+          y: absY,
+          trigger: msg.trigger === 'longpress' ? 'longpress' : 'contextmenu',
+        });
+      } else if (msg.type === 'studio:open-command-palette') {
+        callbacksRef.current.onOpenCommandPalette?.();
       }
     };
     window.addEventListener('message', handleMessage);
@@ -1135,61 +1201,9 @@ export default function VisualCanvas({
           <div />
         )}
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          {/* Specs / Redline Measurements Toggle */}
-          <button
-            type="button"
-            onClick={() => setSpecsMode((v) => !v)}
-            aria-pressed={showSpecs}
-            title="Show redline distance measurements, margin/padding boxes, and direct padding handles (or hold Alt)"
-            aria-label="Toggle spacing specs and redlines"
-            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
-              showSpecs
-                ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            <Ruler className="h-3 w-3" />
-            <span>Specs</span>
-          </button>
-
-          {/* Layout Grid Overlay Selector */}
-          <div className="inline-flex items-center rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px]">
-            <Grid3x3 className="mr-1 h-3 w-3 text-slate-500" />
-            <select
-              aria-label="Canvas layout grid overlay"
-              value={gridOverlay}
-              onChange={(e) =>
-                setGridOverlay(e.target.value as 'off' | '12col' | '8px' | 'both')
-              }
-              className="bg-transparent py-0.5 text-[11px] font-medium text-slate-700 focus:outline-none"
-            >
-              <option value="off">Grid: Off</option>
-              <option value="12col">12-Col</option>
-              <option value="8px">8px Grid</option>
-              <option value="both">12-Col + 8px</option>
-            </select>
-          </div>
-
-          {/* Marquee Multi-Select Toggle */}
-          <button
-            type="button"
-            onClick={() => setMarqueeMode((v) => !v)}
-            aria-pressed={marqueeMode}
-            title="Drag a selection box across multiple elements (or Shift+Click elements)"
-            aria-label="Toggle marquee multi-select"
-            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
-              marqueeMode
-                ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            <BoxSelect className="h-3 w-3" />
-            <span className="hidden sm:inline">Marquee</span>
-          </button>
-
-          {/* Zoom Controls */}
-          <div className="inline-flex items-center rounded-md border border-slate-200 bg-white p-0.5 text-[11px]">
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Compact Zoom Control */}
+          <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-0.5 text-[11px]">
             <button
               type="button"
               aria-label="Zoom out canvas"
@@ -1224,37 +1238,16 @@ export default function VisualCanvas({
             </button>
           </div>
 
-          {/* Desktop + Mobile Split View Toggle */}
-          <button
-            type="button"
-            onClick={() => setSplitView((v) => !v)}
-            aria-pressed={splitView}
-            title="Show live Mobile 390px mirror beside Desktop canvas"
-            aria-label="Toggle side-by-side mobile split view"
-            className={`hidden lg:inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
-              splitView
-                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            <Columns2 className="h-3 w-3" />
-            <span>Split</span>
-          </button>
-
-          {onToggleSmartAligner && (
+          {/* Quick Canvas Layout & Library Actions (Desktop/Tablet) */}
+          {onOpenLayoutBuilder && (
             <button
               type="button"
-              onClick={onToggleSmartAligner}
-              aria-pressed={showSmartAligner}
-              aria-label="Toggle Smart Aligner for mobile and desktop"
-              className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
-                showSmartAligner
-                  ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-              }`}
+              onClick={onOpenLayoutBuilder}
+              aria-label="Open layout blocks"
+              className="hidden sm:inline-flex h-7 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-medium whitespace-nowrap text-slate-700 hover:bg-slate-50"
             >
-              <Wand2 className="h-3 w-3 text-indigo-600" />
-              <span>Smart Align</span>
+              <LayoutGrid className="h-3 w-3 text-indigo-600" />
+              <span>Blocks</span>
             </button>
           )}
           {onOpenLibraryModal && (
@@ -1262,43 +1255,167 @@ export default function VisualCanvas({
               type="button"
               onClick={onOpenLibraryModal}
               aria-label="Open React Lib UI"
-              className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50/70 px-2 py-1 text-[11px] font-semibold whitespace-nowrap text-indigo-700 hover:bg-indigo-100"
+              className="hidden md:inline-flex h-7 items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/70 px-2 text-[11px] font-semibold whitespace-nowrap text-indigo-700 hover:bg-indigo-100"
             >
               <PackagePlus className="h-3 w-3 text-indigo-600" />
-              <span>React Lib UI</span>
+              <span>React UI</span>
             </button>
           )}
-          {onToggleSnap && (
-            <div className="inline-flex items-center rounded-md border border-slate-200 bg-white">
-              <button
-                type="button"
-                onClick={onToggleSnap}
-                aria-pressed={snapEnabled}
-                aria-label="Toggle alignment guides and snapping"
-                className={`inline-flex items-center gap-1 rounded-l-md px-2 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
-                  snapEnabled
-                    ? 'bg-rose-50 text-rose-700'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Magnet className="h-3 w-3" />
-                <span>Snap {snapEnabled ? 'On' : 'Off'}</span>
-              </button>
-              <select
-                aria-label="Shift-Arrow nudge step"
-                title="Shift + Arrow key nudge step"
-                value={nudgeStep}
-                onChange={(e) => setNudgeStep(Number(e.target.value))}
-                className="border-l border-slate-200 bg-transparent px-1 py-1 font-mono text-[10px] font-medium text-slate-600 focus:outline-none"
-              >
-                {NUDGE_GRID_STEPS.map((st) => (
-                  <option key={st} value={st}>
-                    {st}px
-                  </option>
-                ))}
-              </select>
-            </div>
+          {onToggleSmartAligner && (
+            <button
+              type="button"
+              onClick={onToggleSmartAligner}
+              aria-pressed={showSmartAligner}
+              aria-label="Toggle Smart Aligner for mobile and desktop"
+              className={`hidden md:inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-[11px] font-medium whitespace-nowrap transition-colors ${
+                showSmartAligner
+                  ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <Wand2 className="h-3 w-3 text-indigo-600" />
+              <span>Align</span>
+            </button>
           )}
+          {onReplayAnimations && (
+            <button
+              type="button"
+              onClick={onReplayAnimations}
+              title="Replay scroll-reveal & entrance animations on canvas"
+              aria-label="Replay canvas animations"
+              className="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-medium whitespace-nowrap text-slate-700 hover:bg-slate-50"
+            >
+              <RotateCcw className="h-3 w-3 text-indigo-600" />
+              <span className="hidden sm:inline">Replay</span>
+            </button>
+          )}
+
+          {/* Grouped Canvas View Menu (Specs, Grid, Marquee, Split, Snap & Nudge) */}
+          <div ref={viewMenuRef} className="relative">
+            <button
+              type="button"
+              aria-expanded={viewMenuOpen}
+              aria-haspopup="menu"
+              aria-label="Canvas view and snapping options"
+              onClick={() => setViewMenuOpen((v) => !v)}
+              className={`inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-[11px] font-medium whitespace-nowrap transition-colors ${
+                viewMenuOpen || showSpecs || gridOverlay !== 'off' || marqueeMode || splitView
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <Eye className="h-3 w-3" />
+              <span>View</span>
+              <ChevronDown className="h-3 w-3 opacity-60" />
+            </button>
+
+            {viewMenuOpen && (
+              <div
+                role="menu"
+                aria-label="Canvas view options"
+                className="absolute right-0 top-9 z-50 w-60 space-y-1.5 rounded-xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-900/5"
+              >
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={showSpecs}
+                  onClick={() => setSpecsMode((v) => !v)}
+                  className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+                    showSpecs ? 'bg-emerald-50 text-emerald-700' : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Ruler className="h-3.5 w-3.5" />
+                    <span>Spacing Specs (Alt)</span>
+                  </span>
+                  <span className="font-mono text-[10px]">{showSpecs ? 'On' : 'Off'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={marqueeMode}
+                  onClick={() => {
+                    setMarqueeMode((v) => !v);
+                    setViewMenuOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+                    marqueeMode ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <BoxSelect className="h-3.5 w-3.5" />
+                    <span>Marquee Multi-Select</span>
+                  </span>
+                  <span className="font-mono text-[10px]">{marqueeMode ? 'On' : 'Off'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={splitView}
+                  onClick={() => setSplitView((v) => !v)}
+                  className={`hidden lg:flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+                    splitView ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Columns2 className="h-3.5 w-3.5" />
+                    <span>Mobile Split Mirror</span>
+                  </span>
+                  <span className="font-mono text-[10px]">{splitView ? 'On' : 'Off'}</span>
+                </button>
+
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/70 px-2.5 py-1.5">
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
+                    <Grid3x3 className="h-3.5 w-3.5 text-slate-500" />
+                    <span>Grid</span>
+                  </span>
+                  <select
+                    aria-label="Canvas layout grid overlay"
+                    value={gridOverlay}
+                    onChange={(e) =>
+                      setGridOverlay(e.target.value as 'off' | '12col' | '8px' | 'both')
+                    }
+                    className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] font-medium text-slate-700 focus:outline-none"
+                  >
+                    <option value="off">Off</option>
+                    <option value="12col">12-Col</option>
+                    <option value="8px">8px</option>
+                    <option value="both">Both</option>
+                  </select>
+                </div>
+
+                {onToggleSnap && (
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/70 px-2 py-1.5">
+                    <button
+                      type="button"
+                      onClick={onToggleSnap}
+                      aria-pressed={snapEnabled}
+                      className={`inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-xs font-medium ${
+                        snapEnabled ? 'bg-rose-50 text-rose-700' : 'text-slate-600'
+                      }`}
+                    >
+                      <Magnet className="h-3.5 w-3.5" />
+                      <span>Snap {snapEnabled ? 'On' : 'Off'}</span>
+                    </button>
+                    <select
+                      aria-label="Shift-Arrow nudge step"
+                      value={nudgeStep}
+                      onChange={(e) => setNudgeStep(Number(e.target.value))}
+                      className="rounded border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-600 focus:outline-none"
+                    >
+                      {NUDGE_GRID_STEPS.map((st) => (
+                        <option key={st} value={st}>
+                          {st}px
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1471,7 +1588,7 @@ export default function VisualCanvas({
               className="pointer-events-auto absolute flex items-center gap-0.5 sm:gap-1 rounded-lg border border-slate-700 bg-slate-900 px-1.5 py-1 text-white shadow-lg"
               style={{
                 top: selTop < 44 ? selHeight + 10 : -40,
-                left: Math.max(-selLeft + 4, Math.min(0, scaledFrameWidth - selLeft - 248)),
+                left: Math.max(-selLeft + 4, Math.min(0, scaledFrameWidth - selLeft - 210)),
               }}
             >
               <span className="px-1 font-mono text-[11px] font-semibold text-sky-300">
@@ -1509,9 +1626,9 @@ export default function VisualCanvas({
                           selected.siblingIndex - 1
                         )
                       }
-                      className="rounded p-1.5 sm:p-1 text-slate-200 hover:bg-slate-700 disabled:opacity-35"
+                      className="hidden sm:inline-flex rounded p-1 text-slate-200 hover:bg-slate-700 disabled:opacity-35"
                     >
-                      <ArrowUp className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                      <ArrowUp className="h-3 w-3" />
                     </button>
                     <button
                       type="button"
@@ -1524,9 +1641,9 @@ export default function VisualCanvas({
                           selected.siblingIndex + 1
                         )
                       }
-                      className="rounded p-1.5 sm:p-1 text-slate-200 hover:bg-slate-700 disabled:opacity-35"
+                      className="hidden sm:inline-flex rounded p-1 text-slate-200 hover:bg-slate-700 disabled:opacity-35"
                     >
-                      <ArrowDown className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                      <ArrowDown className="h-3 w-3" />
                     </button>
                   </>
                 );
@@ -1547,9 +1664,20 @@ export default function VisualCanvas({
                   title="Replace or insert from React Lib UI"
                   aria-label="Replace or insert with React Lib UI"
                   onClick={onOpenLibraryModal}
-                  className="rounded p-1.5 sm:p-1 text-indigo-300 hover:bg-slate-700"
+                  className="hidden sm:inline-flex rounded p-1 text-indigo-300 hover:bg-slate-700"
                 >
-                  <PackagePlus className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                  <PackagePlus className="h-3 w-3" />
+                </button>
+              )}
+              {onOpenMotionStudio && (
+                <button
+                  type="button"
+                  title="Animate selected element in Motion Studio"
+                  aria-label="Animate selected element"
+                  onClick={onOpenMotionStudio}
+                  className="hidden sm:inline-flex rounded p-1 text-amber-300 hover:bg-slate-700"
+                >
+                  <Clapperboard className="h-3 w-3" />
                 </button>
               )}
               <button
@@ -1568,6 +1696,26 @@ export default function VisualCanvas({
               >
                 <Trash2 className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
               </button>
+              {onContextMenuElement && (
+                <button
+                  type="button"
+                  title="More element actions (Copy/Paste Styles, Wrap, Logic, Extract)"
+                  aria-label="Open element actions menu"
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    onContextMenuElement({
+                      element: selected,
+                      x: rect.left,
+                      y: rect.bottom + 6,
+                      trigger: 'button',
+                    });
+                  }}
+                  className="inline-flex items-center gap-0.5 rounded bg-blue-600 px-1.5 py-1.5 sm:py-1 text-[11px] font-semibold text-white hover:bg-blue-500"
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                  <span className="sm:hidden">More</span>
+                </button>
+              )}
             </div>
 
             {/* 8 Touch-Friendly Resize Handles */}

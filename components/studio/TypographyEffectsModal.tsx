@@ -54,16 +54,16 @@ export default function TypographyEffectsModal({ open, hasSelection, onClose, on
         <div className="space-y-5 p-4">
           <section className="space-y-2 rounded-xl border border-slate-200 p-3">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-800"><Type className="h-4 w-4 text-violet-600" /> Import & apply font</div>
-            <p className="text-[11px] text-slate-500">Choose a font or enter a Google Fonts family name. It will be added to your project's CSS and applied to the selected element.</p>
+            <p className="text-[11px] text-slate-500">Choose a font or enter a Google Fonts family name. It will be added to your project&apos;s CSS and applied to the selected element.</p>
             <select value={font} onChange={e => { setFont(e.target.value); setCustomFont(''); }} className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs">
               {FONT_SUGGESTIONS.map(item => <option key={item}>{item}</option>)}
             </select>
             <input value={customFont} onChange={e => setCustomFont(e.target.value)} placeholder="Or enter font family, e.g. 'Cormorant Garamond'" className="h-9 w-full rounded-lg border border-slate-200 px-3 text-xs" />
-            <button type="button" disabled={!hasSelection || !family} onClick={() => onApplyFont(family)} className="w-full rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40">Import font & apply to selected text</button>
+            <button type="button" disabled={!hasSelection || !family} onClick={() => onApplyFont(family)} className="w-full rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40">Import font &amp; apply to selected text</button>
           </section>
           <section className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/40 p-3">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-800"><PackagePlus className="h-4 w-4 text-violet-600" /> Import typography packages with npm</div>
-            <p className="text-[11px] text-slate-500">Add animation libraries or non-Google font packages directly to this project's package.json. These are project dependencies, not global installs on the editor server.</p>
+            <p className="text-[11px] text-slate-500">Add animation libraries or non-Google font packages directly to this project&apos;s package.json. These are project dependencies, not global installs on the editor server.</p>
             <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
               <button type="button" onClick={() => { setNpmKind('motion'); setNpmCommand('npm install motion'); setNpmNotice(''); setNpmError(''); }} className={`rounded-md px-2 py-2 text-xs font-medium ${npmKind === 'motion' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-600'}`}>Kinetic / Motion</button>
               <button type="button" onClick={() => { setNpmKind('font'); setNpmCommand('npm install @fontsource/roboto'); setNpmFontFamily('Roboto'); setNpmCssImport('@fontsource/roboto/400.css'); setNpmNotice(''); setNpmError(''); }} className={`rounded-md px-2 py-2 text-xs font-medium ${npmKind === 'font' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-600'}`}>Font package</button>

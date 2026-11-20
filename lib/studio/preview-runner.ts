@@ -1,6 +1,20 @@
 import { transform } from 'sucrase';
+import { buildVirtualAssetMap } from './media-pipeline';
 import { instrumentSourceWithStudioIds } from './source-editor';
 import { ProjectPage, VirtualProject } from './types';
+
+function inlineVirtualAssetsInHtml(html: string, assetMap: Record<string, string>): string {
+  const keys = Object.keys(assetMap);
+  if (keys.length === 0) return html;
+  return html.replace(
+    /(\b(?:src|poster)\s*=\s*["'])([^"']+)(["'])/gi,
+    (full, prefix: string, url: string, suffix: string) => {
+      const mapped = assetMap[url];
+      if (!mapped) return full;
+      return `${prefix}${mapped}${suffix} data-webd-asset-src="${url.replace(/"/g, '&quot;')}"`;
+    }
+  );
+}
 
 function resolveVirtualModulePath(
   fromFile: string,
@@ -109,7 +123,11 @@ function escapeScriptClose(str: string): string {
   return str.replace(/<\/script>/gi, '<\\/script>');
 }
 
-function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design' | 'interact'): string {
+function buildDesignerBridgeScript(
+  activeRoute: string,
+  interactionMode: 'design' | 'interact',
+  initialAssetMap: Record<string, string> = {}
+): string {
   return `
 (function() {
   var CURRENT_MODE = ${JSON.stringify(interactionMode)};
@@ -120,6 +138,90 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
   var ACTIVE_PREVIEW_RECORDS = [];
   var LOGIC_RULES = [];
   var LOGIC_EXECUTING = false;
+  var BRIDGE_ASSET_MAP = ${escapeScriptClose(JSON.stringify(initialAssetMap))};
+  var REVEAL_OBSERVER = null;
+
+  function resolveVirtualAssetsInDom() {
+    var map = BRIDGE_ASSET_MAP || {};
+    var mediaNodes = document.querySelectorAll('img[src], video[src], audio[src], source[src], [data-webd-asset-src]');
+    for (var i = 0; i < mediaNodes.length; i++) {
+      var node = mediaNodes[i];
+      var orig = node.getAttribute('data-webd-asset-src') || node.getAttribute('src') || '';
+      if (orig && map[orig]) {
+        if (!node.getAttribute('data-webd-asset-src')) {
+          node.setAttribute('data-webd-asset-src', orig);
+        }
+        if (node.getAttribute('src') !== map[orig]) {
+          node.setAttribute('src', map[orig]);
+        }
+      }
+    }
+    var styledNodes = document.querySelectorAll('[style*="assets/"]');
+    for (var j = 0; j < styledNodes.length; j++) {
+      var sn = styledNodes[j];
+      var bg = sn.style && sn.style.backgroundImage;
+      if (!bg || bg.indexOf('assets/') === -1) continue;
+      var updatedBg = bg.replace(/url\\((["']?)([^"')]+)\\1\\)/g, function(m, q, u) {
+        return map[u] ? 'url("' + map[u] + '")' : m;
+      });
+      if (updatedBg !== bg) sn.style.backgroundImage = updatedBg;
+    }
+  }
+
+  function initMotionReveals(forceReplay) {
+    if (REVEAL_OBSERVER) {
+      try { REVEAL_OBSERVER.disconnect(); } catch (_) {}
+      REVEAL_OBSERVER = null;
+    }
+    var nodes = Array.prototype.slice.call(document.querySelectorAll('.webd-reveal, .webd-stagger-children'));
+    if (forceReplay) {
+      nodes.forEach(function(n) { n.classList.remove('webd-in-view'); });
+      var loopNodes = document.querySelectorAll('[class*="webd-loop-"]');
+      for (var li = 0; li < loopNodes.length; li++) {
+        var ln = loopNodes[li];
+        ln.style.animation = 'none';
+        void ln.offsetWidth;
+        ln.style.animation = '';
+      }
+      void document.body.offsetHeight;
+    }
+    if (nodes.length === 0) return;
+
+    var activate = function() {
+      var vh = window.innerHeight || document.documentElement.clientHeight || 800;
+      if (typeof IntersectionObserver !== 'undefined') {
+        REVEAL_OBSERVER = new IntersectionObserver(function(entries) {
+          entries.forEach(function(entry) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('webd-in-view');
+              if (!entry.target.classList.contains('webd-reveal-repeat')) {
+                REVEAL_OBSERVER.unobserve(entry.target);
+              }
+            } else if (entry.target.classList.contains('webd-reveal-repeat')) {
+              entry.target.classList.remove('webd-in-view');
+            }
+          });
+        }, { threshold: 0.05 });
+        nodes.forEach(function(node) {
+          REVEAL_OBSERVER.observe(node);
+          var rect = node.getBoundingClientRect();
+          if (rect.top < vh + 40 && rect.bottom > -40) {
+            node.classList.add('webd-in-view');
+          }
+        });
+      } else {
+        nodes.forEach(function(node) { node.classList.add('webd-in-view'); });
+      }
+    };
+
+    if (forceReplay) {
+      requestAnimationFrame(function() {
+        requestAnimationFrame(activate);
+      });
+    } else {
+      activate();
+    }
+  }
 
   function resolveLogicTarget(target) {
     if (!target || typeof target !== 'string') return null;
@@ -998,7 +1100,90 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
     window.parent.postMessage({ type: 'studio:hover', studioId: null }, '*');
   });
 
+  var LONG_PRESS_TIMER = null;
+  var LONG_PRESS_START = null;
+  var SUPPRESS_CLICK_UNTIL = 0;
+
+  function clearLongPress() {
+    if (LONG_PRESS_TIMER) {
+      clearTimeout(LONG_PRESS_TIMER);
+      LONG_PRESS_TIMER = null;
+    }
+    LONG_PRESS_START = null;
+  }
+
+  document.addEventListener('touchstart', function(e) {
+    clearLongPress();
+    if (CURRENT_MODE !== 'design') return;
+    if (EDITING_EL && EDITING_EL.contains(e.target)) return;
+    if (!e.touches || e.touches.length !== 1) return;
+    var target = findSelectableTarget(e.target);
+    if (!target) return;
+    var touch = e.touches[0];
+    LONG_PRESS_START = { x: touch.clientX, y: touch.clientY, target: target };
+    LONG_PRESS_TIMER = setTimeout(function() {
+      if (!LONG_PRESS_START) return;
+      var el = LONG_PRESS_START.target;
+      var cx = LONG_PRESS_START.x;
+      var cy = LONG_PRESS_START.y;
+      clearLongPress();
+      SUPPRESS_CLICK_UNTIL = Date.now() + 450;
+      SELECTED_ID = el.getAttribute('data-studio-id');
+      window.parent.postMessage({
+        type: 'studio:context-menu',
+        element: extractSnapshot(el),
+        clientX: cx,
+        clientY: cy,
+        trigger: 'longpress'
+      }, '*');
+    }, 450);
+  }, { capture: true, passive: true });
+
+  document.addEventListener('touchmove', function(e) {
+    if (!LONG_PRESS_START || !e.touches || e.touches.length !== 1) {
+      clearLongPress();
+      return;
+    }
+    var touch = e.touches[0];
+    if (Math.hypot(touch.clientX - LONG_PRESS_START.x, touch.clientY - LONG_PRESS_START.y) > 10) {
+      clearLongPress();
+    }
+  }, { capture: true, passive: true });
+
+  document.addEventListener('touchend', clearLongPress, { capture: true, passive: true });
+  document.addEventListener('touchcancel', clearLongPress, { capture: true, passive: true });
+
+  document.addEventListener('contextmenu', function(e) {
+    if (CURRENT_MODE !== 'design') return;
+    if (EDITING_EL && EDITING_EL.contains(e.target)) return;
+    var target = findSelectableTarget(e.target);
+    if (!target) return;
+    e.preventDefault();
+    e.stopPropagation();
+    clearLongPress();
+    SELECTED_ID = target.getAttribute('data-studio-id');
+    window.parent.postMessage({
+      type: 'studio:context-menu',
+      element: extractSnapshot(target),
+      clientX: e.clientX,
+      clientY: e.clientY,
+      trigger: 'contextmenu'
+    }, '*');
+  }, true);
+
+  document.addEventListener('keydown', function(e) {
+    if ((e.metaKey || e.ctrlKey) && e.key && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      window.parent.postMessage({ type: 'studio:open-command-palette' }, '*');
+    }
+  }, true);
+
   document.addEventListener('click', function(e) {
+    if (Date.now() < SUPPRESS_CLICK_UNTIL) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (CURRENT_MODE === 'interact') {
       var link = e.target && e.target.closest ? e.target.closest('a[href]') : null;
       if (link) {
@@ -1213,6 +1398,9 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
         indicatorRect: indicatorRect
       }, '*');
     } else if (msg.type === 'studio:hot-update-html') {
+      if (msg.assetMap && typeof msg.assetMap === 'object') {
+        BRIDGE_ASSET_MAP = msg.assetMap;
+      }
       if (typeof msg.bodyHtml === 'string') {
         document.body.innerHTML = msg.bodyHtml;
       }
@@ -1228,6 +1416,8 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
       if (msg.selectStudioId) {
         SELECTED_ID = msg.selectStudioId;
       }
+      resolveVirtualAssetsInDom();
+      initMotionReveals(false);
       postTree();
       if (SELECTED_ID) {
         var selHtml = findStudioElement(SELECTED_ID);
@@ -1291,10 +1481,19 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
         type: 'studio:marquee-result',
         elements: finalNodes.map(function(n) { return extractSnapshot(n); })
       }, '*');
+    } else if (msg.type === 'studio:update-assets') {
+      if (msg.assetMap && typeof msg.assetMap === 'object') {
+        BRIDGE_ASSET_MAP = msg.assetMap;
+      }
+      resolveVirtualAssetsInDom();
+    } else if (msg.type === 'studio:replay-animations') {
+      initMotionReveals(true);
     } else if (msg.type === 'studio:ping-tree') {
       if (msg.selectStudioId) {
         SELECTED_ID = msg.selectStudioId;
       }
+      resolveVirtualAssetsInDom();
+      initMotionReveals(false);
       postTree();
       applyLayerStateCss();
       if (ACTIVE_PSEUDO_ID && ACTIVE_PSEUDO_MODE !== 'default') {
@@ -1315,9 +1514,9 @@ function buildDesignerBridgeScript(activeRoute: string, interactionMode: 'design
   });
 
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    setTimeout(postTree, 50);
+    setTimeout(function() { resolveVirtualAssetsInDom(); initMotionReveals(false); postTree(); }, 50);
   } else {
-    window.addEventListener('DOMContentLoaded', function() { setTimeout(postTree, 50); });
+    window.addEventListener('DOMContentLoaded', function() { setTimeout(function() { resolveVirtualAssetsInDom(); initMotionReveals(false); postTree(); }, 50); });
   }
 })();
 `;
@@ -1328,6 +1527,7 @@ export interface ReactPreviewPayload {
   resMap: Record<string, Record<string, string>>;
   jsonFiles: Record<string, string>;
   cssModules: Record<string, Record<string, string>>;
+  assetMap: Record<string, string>;
   activeRoute: string;
   entryFile: string;
   layoutFile: string | null;
@@ -1412,6 +1612,7 @@ export function compileReactPreviewPayload(
     resMap: resolutionMap,
     jsonFiles,
     cssModules: importedStyles.cssModules,
+    assetMap: buildVirtualAssetMap(project.files),
     activeRoute: activePage.route,
     entryFile: activePage.filePath,
     layoutFile,
@@ -1424,13 +1625,18 @@ export function compileReactPreviewPayload(
 export function compileHtmlBodyPayload(project: VirtualProject, activePage: ProjectPage): {
   bodyHtml: string;
   userCss: string;
+  assetMap: Record<string, string>;
 } {
   const rawHtml = project.files[activePage.filePath] || '<div>Empty HTML page</div>';
-  const instrumentedHtml = instrumentSourceWithStudioIds(rawHtml, activePage.filePath, true);
+  const assetMap = buildVirtualAssetMap(project.files);
+  const instrumentedHtml = inlineVirtualAssetsInHtml(
+    instrumentSourceWithStudioIds(rawHtml, activePage.filePath, true),
+    assetMap
+  );
   const bodyMatch = instrumentedHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   const bodyHtml = bodyMatch ? bodyMatch[1] : instrumentedHtml;
   const userCss = project.globalCssPaths.map((p) => project.files[p] || '').join('\n');
-  return { bodyHtml, userCss };
+  return { bodyHtml, userCss, assetMap };
 }
 
 export function buildPreviewDocument(
@@ -1446,11 +1652,15 @@ export function buildPreviewDocument(
   // Pure HTML mode
   if (project.framework === 'html' || /\.html?$/i.test(activePage.filePath)) {
     const rawHtml = project.files[activePage.filePath] || '<div>Empty HTML page</div>';
-    const instrumentedHtml = instrumentSourceWithStudioIds(rawHtml, activePage.filePath, true);
+    const assetMap = buildVirtualAssetMap(project.files);
+    const instrumentedHtml = inlineVirtualAssetsInHtml(
+      instrumentSourceWithStudioIds(rawHtml, activePage.filePath, true),
+      assetMap
+    );
     const cssParts = project.globalCssPaths
       .map((p) => project.files[p] || '')
       .join('\n');
-    const bridge = buildDesignerBridgeScript(activePage.route, interactionMode);
+    const bridge = buildDesignerBridgeScript(activePage.route, interactionMode, assetMap);
     const injection = `<style id="studio-tailwind-css">${compiledTailwindCss}</style><style id="studio-user-css">${cssParts}</style><script>${escapeScriptClose(
       bridge
     )}</script>`;
@@ -1491,6 +1701,7 @@ export function buildPreviewDocument(
   var RES_MAP = ${escapeScriptClose(JSON.stringify(payload.resMap))};
   var JSON_FILES = ${escapeScriptClose(JSON.stringify(payload.jsonFiles))};
   var CSS_MODULES = ${escapeScriptClose(JSON.stringify(payload.cssModules))};
+  var ASSET_MAP = ${escapeScriptClose(JSON.stringify(payload.assetMap))};
   var ACTIVE_ROUTE = ${JSON.stringify(payload.activeRoute)};
   var ENTRY_FILE = ${JSON.stringify(payload.entryFile)};
   var ISOLATE_COMPONENT = ${JSON.stringify(payload.isolateComponent)};
@@ -1539,6 +1750,18 @@ export function buildPreviewDocument(
         } else {
           delete ownedMap[props['data-studio-id']];
         }
+      }
+      if (
+        (type === 'img' || type === 'video' || type === 'audio' || type === 'source') &&
+        props &&
+        typeof props.src === 'string' &&
+        ASSET_MAP[props.src]
+      ) {
+        var resolvedMediaProps = Object.assign({}, props, {
+          src: ASSET_MAP[props.src],
+          'data-webd-asset-src': props.src
+        });
+        return React.createElement.apply(React, [type, resolvedMediaProps].concat(args));
       }
       if (type === 'html' || type === 'body') {
         var nextProps = props ? Object.assign({}, props) : {};
@@ -1721,6 +1944,10 @@ export function buildPreviewDocument(
         default: function NextImage(p) {
           var clean = Object.assign({}, p);
           delete clean.fill; delete clean.priority; delete clean.unoptimized; delete clean.quality;
+          if (typeof clean.src === 'string' && ASSET_MAP[clean.src]) {
+            clean['data-webd-asset-src'] = clean.src;
+            clean.src = ASSET_MAP[clean.src];
+          }
           return React.createElement('img', clean);
         }
       };
@@ -1953,6 +2180,7 @@ export function buildPreviewDocument(
         RES_MAP = p.resMap || RES_MAP;
         JSON_FILES = p.jsonFiles || JSON_FILES;
         CSS_MODULES = p.cssModules || CSS_MODULES;
+        ASSET_MAP = p.assetMap || ASSET_MAP;
         ACTIVE_ROUTE = p.activeRoute || ACTIVE_ROUTE;
         ENTRY_FILE = p.entryFile || ENTRY_FILE;
         LAYOUT_FILE = p.layoutFile !== undefined ? p.layoutFile : LAYOUT_FILE;
@@ -1968,6 +2196,7 @@ export function buildPreviewDocument(
         }
         studioRoot.render(React.createElement(StudioRoot));
         setTimeout(function() {
+          window.postMessage({ type: 'studio:update-assets', assetMap: ASSET_MAP }, '*');
           window.postMessage({
             type: 'studio:ping-tree',
             selectStudioId: msg.selectStudioId || null
@@ -1990,7 +2219,11 @@ export function buildPreviewDocument(
 })();
 `;
 
-  const bridgeScript = buildDesignerBridgeScript(activePage.route, interactionMode);
+  const bridgeScript = buildDesignerBridgeScript(
+    activePage.route,
+    interactionMode,
+    payload.assetMap
+  );
   const html = `<!doctype html>
 <html lang="en">
 <head>

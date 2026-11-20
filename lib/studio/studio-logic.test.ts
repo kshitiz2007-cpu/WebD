@@ -1452,6 +1452,454 @@ export default function Page() {
   assert.ok(!snippetReplaced?.includes('old-hero'));
 });
 
+import { transform as sucraseTransform } from 'sucrase';
+import {
+  DEFAULT_ANIMATION_CONFIG,
+  WEBD_MOTION_CSS_START,
+  buildAnimationClassesAndStyles,
+  countAnimatedElementsInFiles,
+  mergeMotionCssIntoGlobalCss,
+  parseAnimationConfigFromElement,
+} from './animation-studio';
+import {
+  buildVirtualAssetMap,
+  decodeDataUrlToBytes,
+  extractInlineBase64MediaFromFiles,
+  registerMediaAssetInProjectFiles,
+} from './media-pipeline';
+import {
+  compileProjectForProductionExport,
+  stampWebdIdsInSource,
+} from './export-compiler';
+import type { VisualLogicRule } from './logic-engine';
+
+test('animation-studio builds, round-trips, merges CSS idempotently, and counts animated elements', () => {
+  const built = buildAnimationClassesAndStyles('rounded-xl p-6 webd-reveal-fade-down', {
+    reveal: 'fade-up',
+    hover: 'lift',
+    loop: 'float',
+    duration: 0.8,
+    delay: 0.15,
+    easing: 'spring',
+    staggerChildren: true,
+    staggerStepMs: 110,
+    once: false,
+  });
+
+  assert.equal(built.hasAnimation, true);
+  assert.ok(built.className.includes('rounded-xl p-6'));
+  assert.ok(!built.className.includes('webd-reveal-fade-down'));
+  assert.ok(built.className.includes('webd-reveal'));
+  assert.ok(built.className.includes('webd-reveal-fade-up'));
+  assert.ok(built.className.includes('webd-reveal-repeat'));
+  assert.ok(built.className.includes('webd-stagger-children'));
+  assert.ok(built.className.includes('webd-hover-lift'));
+  assert.ok(built.className.includes('webd-loop-float'));
+  assert.equal(built.styles['--webd-anim-duration'], '0.80s');
+  assert.equal(built.styles['--webd-anim-delay'], '0.15s');
+  assert.equal(built.styles['--webd-stagger-step'], '110ms');
+
+  const parsed = parseAnimationConfigFromElement(
+    built.className,
+    Object.fromEntries(
+      Object.entries(built.styles).filter(([, v]) => typeof v === 'string') as [string, string][]
+    )
+  );
+  assert.equal(parsed.reveal, 'fade-up');
+  assert.equal(parsed.hover, 'lift');
+  assert.equal(parsed.loop, 'float');
+  assert.equal(parsed.easing, 'spring');
+  assert.equal(parsed.staggerChildren, true);
+  assert.equal(parsed.staggerStepMs, 110);
+  assert.equal(parsed.once, false);
+  assert.equal(parsed.duration, 0.8);
+  assert.equal(parsed.delay, 0.15);
+
+  const cleared = buildAnimationClassesAndStyles(built.className, DEFAULT_ANIMATION_CONFIG);
+  assert.equal(cleared.hasAnimation, false);
+  assert.equal(cleared.className, 'rounded-xl p-6');
+  assert.equal(cleared.styles['--webd-anim-duration'], null);
+
+  const merged1 = mergeMotionCssIntoGlobalCss(':root { --x: 1; }');
+  assert.ok(merged1.includes(WEBD_MOTION_CSS_START));
+  const merged2 = mergeMotionCssIntoGlobalCss(merged1);
+  assert.equal(merged2, merged1);
+
+  const counts = countAnimatedElementsInFiles({
+    'app/page.tsx': `<div className="${built.className}">Hi</div>`,
+  });
+  assert.equal(counts.revealCount, 1);
+  assert.equal(counts.hoverCount, 1);
+  assert.equal(counts.loopCount, 1);
+  assert.equal(counts.total, 3);
+
+  // Verify source-editor preserves CSS custom property keys (--webd-*) in JSX and HTML
+  const patchedJsx = applyElementPatchToSource(
+    `export default function P() { return <h1 className="text-xl">Hi</h1>; }`,
+    0,
+    false,
+    { className: built.className, styles: built.styles }
+  );
+  assert.ok(patchedJsx.includes(`'--webd-anim-duration': '0.80s'`));
+  assert.ok(!patchedJsx.includes('-WebdAnimDuration'));
+
+  const patchedHtml = applyElementPatchToSource(
+    `<h1 class="text-xl">Hi</h1>`,
+    0,
+    true,
+    { className: built.className, styles: built.styles }
+  );
+  assert.ok(patchedHtml.includes('--webd-anim-duration: 0.80s'));
+});
+
+test('media-pipeline registers clean public/assets paths, deduplicates, resolves preview map, and extracts inline base64', () => {
+  const pngBase64 =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
+  const pngBase64Other =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+  const reg1 = registerMediaAssetInProjectFiles({}, 'nextjs-app', {
+    name: 'Hero Banner!!.PNG',
+    type: 'image/png',
+    dataUrl: pngBase64,
+  });
+  assert.equal(reg1.assetFilePath, 'public/assets/hero-banner.png');
+  assert.equal(reg1.publicUrl, '/assets/hero-banner.png');
+  assert.equal(reg1.reusedExisting, false);
+
+  // Same content reuses existing file
+  const regReuse = registerMediaAssetInProjectFiles(reg1.nextFiles, 'nextjs-app', {
+    name: 'Another Name.png',
+    type: 'image/png',
+    dataUrl: pngBase64,
+  });
+  assert.equal(regReuse.reusedExisting, true);
+  assert.equal(regReuse.publicUrl, '/assets/hero-banner.png');
+
+  // Different content with same slug gets -2 suffix
+  const reg2 = registerMediaAssetInProjectFiles(reg1.nextFiles, 'nextjs-app', {
+    name: 'Hero Banner.png',
+    type: 'image/png',
+    dataUrl: pngBase64Other,
+  });
+  assert.equal(reg2.assetFilePath, 'public/assets/hero-banner-2.png');
+  assert.equal(reg2.publicUrl, '/assets/hero-banner-2.png');
+
+  // HTML framework stores in assets/ with ./assets/ URL
+  const regHtml = registerMediaAssetInProjectFiles({}, 'html', {
+    name: 'Logo.png',
+    type: 'image/png',
+    dataUrl: pngBase64,
+  });
+  assert.equal(regHtml.assetFilePath, 'assets/logo.png');
+  assert.equal(regHtml.publicUrl, './assets/logo.png');
+
+  // Virtual map and binary decoding
+  const assetMap = buildVirtualAssetMap(reg2.nextFiles);
+  assert.equal(assetMap['/assets/hero-banner.png'], pngBase64);
+  assert.equal(assetMap['./assets/hero-banner.png'], pngBase64);
+  const decoded = decodeDataUrlToBytes(pngBase64);
+  assert.ok(decoded);
+  assert.equal(decoded.mimeType, 'image/png');
+  assert.ok(decoded.bytes.byteLength > 20);
+
+  // Extract inline base64 from legacy code
+  const longBase64 = `data:image/png;base64,${'A'.repeat(200)}`;
+  const extracted = extractInlineBase64MediaFromFiles(
+    {
+      'app/page.tsx': `export default function P() { return <img src="${longBase64}" alt="legacy" />; }`,
+    },
+    'nextjs-app'
+  );
+  assert.equal(extracted.extractedCount, 1);
+  assert.ok(extracted.files['app/page.tsx'].includes('src="/assets/page-media.png"'));
+  assert.equal(extracted.files['public/assets/page-media.png'], longBase64);
+  assert.ok(extracted.bytesSavedInCode > 150);
+});
+
+test('export-compiler compiles visual logic + scroll-reveal + binary media into standalone Next.js and HTML bundles', () => {
+  const pngDataUrl =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
+
+  const nextFiles: Record<string, string> = {
+    ...STARTER_NEXTJS_FILES,
+    'app/layout.tsx': `export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}`,
+    'public/assets/hero.png': pngDataUrl,
+    'app/page.tsx': `export default function HomePage() {
+  return (
+    <main className="p-8">
+      <h1 className="text-3xl font-bold webd-reveal webd-reveal-fade-up">Welcome</h1>
+      <button type="button" className="rounded bg-blue-600 px-4 py-2 text-white">Launch</button>
+      <img src="/assets/hero.png" alt="Hero" />
+    </main>
+  );
+}`,
+  };
+  const nextProj = createProjectFromFiles(nextFiles, 'Starter', 'prod-app');
+  const rules: VisualLogicRule[] = [
+    {
+      id: 'rule-1',
+      componentId: 'app/page.tsx::2', // <button>
+      componentLabel: '<button>',
+      trigger: 'onClick',
+      action: 'toast',
+      target: '',
+      value: 'Launched!',
+      enabled: true,
+    },
+  ];
+
+  const compiledNext = compileProjectForProductionExport(nextProj, rules, {
+    compileLogic: true,
+    includeScrollRevealRuntime: true,
+    extractInlineBase64Media: true,
+  });
+
+  assert.equal(compiledNext.report.compiledRulesCount, 1);
+  assert.equal(compiledNext.report.wiredElementCount, 1);
+  assert.equal(compiledNext.report.animatedElementCount, 1);
+  assert.equal(compiledNext.report.mediaAssetCount, 1);
+  assert.ok(compiledNext.binaryFiles['public/assets/hero.png'] instanceof Uint8Array);
+  assert.equal(compiledNext.textFiles['public/assets/hero.png'], undefined);
+  assert.ok(compiledNext.textFiles['app/page.tsx'].includes('data-webd-id="webd-app-page-2"'));
+  assert.ok(compiledNext.textFiles['components/WebdProductionRuntime.tsx']);
+  assert.ok(compiledNext.textFiles['components/WebdProductionRuntime.tsx'].includes('webd-app-page-2'));
+  assert.ok(compiledNext.textFiles['components/WebdProductionRuntime.tsx'].includes('IntersectionObserver'));
+  assert.ok(compiledNext.textFiles['app/layout.tsx'].includes('<WebdProductionRuntime />'));
+  assert.ok(compiledNext.textFiles['app/globals.css'].includes(WEBD_MOTION_CSS_START));
+
+  // Also verify fallback mount inside app/page.tsx when app/layout.tsx is absent
+  const noLayoutFiles = { ...nextFiles };
+  delete noLayoutFiles['app/layout.tsx'];
+  const compiledNoLayout = compileProjectForProductionExport(
+    createProjectFromFiles(noLayoutFiles, 'NoLayout', 'no-layout'),
+    rules,
+    { compileLogic: true, includeScrollRevealRuntime: true, extractInlineBase64Media: true }
+  );
+  assert.ok(compiledNoLayout.textFiles['app/page.tsx'].includes('<WebdProductionRuntime />'));
+
+  // Verify generated TSX compiles cleanly with Sucrase
+  const transpiled = sucraseTransform(compiledNext.textFiles['components/WebdProductionRuntime.tsx'], {
+    transforms: ['typescript', 'jsx'],
+  });
+  assert.ok(transpiled.code.includes('WebdProductionRuntime'));
+
+  // HTML project export
+  const htmlProj = createProjectFromFiles(
+    {
+      'index.html': `<!doctype html><html><head><link rel="stylesheet" href="./styles.css" /></head><body><section class="webd-reveal webd-reveal-zoom-in"><button id="go">Go</button><img src="./assets/pic.png" alt="pic" /></section></body></html>`,
+      'styles.css': `body { margin: 0; }`,
+      'assets/pic.png': pngDataUrl,
+    },
+    'HTML Demo',
+    'html-demo'
+  );
+  const htmlRule: VisualLogicRule[] = [
+    {
+      id: 'html-rule-1',
+      componentId: 'index.html::1',
+      componentLabel: '<button>',
+      trigger: 'onClick',
+      action: 'toast',
+      target: '',
+      value: 'HTML Interactive!',
+      enabled: true,
+    },
+  ];
+  const compiledHtml = compileProjectForProductionExport(htmlProj, htmlRule, {
+    compileLogic: true,
+    includeScrollRevealRuntime: true,
+    extractInlineBase64Media: true,
+  });
+  assert.ok(compiledHtml.textFiles['assets/webd-runtime.js']);
+  assert.ok(compiledHtml.textFiles['index.html'].includes('src="./assets/webd-runtime.js"'));
+  assert.ok(compiledHtml.binaryFiles['assets/pic.png'] instanceof Uint8Array);
+  assert.ok(compiledHtml.textFiles['styles.css'].includes(WEBD_MOTION_CSS_START));
+
+  // Direct stamp check
+  const stamped = stampWebdIdsInSource('<div><span>A</span><button>B</button></div>', true, new Map([[2, 'webd-btn']]));
+  assert.ok(stamped.includes('<button data-webd-id="webd-btn">B</button>'));
+});
+
+import {
+  buildCopiedStylePayload,
+  buildPasteStylePatch,
+  clampContextMenuPosition,
+  suggestExtractedComponentName,
+} from './workspace-actions';
+import {
+  StudioCommandItem,
+  filterAndRankCommands,
+} from './command-palette';
+
+test('35. Workspace Actions: copy/paste styles strips offsets, clamps context menu, and suggests component names', () => {
+  const copied = buildCopiedStylePayload(
+    {
+      tagName: 'h1',
+      studioId: 'app/page.tsx::5',
+      className: 'text-3xl font-bold text-white',
+      inlineStyles: {
+        color: '#ffffff',
+        backgroundImage: 'linear-gradient(90deg, #111, #222)',
+        transform: 'translate(40px, 20px)',
+        translate: '40px 20px',
+      },
+    },
+    1000
+  );
+
+  assert.equal(copied.sourceTagName, 'h1');
+  assert.equal(copied.className, 'text-3xl font-bold text-white');
+  assert.equal(copied.inlineStyles.color, '#ffffff');
+  assert.equal(copied.inlineStyles.transform, undefined);
+  assert.equal(copied.inlineStyles.translate, undefined);
+
+  const patch = buildPasteStylePatch(copied, {
+    color: '#000000',
+    fontSize: '14px',
+    transform: 'translate(10px, 5px)',
+  });
+
+  assert.equal(patch.className, 'text-3xl font-bold text-white');
+  assert.equal(patch.styles?.color, '#ffffff');
+  assert.equal(patch.styles?.fontSize, null);
+  assert.equal(patch.styles?.transform, undefined);
+
+  const source = `export default function Demo() {
+  return (
+    <div>
+      <p className="text-sm" style={{ color: '#000000', fontSize: '14px' }}>Target</p>
+    </div>
+  );
+}`;
+  const updated = applyElementPatchToSource(source, 1, false, patch);
+  assert.ok(updated.includes('text-3xl font-bold text-white'));
+  assert.ok(updated.includes("color: '#ffffff'"));
+  assert.equal(updated.includes("fontSize: '14px'"), false);
+
+  const clamped = clampContextMenuPosition({
+    x: 1400,
+    y: 850,
+    menuWidth: 276,
+    menuHeight: 460,
+    viewportWidth: 1440,
+    viewportHeight: 900,
+    margin: 12,
+  });
+  assert.equal(clamped.x, 1152);
+  assert.equal(clamped.y, 428);
+
+  const clampedNeg = clampContextMenuPosition({
+    x: -50,
+    y: -10,
+    menuWidth: 276,
+    menuHeight: 460,
+    viewportWidth: 1440,
+    viewportHeight: 900,
+    margin: 12,
+  });
+  assert.equal(clampedNeg.x, 12);
+  assert.equal(clampedNeg.y, 12);
+
+  assert.equal(suggestExtractedComponentName('section', 'Hero Banner Title'), 'HeroBannerBlock');
+  assert.equal(suggestExtractedComponentName('button', ''), 'ButtonComponent');
+});
+
+test('36. Command Palette: fuzzy search, multi-token ranking, and category filtering', () => {
+  const noop = () => {};
+  const sampleItems: StudioCommandItem[] = [
+    {
+      id: 'tool:global-css',
+      label: 'Global CSS & Design Tokens',
+      description: 'Edit CSS variables and stylesheets',
+      category: 'tools',
+      keywords: ['css', 'tokens', 'theme'],
+      iconKey: 'palette',
+      onExecute: noop,
+    },
+    {
+      id: 'tool:motion',
+      label: 'Motion Studio',
+      description: 'Scroll-reveal and hover animations',
+      category: 'tools',
+      keywords: ['animate', 'scroll', 'reveal'],
+      iconKey: 'motion',
+      onExecute: noop,
+    },
+    {
+      id: 'block:two-col',
+      label: 'Insert Two columns Block',
+      description: 'Responsive 2-column grid',
+      category: 'blocks',
+      keywords: ['grid', 'columns', 'layout'],
+      iconKey: 'block',
+      onExecute: noop,
+    },
+    {
+      id: 'page:pricing',
+      label: 'Go to Page: Pricing',
+      description: '/pricing · app/pricing/page.tsx',
+      category: 'pages',
+      keywords: ['route', 'pricing'],
+      iconKey: 'page',
+      onExecute: noop,
+    },
+    {
+      id: 'el:wrap-row',
+      label: 'Wrap <section> in Flex Row',
+      description: 'Wrap selection inside flex container',
+      category: 'element',
+      keywords: ['wrap', 'flex', 'row'],
+      iconKey: 'wrap',
+      onExecute: noop,
+    },
+  ];
+
+  // Fuzzy subsequence match ("glc" -> Global CSS)
+  const glc = filterAndRankCommands(sampleItems, 'glc');
+  assert.equal(glc[0]?.id, 'tool:global-css');
+
+  // Keyword match
+  const reveal = filterAndRankCommands(sampleItems, 'scroll');
+  assert.equal(reveal[0]?.id, 'tool:motion');
+
+  // Category filter
+  const onlyPages = filterAndRankCommands(sampleItems, '', 'pages');
+  assert.equal(onlyPages.length, 1);
+  assert.equal(onlyPages[0]?.id, 'page:pricing');
+
+  // Multi-word query
+  const wrapFlex = filterAndRankCommands(sampleItems, 'wrap flex');
+  assert.equal(wrapFlex.length, 1);
+  assert.equal(wrapFlex[0]?.id, 'el:wrap-row');
+});
+
+test('37. Single-element Wrap in Flex Row / Grid works cleanly in JSX and HTML', () => {
+  const jsxCode = `export default function Page() {
+  return (
+    <main>
+      <div className="card">One</div>
+      <div className="card">Two</div>
+    </main>
+  );
+}`;
+  const wrappedJsx = wrapElementsInContainer(jsxCode, false, [1], 'row');
+  assert.ok(wrappedJsx.includes("display: 'flex'"));
+  assert.ok(wrappedJsx.includes('<div className="card">One</div>'));
+
+  const htmlCode = `<body><section><article>Card A</article><article>Card B</article></section></body>`;
+  const wrappedHtml = wrapElementsInContainer(htmlCode, true, [2], 'grid-2');
+  assert.ok(wrappedHtml.includes('grid-template-columns: repeat(2, minmax(0, 1fr))'));
+  assert.ok(wrappedHtml.includes('<article>Card A</article>'));
+});
+
+
 
 
 

@@ -373,10 +373,12 @@ export function instrumentSourceWithStudioIds(
 }
 
 function camelToKebab(str: string): string {
+  if (str.startsWith('--')) return str;
   return str.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
 }
 
 function kebabToCamel(str: string): string {
+  if (str.startsWith('--')) return str;
   return str.replace(/-([a-z])/g, (_, ch: string) => ch.toUpperCase());
 }
 

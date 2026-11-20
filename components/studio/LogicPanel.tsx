@@ -133,7 +133,7 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
           <div className="rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center">
             <Zap className="mx-auto mb-2 h-6 w-6 text-slate-400" />
             <p className="text-sm font-medium text-slate-700">No logic yet</p>
-            <p className="mt-1 text-xs text-slate-500">Add a trigger and action to define this component's behaviour.</p>
+            <p className="mt-1 text-xs text-slate-500">Add a trigger and action to define this component&apos;s behaviour.</p>
           </div>
         )}
 

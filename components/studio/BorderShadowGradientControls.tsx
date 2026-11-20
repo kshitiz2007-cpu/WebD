@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 type Props = {
   selectionKey: string;
@@ -41,23 +41,20 @@ export default function BorderShadowGradientControls({ selectionKey, borderWidth
   const [angle, setAngle] = useState(135);
   const [blur, setBlur] = useState(28);
   const [spread, setSpread] = useState(1);
-  const [savedColors, setSavedColors] = useState<SavedHexColors>({ border: [], shadow: [] });
+  const [savedColors, setSavedColors] = useState<SavedHexColors>(() =>
+    typeof window !== 'undefined' ? readSavedColors() : { border: [], shadow: [] }
+  );
   const [activeSelection, setActiveSelection] = useState(selectionKey);
   const [saveMessage, setSaveMessage] = useState('');
 
-  useEffect(() => {
-    setSavedColors(readSavedColors());
-  }, []);
-
-  useEffect(() => {
-    if (activeSelection === selectionKey) return;
+  if (activeSelection !== selectionKey) {
     setActiveSelection(selectionKey);
     setBorderStops(DEFAULT_BORDER);
     setShadowStops(DEFAULT_SHADOW);
     setAngle(135);
     setBlur(28);
     setSpread(1);
-  }, [selectionKey, activeSelection]);
+  }
 
   const persistSavedColors = (next: SavedHexColors) => {
     setSavedColors(next);
