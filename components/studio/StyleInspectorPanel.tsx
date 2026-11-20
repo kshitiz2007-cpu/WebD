@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import GradientEditor from './GradientEditor';
 import BorderShadowGradientControls from './BorderShadowGradientControls';
+import ImageBlendDesigner from './ImageBlendDesigner';
 import {
   SHADOW_PRESETS,
   boxShadowToElevationHint,
@@ -744,6 +745,13 @@ export default function StyleInspectorPanel({
                 }
               />
             </section>
+
+            <ImageBlendDesigner
+              key={selected.studioId + '-image-blend'}
+              selectionKey={selected.studioId}
+              onPreview={(styles) => onPreviewStyles(selected.studioId, styles)}
+              onCommit={commitStyles}
+            />
 
             <BorderShadowGradientControls
               key={selected.studioId}
