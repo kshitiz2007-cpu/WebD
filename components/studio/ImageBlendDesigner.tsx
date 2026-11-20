@@ -9,6 +9,7 @@ type Props = {
 };
 
 const blendModes = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'soft-light', 'hard-light'] as const;
+const rgba = (hex: string, alpha: number) => { const h = hex.replace('#', ''); const n = Number.parseInt(h, 16); return Number.isFinite(n) ? `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${Math.max(0, Math.min(1, alpha))})` : 'rgba(0,0,0,0)'; };
 
 export default function ImageBlendDesigner({ selectionKey, onPreview, onCommit }: Props) {
   const [image, setImage] = useState('');
@@ -34,7 +35,7 @@ export default function ImageBlendDesigner({ selectionKey, onPreview, onCommit }
   }
 
   const stylesFor = (commit = false): Record<string, string | null> => ({
-    backgroundImage: image ? `linear-gradient(${overlay} ${overlayOpacity}%, transparent), url("${image}")` : null,
+    backgroundImage: image ? `linear-gradient(${rgba(overlay, overlayOpacity / 100)}, ${rgba(overlay, overlayOpacity / 100)}), url("${image}")` : null,
     backgroundBlendMode: image ? blend : null,
     backgroundSize: image ? size : null,
     backgroundPosition: image ? position : null,
@@ -95,7 +96,7 @@ export default function ImageBlendDesigner({ selectionKey, onPreview, onCommit }
       <label className="block space-y-1 text-[10px] text-slate-600">Blur ({softness}px)
         <input type="range" min="0" max="12" value={softness} onChange={(e) => setSoftness(Number(e.target.value))} className="w-full accent-blue-600" />
       </label>
-      <div className="h-24 overflow-hidden rounded-lg border border-slate-200 bg-slate-200" style={{ backgroundImage: image ? `linear-gradient(${overlay} ${overlayOpacity}%, transparent), url("${image}")` : undefined, backgroundBlendMode: blend, backgroundSize: 'cover', backgroundPosition: position }} />
+      <div className="h-24 overflow-hidden rounded-lg border border-slate-200 bg-slate-200" style={{ backgroundImage: image ? `linear-gradient(${rgba(overlay, overlayOpacity / 100)}, ${rgba(overlay, overlayOpacity / 100)}), url("${image}")` : undefined, backgroundBlendMode: blend, backgroundSize: 'cover', backgroundPosition: position }} />
       <div className="flex gap-2">
         <button type="button" disabled={!image} onClick={() => onPreview(stylesFor())} className="flex-1 rounded-md border border-slate-200 bg-white py-2 text-xs font-semibold disabled:opacity-40">Preview</button>
         <button type="button" disabled={!image} onClick={() => onCommit(stylesFor(true))} className="flex-1 rounded-md bg-blue-600 py-2 text-xs font-semibold text-white disabled:opacity-40">Apply Image</button>
