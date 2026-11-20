@@ -4,17 +4,21 @@ import React from 'react';
 import {
   Check,
   Clapperboard,
+  Clock,
   FolderUp,
   GitBranch,
   History,
   Images,
+  Layers3,
   LayoutGrid,
   Monitor,
+  MonitorSmartphone,
   PackagePlus,
   Palette,
   Redo2,
   RotateCcw,
   Save,
+  ShieldCheck,
   Smartphone,
   Sparkles,
   Tablet,
@@ -52,6 +56,15 @@ interface MobileToolsSheetProps {
   onToggleLogicPanel: () => void;
   showMotionPanel: boolean;
   onToggleMotionPanel: () => void;
+  showBrandRemixer?: boolean;
+  onToggleBrandRemixer?: () => void;
+  showHistoryPanel?: boolean;
+  onToggleHistoryPanel?: () => void;
+  showQaPanel?: boolean;
+  onToggleQaPanel?: () => void;
+  showRepeaterPanel?: boolean;
+  onToggleRepeaterPanel?: () => void;
+  onOpenMultiDeviceWall?: () => void;
   onReplayAnimations: () => void;
 }
 
@@ -83,6 +96,15 @@ export default function MobileToolsSheet({
   onToggleLogicPanel,
   showMotionPanel,
   onToggleMotionPanel,
+  showBrandRemixer = false,
+  onToggleBrandRemixer,
+  showHistoryPanel = false,
+  onToggleHistoryPanel,
+  showQaPanel = false,
+  onToggleQaPanel,
+  showRepeaterPanel = false,
+  onToggleRepeaterPanel,
+  onOpenMultiDeviceWall,
   onReplayAnimations,
 }: MobileToolsSheetProps) {
   if (!isOpen) return null;
@@ -289,6 +311,72 @@ export default function MobileToolsSheet({
                 <RotateCcw className="h-4 w-4 shrink-0 text-indigo-600" />
                 <span>Replay Motion</span>
               </button>
+              {onToggleBrandRemixer && (
+                <button
+                  type="button"
+                  onClick={() => runAndClose(onToggleBrandRemixer)}
+                  className={`flex min-h-[48px] items-center gap-2.5 rounded-xl border px-3 text-left text-xs font-semibold ${
+                    showBrandRemixer
+                      ? 'border-indigo-500 bg-indigo-50 text-indigo-800'
+                      : 'border-slate-200 bg-white text-slate-800'
+                  }`}
+                >
+                  <Sparkles className="h-4 w-4 shrink-0 text-indigo-600" />
+                  <span>Brand Remixer</span>
+                </button>
+              )}
+              {onToggleRepeaterPanel && (
+                <button
+                  type="button"
+                  onClick={() => runAndClose(onToggleRepeaterPanel)}
+                  className={`flex min-h-[48px] items-center gap-2.5 rounded-xl border px-3 text-left text-xs font-semibold ${
+                    showRepeaterPanel
+                      ? 'border-violet-500 bg-violet-50 text-violet-800'
+                      : 'border-slate-200 bg-white text-slate-800'
+                  }`}
+                >
+                  <Layers3 className="h-4 w-4 shrink-0 text-violet-600" />
+                  <span>Card Repeater</span>
+                </button>
+              )}
+              {onToggleQaPanel && (
+                <button
+                  type="button"
+                  onClick={() => runAndClose(onToggleQaPanel)}
+                  className={`flex min-h-[48px] items-center gap-2.5 rounded-xl border px-3 text-left text-xs font-semibold ${
+                    showQaPanel
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                      : 'border-slate-200 bg-white text-slate-800'
+                  }`}
+                >
+                  <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+                  <span>Live QA Audit</span>
+                </button>
+              )}
+              {onToggleHistoryPanel && (
+                <button
+                  type="button"
+                  onClick={() => runAndClose(onToggleHistoryPanel)}
+                  className={`flex min-h-[48px] items-center gap-2.5 rounded-xl border px-3 text-left text-xs font-semibold ${
+                    showHistoryPanel
+                      ? 'border-blue-500 bg-blue-50 text-blue-800'
+                      : 'border-slate-200 bg-white text-slate-800'
+                  }`}
+                >
+                  <Clock className="h-4 w-4 shrink-0 text-blue-600" />
+                  <span>History &amp; Diff</span>
+                </button>
+              )}
+              {onOpenMultiDeviceWall && (
+                <button
+                  type="button"
+                  onClick={() => runAndClose(onOpenMultiDeviceWall)}
+                  className="col-span-2 flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800"
+                >
+                  <MonitorSmartphone className="h-4 w-4 shrink-0 text-blue-600" />
+                  <span>Multi-Device Preview Wall (3-Up)</span>
+                </button>
+              )}
             </div>
           </div>
 

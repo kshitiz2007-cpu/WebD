@@ -1150,7 +1150,168 @@ function buildDesignerBridgeScript(
     }
   }, { capture: true, passive: true });
 
-  document.addEventListener('touchend', clearLongPress, { capture: true, passive: true });
+  var LAST_TAP_TIME = 0;
+  var LAST_TAP_STUDIO_ID = null;
+  var FINISH_EDIT_FN = null;
+
+  function startInlineTextEdit(target) {
+    if (!target || CURRENT_MODE !== 'design') return false;
+    var textMeta = getDirectText(target);
+    if (!textMeta.isTextEditable || target.children.length > 0) return false;
+    if (EDITING_EL === target) return true;
+    if (FINISH_EDIT_FN) {
+      FINISH_EDIT_FN(true);
+    }
+
+    EDITING_EL = target;
+    SELECTED_ID = target.getAttribute('data-studio-id');
+    var originalText = target.textContent || '';
+    target.setAttribute('contenteditable', 'true');
+    target.style.outline = '2px solid #2563EB';
+    target.style.outlineOffset = '2px';
+    target.focus();
+
+    try {
+      var range = document.createRange();
+      range.selectNodeContents(target);
+      var sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    } catch (_) {}
+
+    window.parent.postMessage({
+      type: 'studio:inline-edit-state',
+      active: true,
+      element: extractSnapshot(target)
+    }, '*');
+
+    function finishEdit(save) {
+      if (EDITING_EL !== target) return;
+      target.removeAttribute('contenteditable');
+      target.style.outline = '';
+      target.style.outlineOffset = '';
+      target.removeEventListener('blur', onBlur);
+      target.removeEventListener('keydown', onKeyDown);
+      EDITING_EL = null;
+      FINISH_EDIT_FN = null;
+      if (save) {
+        var nextText = target.textContent || '';
+        if (nextText !== originalText) {
+          window.parent.postMessage({
+            type: 'studio:inline-text',
+            studioId: target.getAttribute('data-studio-id'),
+            textContent: nextText
+          }, '*');
+        }
+      } else {
+        target.textContent = originalText;
+      }
+      window.parent.postMessage({
+        type: 'studio:inline-edit-state',
+        active: false
+      }, '*');
+    }
+    FINISH_EDIT_FN = finishEdit;
+
+    function onBlur() {
+      setTimeout(function() {
+        if (EDITING_EL === target && document.activeElement !== target) {
+          finishEdit(true);
+        }
+      }, 160);
+    }
+    function onKeyDown(ev) {
+      if (ev.key === 'Enter' && !ev.shiftKey) {
+        ev.preventDefault();
+        finishEdit(true);
+      } else if (ev.key === 'Escape') {
+        ev.preventDefault();
+        finishEdit(false);
+      }
+    }
+    target.addEventListener('blur', onBlur);
+    target.addEventListener('keydown', onKeyDown);
+    return true;
+  }
+
+  function resolveEffectiveBgColor(el) {
+    var cursor = el;
+    while (cursor && cursor.nodeType === 1) {
+      var bg = window.getComputedStyle(cursor).backgroundColor;
+      if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') {
+        return bg;
+      }
+      cursor = cursor.parentElement;
+    }
+    return 'rgb(255, 255, 255)';
+  }
+
+  function collectQaMetrics() {
+    var all = document.querySelectorAll('[data-studio-id]');
+    var nodes = [];
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      var sid = el.getAttribute('data-studio-id');
+      var parsed = parseStudioId(sid);
+      if (!parsed) continue;
+      var r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) continue;
+      var cs = window.getComputedStyle(el);
+      if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) continue;
+      var tag = el.tagName.toLowerCase();
+      var directText = getDirectText(el);
+      var isInteractive =
+        tag === 'button' ||
+        tag === 'a' ||
+        tag === 'input' ||
+        tag === 'select' ||
+        el.getAttribute('role') === 'button';
+      var headingMatch = tag.match(/^h([1-6])$/);
+      nodes.push({
+        studioId: sid,
+        filePath: parsed.filePath,
+        elementIndex: parsed.elementIndex,
+        tagName: tag,
+        label: (directText.text || (el.children.length === 0 ? (el.textContent || '').trim() : '') || el.getAttribute('aria-label') || tag).slice(0, 32),
+        textContent: el.children.length === 0 ? (el.textContent || '').trim() : (directText.text || ''),
+        color: cs.color || '',
+        backgroundColor: resolveEffectiveBgColor(el),
+        fontSizePx: parseFloat(cs.fontSize) || 16,
+        fontWeight: parseInt(cs.fontWeight, 10) || 400,
+        rect: { x: r.left, y: r.top, width: r.width, height: r.height },
+        isInteractive: isInteractive,
+        hasAlt: tag === 'img' ? Boolean((el.getAttribute('alt') || '').trim()) : undefined,
+        headingLevel: headingMatch ? Number(headingMatch[1]) : undefined
+      });
+    }
+    window.parent.postMessage({
+      type: 'studio:qa-metrics',
+      viewportWidth: window.innerWidth,
+      nodes: nodes
+    }, '*');
+  }
+
+  document.addEventListener('touchend', function(e) {
+    clearLongPress();
+    if (CURRENT_MODE !== 'design') return;
+    if (Date.now() < SUPPRESS_CLICK_UNTIL) return;
+    var target = e.target && e.target.closest ? e.target.closest('[data-studio-id]') : null;
+    if (!target) return;
+    var sid = target.getAttribute('data-studio-id');
+    var now = Date.now();
+    if (sid && sid === LAST_TAP_STUDIO_ID && now - LAST_TAP_TIME < 360) {
+      LAST_TAP_TIME = 0;
+      LAST_TAP_STUDIO_ID = null;
+      if (startInlineTextEdit(target)) {
+        SUPPRESS_CLICK_UNTIL = now + 400;
+      }
+      return;
+    }
+    LAST_TAP_TIME = now;
+    LAST_TAP_STUDIO_ID = sid;
+  }, { capture: true, passive: true });
   document.addEventListener('touchcancel', clearLongPress, { capture: true, passive: true });
 
   document.addEventListener('contextmenu', function(e) {
@@ -1217,48 +1378,10 @@ function buildDesignerBridgeScript(
     if (CURRENT_MODE !== 'design') return;
     var target = e.target && e.target.closest ? e.target.closest('[data-studio-id]') : null;
     if (!target) return;
-    var textMeta = getDirectText(target);
-    if (!textMeta.isTextEditable || target.children.length > 0) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-    EDITING_EL = target;
-    var originalText = target.textContent;
-    target.setAttribute('contenteditable', 'true');
-    target.style.outline = '2px solid #2563EB';
-    target.focus();
-
-    function finishEdit(save) {
-      target.removeAttribute('contenteditable');
-      target.style.outline = '';
-      target.removeEventListener('blur', onBlur);
-      target.removeEventListener('keydown', onKeyDown);
-      EDITING_EL = null;
-      if (save) {
-        var nextText = target.textContent || '';
-        if (nextText !== originalText) {
-          window.parent.postMessage({
-            type: 'studio:inline-text',
-            studioId: target.getAttribute('data-studio-id'),
-            textContent: nextText
-          }, '*');
-        }
-      } else {
-        target.textContent = originalText;
-      }
+    if (startInlineTextEdit(target)) {
+      e.preventDefault();
+      e.stopPropagation();
     }
-    function onBlur() { finishEdit(true); }
-    function onKeyDown(ev) {
-      if (ev.key === 'Enter' && !ev.shiftKey) {
-        ev.preventDefault();
-        finishEdit(true);
-      } else if (ev.key === 'Escape') {
-        ev.preventDefault();
-        finishEdit(false);
-      }
-    }
-    target.addEventListener('blur', onBlur);
-    target.addEventListener('keydown', onKeyDown);
   }, true);
 
   window.addEventListener('scroll', postSelectedRect, true);
@@ -1268,6 +1391,13 @@ function buildDesignerBridgeScript(
     var msg = ev.data || {};
     if (msg.type === 'studio:set-mode') {
       CURRENT_MODE = msg.mode;
+    } else if (msg.type === 'studio:start-inline-text-edit') {
+      var editTarget = findStudioElement(msg.studioId || SELECTED_ID);
+      if (editTarget) startInlineTextEdit(editTarget);
+    } else if (msg.type === 'studio:finish-inline-text-edit') {
+      if (FINISH_EDIT_FN) FINISH_EDIT_FN(msg.commit !== false);
+    } else if (msg.type === 'studio:run-qa-scan') {
+      collectQaMetrics();
     } else if (msg.type === 'studio:set-logic-rules') {
       LOGIC_RULES = Array.isArray(msg.rules) ? msg.rules.filter(function(rule) {
         return rule && typeof rule.componentId === 'string' && typeof rule.trigger === 'string' && typeof rule.action === 'string';

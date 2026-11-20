@@ -3,10 +3,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as ReactDOMClient from 'react-dom/client';
 import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  Bold,
   BoxSelect,
+  Check,
   ChevronDown,
   ChevronRight,
   Clapperboard,
@@ -16,16 +21,22 @@ import {
   Eye,
   Grid3x3,
   GripVertical,
+  Italic,
+  Layers3,
   LayoutGrid,
   Magnet,
+  MonitorSmartphone,
   MoreHorizontal,
   Move,
   PackagePlus,
   Plus,
   RotateCcw,
   Ruler,
+  ShieldCheck,
   Trash2,
+  Type,
   Wand2,
+  X,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -50,12 +61,18 @@ import {
 import { WrapContainerLayout } from '@/lib/studio/source-editor';
 import type { VisualLogicRule } from '@/lib/studio/logic-engine';
 import {
+  SpacingKind,
+  SpacingSide,
+  computeSpacingDragResult,
+  parseComputedBoxSpacing,
+} from '@/lib/studio/spacing-handles';
+import type { QaAuditIssue, QaRawNodeMetric } from '@/lib/studio/qa-audit';
+import {
   MultiAlignAction,
   NUDGE_GRID_STEPS,
   clampZoomScale,
   computeNudgeOffsets,
   computeRedlineMeasurements,
-  parseBoxSpacingPx,
   stepZoomScale,
 } from '@/lib/studio/visual-refinement';
 import {
@@ -114,6 +131,17 @@ interface VisualCanvasProps {
     trigger: 'contextmenu' | 'longpress' | 'button';
   }) => void;
   onOpenCommandPalette?: () => void;
+  showBeforeAfter?: boolean;
+  beforeSrcDoc?: string | null;
+  onToggleBeforeAfter?: () => void;
+  showQaOverlay?: boolean;
+  qaIssues?: QaAuditIssue[];
+  onToggleQaOverlay?: () => void;
+  onReceiveQaMetrics?: (nodes: QaRawNodeMetric[], viewportWidth: number) => void;
+  onFocusQaIssue?: (issue: QaAuditIssue) => void;
+  onOpenMultiDeviceWall?: () => void;
+  selectedRepeaterCount?: number;
+  onOpenRepeaterEditor?: () => void;
 }
 
 function parseStudioTarget(id: string): { filePath: string; elementIndex: number } | null {
@@ -183,6 +211,17 @@ export default function VisualCanvas({
   onReplayAnimations,
   onContextMenuElement,
   onOpenCommandPalette,
+  showBeforeAfter = false,
+  beforeSrcDoc = null,
+  onToggleBeforeAfter,
+  showQaOverlay = false,
+  qaIssues = [],
+  onToggleQaOverlay,
+  onReceiveQaMetrics,
+  onFocusQaIssue,
+  onOpenMultiDeviceWall,
+  selectedRepeaterCount = 0,
+  onOpenRepeaterEditor,
 }: VisualCanvasProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const mounted = React.useSyncExternalStore(
@@ -213,11 +252,18 @@ export default function VisualCanvas({
   // Phase 1, 2 & 3 Visual Refinement States
   const [specsMode, setSpecsMode] = useState(false);
   const [altPressed, setAltPressed] = useState(false);
+  const [spacingHandlesEnabled, setSpacingHandlesEnabled] = useState(true);
   const [gridOverlay, setGridOverlay] = useState<'off' | '12col' | '8px' | 'both'>('off');
   const [zoomMode, setZoomMode] = useState<'fit' | number>('fit');
   const [nudgeStep, setNudgeStep] = useState<number>(8);
   const [nudgeHud, setNudgeHud] = useState<{ x: number; y: number } | null>(null);
-  const [paddingScrubHud, setPaddingScrubHud] = useState<{ side: string; px: number } | null>(null);
+  const [spacingDragHud, setSpacingDragHud] = useState<{
+    kind: SpacingKind;
+    label: string;
+    hint: string;
+  } | null>(null);
+  const [inlineEditing, setInlineEditing] = useState<StudioElementSnapshot | null>(null);
+  const [beforeAfterPct, setBeforeAfterPct] = useState<number>(50);
   const [marqueeMode, setMarqueeMode] = useState(false);
   const [marqueeBox, setMarqueeBox] = useState<ElementRect | null>(null);
   const [spacePanActive, setSpacePanActive] = useState(false);
@@ -377,6 +423,7 @@ export default function VisualCanvas({
     onClearPendingSelect,
     onContextMenuElement,
     onOpenCommandPalette,
+    onReceiveQaMetrics,
   });
 
   useEffect(() => {
@@ -408,6 +455,7 @@ export default function VisualCanvas({
       onClearPendingSelect,
       onContextMenuElement,
       onOpenCommandPalette,
+      onReceiveQaMetrics,
     };
   });
 
@@ -575,6 +623,19 @@ export default function VisualCanvas({
         });
       } else if (msg.type === 'studio:open-command-palette') {
         callbacksRef.current.onOpenCommandPalette?.();
+      } else if (msg.type === 'studio:inline-edit-state') {
+        if (msg.active && msg.element) {
+          setInlineEditing(msg.element);
+          setRectOverride({ studioId: msg.element.studioId, rect: msg.element.rect });
+          callbacksRef.current.onSelectElement(msg.element, false, true);
+        } else {
+          setInlineEditing(null);
+        }
+      } else if (msg.type === 'studio:qa-metrics' && Array.isArray(msg.nodes)) {
+        callbacksRef.current.onReceiveQaMetrics?.(
+          msg.nodes as QaRawNodeMetric[],
+          Number(msg.viewportWidth) || 1280
+        );
       }
     };
     window.addEventListener('message', handleMessage);
@@ -965,12 +1026,12 @@ export default function VisualCanvas({
     window.addEventListener('pointercancel', onUp);
   };
 
-  const startPaddingScrub = (
-    side: 'top' | 'right' | 'bottom' | 'left',
-    initPx: number,
+  const startSpacingDrag = (
+    kind: SpacingKind,
+    side: SpacingSide,
     e: React.PointerEvent
   ) => {
-    if (!selected) return;
+    if (!selected || !boxSpacing) return;
     e.preventDefault();
     e.stopPropagation();
     try {
@@ -978,31 +1039,42 @@ export default function VisualCanvas({
     } catch {
       // Ignore
     }
-    const propMap = {
-      top: 'paddingTop',
-      right: 'paddingRight',
-      bottom: 'paddingBottom',
-      left: 'paddingLeft',
-    } as const;
+    const initialValues = kind === 'padding' ? boxSpacing.padding : boxSpacing.margin;
     const startX = e.clientX;
     const startY = e.clientY;
-    let latestPx = initPx;
+    let latestPatch: Record<string, string> | null = null;
     let didMove = false;
 
     const onMove = (ev: PointerEvent) => {
-      const dx = (ev.clientX - startX) / scale;
-      const dy = (ev.clientY - startY) / scale;
       if (!didMove && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 3) return;
       didMove = true;
-      const delta =
-        side === 'top' ? dy : side === 'bottom' ? -dy : side === 'left' ? dx : -dx;
-      latestPx = Math.max(0, Math.round(initPx + delta));
-      setPaddingScrubHud({ side, px: latestPx });
+      const symmetricMode = ev.altKey ? 'all' : ev.shiftKey ? 'axis' : 'single';
+      const result = computeSpacingDragResult({
+        kind,
+        side,
+        initialValues,
+        deltaX: ev.clientX - startX,
+        deltaY: ev.clientY - startY,
+        scale,
+        symmetricMode,
+        snapStep: 4,
+      });
+      latestPatch = result.stylePatch;
+      setSpacingDragHud({
+        kind,
+        label: result.badgeLabel,
+        hint:
+          symmetricMode === 'all'
+            ? 'All 4 sides (Alt)'
+            : symmetricMode === 'axis'
+            ? 'Symmetric axis (Shift)'
+            : 'Hold Shift for axis · Alt for all',
+      });
       iframeRef.current?.contentWindow?.postMessage(
         {
           type: 'studio:preview-style',
           studioId: selected.studioId,
-          styles: { [propMap[side]]: `${latestPx}px` },
+          styles: result.stylePatch,
         },
         '*'
       );
@@ -1012,13 +1084,35 @@ export default function VisualCanvas({
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
-      setPaddingScrubHud(null);
-      if (!didMove) return;
+      setSpacingDragHud(null);
+      if (!didMove || !latestPatch) return;
       onCommitPatch(selected.filePath, selected.elementIndex, {
-        styles: { [propMap[side]]: `${latestPx}px` },
+        styles: latestPatch,
       });
     };
 
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
+
+  const startBeforeAfterDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const parent = e.currentTarget.parentElement;
+    if (!parent) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const bounds = parent.getBoundingClientRect();
+    const updateFromClientX = (clientX: number) => {
+      const pct = ((clientX - bounds.left) / Math.max(1, bounds.width)) * 100;
+      setBeforeAfterPct(Math.max(4, Math.min(96, Math.round(pct))));
+    };
+    updateFromClientX(e.clientX);
+    const onMove = (ev: PointerEvent) => updateFromClientX(ev.clientX);
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
@@ -1085,10 +1179,7 @@ export default function VisualCanvas({
   const selWidth = liveRect ? liveRect.width * scale : 0;
   const selHeight = liveRect ? liveRect.height * scale : 0;
 
-  const boxSpacing = useMemo(
-    () => (selected ? parseBoxSpacingPx(selected.computedStyles) : null),
-    [selected]
-  );
+  const boxSpacing = selected ? parseComputedBoxSpacing(selected.computedStyles) : null;
 
   const redlineTargetRect = useMemo(() => {
     if (!showSpecs || !selected || !liveRect) return null;
@@ -1299,7 +1390,13 @@ export default function VisualCanvas({
               aria-label="Canvas view and snapping options"
               onClick={() => setViewMenuOpen((v) => !v)}
               className={`inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-[11px] font-medium whitespace-nowrap transition-colors ${
-                viewMenuOpen || showSpecs || gridOverlay !== 'off' || marqueeMode || splitView
+                viewMenuOpen ||
+                showSpecs ||
+                gridOverlay !== 'off' ||
+                marqueeMode ||
+                splitView ||
+                showBeforeAfter ||
+                showQaOverlay
                   ? 'border-blue-500 bg-blue-50 text-blue-700'
                   : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
@@ -1313,8 +1410,28 @@ export default function VisualCanvas({
               <div
                 role="menu"
                 aria-label="Canvas view options"
-                className="absolute right-0 top-9 z-50 w-60 space-y-1.5 rounded-xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-900/5"
+                className="absolute right-0 top-9 z-50 w-64 space-y-1.5 rounded-xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-900/5"
               >
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={spacingHandlesEnabled}
+                  onClick={() => setSpacingHandlesEnabled((v) => !v)}
+                  className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+                    spacingHandlesEnabled
+                      ? 'bg-emerald-50 text-emerald-700'
+                      : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Ruler className="h-3.5 w-3.5" />
+                    <span>Padding &amp; Margin Handles</span>
+                  </span>
+                  <span className="font-mono text-[10px]">
+                    {spacingHandlesEnabled ? 'On' : 'Off'}
+                  </span>
+                </button>
+
                 <button
                   type="button"
                   role="menuitemcheckbox"
@@ -1326,10 +1443,78 @@ export default function VisualCanvas({
                 >
                   <span className="flex items-center gap-2">
                     <Ruler className="h-3.5 w-3.5" />
-                    <span>Spacing Specs (Alt)</span>
+                    <span>Redline Specs (Alt)</span>
                   </span>
                   <span className="font-mono text-[10px]">{showSpecs ? 'On' : 'Off'}</span>
                 </button>
+
+                {onOpenMultiDeviceWall && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setViewMenuOpen(false);
+                      onOpenMultiDeviceWall();
+                    }}
+                    className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    <span className="flex items-center gap-2">
+                      <MonitorSmartphone className="h-3.5 w-3.5 text-blue-600" />
+                      <span>Multi-Device Wall (3-Up)</span>
+                    </span>
+                    <span className="font-mono text-[10px] text-slate-400">Open</span>
+                  </button>
+                )}
+
+                {onToggleBeforeAfter && (
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={showBeforeAfter}
+                    onClick={() => {
+                      setViewMenuOpen(false);
+                      onToggleBeforeAfter();
+                    }}
+                    className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+                      showBeforeAfter
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Columns2 className="h-3.5 w-3.5" />
+                      <span>Before / After Diff Slider</span>
+                    </span>
+                    <span className="font-mono text-[10px]">
+                      {showBeforeAfter ? 'On' : 'Off'}
+                    </span>
+                  </button>
+                )}
+
+                {onToggleQaOverlay && (
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={showQaOverlay}
+                    onClick={() => {
+                      setViewMenuOpen(false);
+                      onToggleQaOverlay();
+                    }}
+                    className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+                      showQaOverlay
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Live QA Audit Pins</span>
+                    </span>
+                    <span className="font-mono text-[10px]">
+                      {showQaOverlay ? `${qaIssues.length}` : 'Off'}
+                    </span>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -1465,6 +1650,27 @@ export default function VisualCanvas({
             className="h-full w-full border-0 bg-white"
           />
 
+          {/* Before / After Live Comparison Overlay (Original vs Edited) */}
+          {showBeforeAfter && beforeSrcDoc && (
+            <div
+              data-testid="studio-before-after-overlay"
+              className="pointer-events-none absolute inset-0 z-30 overflow-hidden"
+            >
+              <div
+                className="h-full overflow-hidden border-r-2 border-blue-600"
+                style={{ width: `${beforeAfterPct}%` }}
+              >
+                <iframe
+                  title="Original page before edits"
+                  srcDoc={beforeSrcDoc}
+                  sandbox="allow-scripts allow-same-origin"
+                  className="pointer-events-none h-full border-0 bg-white"
+                  style={{ width: targetWidth, maxWidth: 'none' }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Phase 2: Toggleable 12-Column & 8px Baseline Grid Overlays */}
           {(gridOverlay === '8px' || gridOverlay === 'both') && (
             <div
@@ -1494,6 +1700,68 @@ export default function VisualCanvas({
           )}
         </div>
 
+        {/* Unscaled Draggable Before / After Split Handle + Badges */}
+        {showBeforeAfter && beforeSrcDoc && (
+          <div className="pointer-events-none absolute inset-0 z-40">
+            <span className="absolute left-3 top-3 rounded-md bg-slate-900/90 px-2 py-1 text-[11px] font-semibold text-white shadow-sm">
+              Before (Original)
+            </span>
+            <span className="absolute right-3 top-3 rounded-md bg-blue-600/95 px-2 py-1 text-[11px] font-semibold text-white shadow-sm">
+              After (Current · {beforeAfterPct}%)
+            </span>
+            <div
+              role="slider"
+              aria-label="Before and after comparison divider"
+              aria-valuemin={4}
+              aria-valuemax={96}
+              aria-valuenow={beforeAfterPct}
+              tabIndex={0}
+              onPointerDown={startBeforeAfterDrag}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowLeft') setBeforeAfterPct((p) => Math.max(4, p - 5));
+                if (e.key === 'ArrowRight') setBeforeAfterPct((p) => Math.min(96, p + 5));
+              }}
+              className="pointer-events-auto touch-none absolute inset-y-0 w-8 -translate-x-1/2 cursor-ew-resize flex items-center justify-center"
+              style={{ left: `${beforeAfterPct}%` }}
+            >
+              <div className="h-full w-0.5 bg-blue-600 shadow-sm" />
+              <div className="absolute flex h-10 w-10 items-center justify-center rounded-full border-2 border-blue-600 bg-white text-blue-600 shadow-lg">
+                <Columns2 className="h-4 w-4" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Live QA Audit On-Canvas Numbered Pin Badges */}
+        {showQaOverlay && qaIssues.length > 0 && !showBeforeAfter && (
+          <div className="pointer-events-none absolute inset-0 z-30">
+            {qaIssues.map((issue, idx) => {
+              const pinLeft = Math.max(6, Math.min(scaledFrameWidth - 26, issue.rect.x * scale));
+              const pinTop = Math.max(6, Math.min(scaledFrameHeight - 26, issue.rect.y * scale));
+              return (
+                <button
+                  key={issue.id}
+                  type="button"
+                  data-testid="qa-canvas-pin"
+                  title={`${issue.title} — ${issue.detail}`}
+                  aria-label={`QA issue ${idx + 1}: ${issue.title}`}
+                  onClick={() => onFocusQaIssue?.(issue)}
+                  style={{ left: pinLeft, top: pinTop }}
+                  className={`pointer-events-auto absolute flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white font-mono text-[10px] font-bold text-white shadow-md transition-transform hover:scale-110 ${
+                    issue.severity === 'high'
+                      ? 'bg-rose-600'
+                      : issue.severity === 'medium'
+                      ? 'bg-amber-500'
+                      : 'bg-slate-600'
+                  }`}
+                >
+                  {idx + 1}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Marquee Drag Overlay */}
         {marqueeMode && interactionMode === 'design' && (
           <div
@@ -1516,7 +1784,7 @@ export default function VisualCanvas({
         )}
 
         {/* Unscaled Hover Outline Overlay so border and label stay sharp at any zoom */}
-        {interactionMode === 'design' && hoverInfo && (
+        {interactionMode === 'design' && !showBeforeAfter && hoverInfo && (
           <div
             className="pointer-events-none absolute border border-dashed border-blue-500 bg-blue-500/5"
             style={{
@@ -1572,7 +1840,7 @@ export default function VisualCanvas({
         ))}
 
         {/* Unscaled Selection Box + 8 Touch-Friendly Resize Handles + Floating Action Toolbar */}
-        {interactionMode === 'design' && selected && liveRect && (
+        {interactionMode === 'design' && !showBeforeAfter && selected && liveRect && (
           <div
             data-testid="studio-selection-box"
             className="pointer-events-none absolute z-20 border-2 border-blue-600"
@@ -1583,12 +1851,116 @@ export default function VisualCanvas({
               height: selHeight,
             }}
           >
-            {/* Floating Action Toolbar (stays unscaled & clamped inside viewport) */}
+            {/* Inline Text Formatting Mini-Bar OR Standard Floating Action Toolbar */}
+            {inlineEditing && inlineEditing.studioId === selected.studioId ? (
+              <div
+                data-testid="studio-inline-text-bar"
+                onMouseDown={(e) => e.preventDefault()}
+                className="pointer-events-auto absolute flex items-center gap-0.5 rounded-lg border border-blue-500 bg-slate-900 px-1.5 py-1 text-white shadow-xl"
+                style={{
+                  top: selTop < 48 ? selHeight + 10 : -44,
+                  left: Math.max(-selLeft + 4, Math.min(0, scaledFrameWidth - selLeft - 240)),
+                }}
+              >
+                <span className="px-1.5 text-[10px] font-semibold text-sky-300">Editing</span>
+                <button
+                  type="button"
+                  aria-label="Toggle bold text"
+                  onClick={() => {
+                    const isBold =
+                      Number(selected.computedStyles?.fontWeight) >= 700 ||
+                      selected.inlineStyles?.fontWeight === '700';
+                    onCommitPatch(selected.filePath, selected.elementIndex, {
+                      styles: { fontWeight: isBold ? '400' : '700' },
+                    });
+                  }}
+                  className="rounded p-1.5 text-slate-200 hover:bg-slate-700"
+                >
+                  <Bold className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Toggle italic text"
+                  onClick={() => {
+                    const isItalic = selected.computedStyles?.fontStyle === 'italic';
+                    onCommitPatch(selected.filePath, selected.elementIndex, {
+                      styles: { fontStyle: isItalic ? 'normal' : 'italic' },
+                    });
+                  }}
+                  className="rounded p-1.5 text-slate-200 hover:bg-slate-700"
+                >
+                  <Italic className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Align text left"
+                  onClick={() =>
+                    onCommitPatch(selected.filePath, selected.elementIndex, {
+                      styles: { textAlign: 'left' },
+                    })
+                  }
+                  className="rounded p-1.5 text-slate-200 hover:bg-slate-700"
+                >
+                  <AlignLeft className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Align text center"
+                  onClick={() =>
+                    onCommitPatch(selected.filePath, selected.elementIndex, {
+                      styles: { textAlign: 'center' },
+                    })
+                  }
+                  className="rounded p-1.5 text-slate-200 hover:bg-slate-700"
+                >
+                  <AlignCenter className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Align text right"
+                  onClick={() =>
+                    onCommitPatch(selected.filePath, selected.elementIndex, {
+                      styles: { textAlign: 'right' },
+                    })
+                  }
+                  className="rounded p-1.5 text-slate-200 hover:bg-slate-700"
+                >
+                  <AlignRight className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  title="Finish text editing"
+                  onClick={() =>
+                    iframeRef.current?.contentWindow?.postMessage(
+                      { type: 'studio:finish-inline-text-edit', commit: true },
+                      '*'
+                    )
+                  }
+                  className="ml-1 inline-flex items-center gap-1 rounded bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-500"
+                >
+                  <Check className="h-3 w-3" />
+                  <span>Done</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Cancel text editing"
+                  onClick={() =>
+                    iframeRef.current?.contentWindow?.postMessage(
+                      { type: 'studio:finish-inline-text-edit', commit: false },
+                      '*'
+                    )
+                  }
+                  className="rounded p-1 text-slate-300 hover:bg-slate-700"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
             <div
               className="pointer-events-auto absolute flex items-center gap-0.5 sm:gap-1 rounded-lg border border-slate-700 bg-slate-900 px-1.5 py-1 text-white shadow-lg"
               style={{
-                top: selTop < 44 ? selHeight + 10 : -40,
-                left: Math.max(-selLeft + 4, Math.min(0, scaledFrameWidth - selLeft - 210)),
+                top: selTop < 58 ? selHeight + 20 : -52,
+                left: Math.max(-selLeft + 4, Math.min(0, scaledFrameWidth - selLeft - 220)),
               }}
             >
               <span className="px-1 font-mono text-[11px] font-semibold text-sky-300">
@@ -1597,6 +1969,35 @@ export default function VisualCanvas({
               <span className="hidden sm:inline font-mono text-[10px] tabular-nums text-slate-300">
                 {Math.round(liveRect.width)}×{Math.round(liveRect.height)}
               </span>
+
+              {selected.isTextEditable && (
+                <button
+                  type="button"
+                  title="Edit text directly on canvas (or double-click / double-tap)"
+                  aria-label="Edit text inline"
+                  onClick={() =>
+                    iframeRef.current?.contentWindow?.postMessage(
+                      { type: 'studio:start-inline-text-edit', studioId: selected.studioId },
+                      '*'
+                    )
+                  }
+                  className="rounded p-1.5 sm:p-1 text-sky-300 hover:bg-slate-700"
+                >
+                  <Type className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                </button>
+              )}
+
+              {selectedRepeaterCount > 0 && onOpenRepeaterEditor && (
+                <button
+                  type="button"
+                  title="Add, reorder, or edit repeating cards in this grid"
+                  onClick={onOpenRepeaterEditor}
+                  className="hidden sm:inline-flex items-center gap-1 rounded bg-violet-600/90 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-violet-500"
+                >
+                  <Layers3 className="h-3 w-3" />
+                  <span>Cards ({selectedRepeaterCount})</span>
+                </button>
+              )}
 
               {selected.canReorderSiblings && (() => {
                 const reorderTarget =
@@ -1717,6 +2118,7 @@ export default function VisualCanvas({
                 </button>
               )}
             </div>
+            )}
 
             {/* 8 Touch-Friendly Resize Handles */}
             {handles.map((h) => (
@@ -1732,8 +2134,8 @@ export default function VisualCanvas({
               </button>
             ))}
 
-            {/* Phase 1: Visual Margin (amber) & Padding (emerald) Box Overlays + Direct Drag Ticks */}
-            {showSpecs && boxSpacing && (
+            {/* Visual Margin (orange) & Padding (green) Overlay Bands when Specs or Spacing Drag is active */}
+            {(showSpecs || spacingDragHud) && boxSpacing && (
               <>
                 {boxSpacing.margin.top > 0 && (
                   <div
@@ -1796,27 +2198,110 @@ export default function VisualCanvas({
                     style={{ width: Math.min(selWidth / 2, boxSpacing.padding.right * scale) }}
                   />
                 )}
+              </>
+            )}
 
-                {/* Direct On-Canvas Padding Drag Ticks (offset from n/w resize handles) */}
+            {/* Direct On-Canvas Padding (Green, inner) & Margin (Orange, outer) Drag Handles */}
+            {spacingHandlesEnabled && !inlineEditing && boxSpacing && selWidth >= 56 && selHeight >= 28 && (
+              <>
+                {/* Green Padding Drag Handles (inside edges, offset from blue resize handles) */}
                 <button
                   type="button"
-                  title={`Drag top padding (${boxSpacing.padding.top}px)`}
-                  aria-label="Drag top padding"
-                  onPointerDown={(e) => startPaddingScrub('top', boxSpacing.padding.top, e)}
-                  className="pointer-events-auto touch-none absolute left-[26%] -translate-x-1/2 cursor-ns-resize rounded-full bg-emerald-600 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-white shadow-xs"
-                  style={{ top: Math.min(selHeight - 16, Math.max(8, Math.round(boxSpacing.padding.top * scale * 0.5))) }}
+                  data-testid="spacing-handle-padding-top"
+                  title={`Drag top padding (${boxSpacing.padding.top}px) — Shift: Y-axis, Alt: All`}
+                  aria-label={`Drag top padding (${boxSpacing.padding.top}px)`}
+                  onPointerDown={(e) => startSpacingDrag('padding', 'top', e)}
+                  className="pointer-events-auto touch-none absolute left-[28%] top-0.5 -translate-x-1/2 cursor-ns-resize flex h-3 min-w-[26px] items-center justify-center rounded-full bg-emerald-600/90 px-1.5 text-[8px] font-mono font-bold text-white shadow-xs transition-transform hover:scale-110"
                 >
-                  {boxSpacing.padding.top}
+                  {boxSpacing.padding.top > 0 ? (
+                    boxSpacing.padding.top
+                  ) : (
+                    <span className="h-0.5 w-3 rounded-full bg-white/90" />
+                  )}
                 </button>
                 <button
                   type="button"
-                  title={`Drag left padding (${boxSpacing.padding.left}px)`}
-                  aria-label="Drag left padding"
-                  onPointerDown={(e) => startPaddingScrub('left', boxSpacing.padding.left, e)}
-                  className="pointer-events-auto touch-none absolute top-[74%] -translate-y-1/2 cursor-ew-resize rounded-full bg-emerald-600 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-white shadow-xs"
-                  style={{ left: Math.min(selWidth - 22, Math.max(8, Math.round(boxSpacing.padding.left * scale * 0.5))) }}
+                  data-testid="spacing-handle-padding-bottom"
+                  title={`Drag bottom padding (${boxSpacing.padding.bottom}px) — Shift: Y-axis, Alt: All`}
+                  aria-label={`Drag bottom padding (${boxSpacing.padding.bottom}px)`}
+                  onPointerDown={(e) => startSpacingDrag('padding', 'bottom', e)}
+                  className="pointer-events-auto touch-none absolute left-[28%] bottom-0.5 -translate-x-1/2 cursor-ns-resize flex h-3 min-w-[26px] items-center justify-center rounded-full bg-emerald-600/90 px-1.5 text-[8px] font-mono font-bold text-white shadow-xs transition-transform hover:scale-110"
                 >
-                  {boxSpacing.padding.left}
+                  {boxSpacing.padding.bottom > 0 ? (
+                    boxSpacing.padding.bottom
+                  ) : (
+                    <span className="h-0.5 w-3 rounded-full bg-white/90" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  data-testid="spacing-handle-padding-left"
+                  title={`Drag left padding (${boxSpacing.padding.left}px) — Shift: X-axis, Alt: All`}
+                  aria-label={`Drag left padding (${boxSpacing.padding.left}px)`}
+                  onPointerDown={(e) => startSpacingDrag('padding', 'left', e)}
+                  className="pointer-events-auto touch-none absolute left-0.5 top-[28%] -translate-y-1/2 cursor-ew-resize flex h-6 w-3 items-center justify-center rounded-full bg-emerald-600/90 shadow-xs transition-transform hover:scale-110"
+                >
+                  <span className="h-3 w-0.5 rounded-full bg-white/90" />
+                </button>
+                <button
+                  type="button"
+                  data-testid="spacing-handle-padding-right"
+                  title={`Drag right padding (${boxSpacing.padding.right}px) — Shift: X-axis, Alt: All`}
+                  aria-label={`Drag right padding (${boxSpacing.padding.right}px)`}
+                  onPointerDown={(e) => startSpacingDrag('padding', 'right', e)}
+                  className="pointer-events-auto touch-none absolute right-0.5 top-[28%] -translate-y-1/2 cursor-ew-resize flex h-6 w-3 items-center justify-center rounded-full bg-emerald-600/90 shadow-xs transition-transform hover:scale-110"
+                >
+                  <span className="h-3 w-0.5 rounded-full bg-white/90" />
+                </button>
+
+                {/* Orange Margin Drag Handles (outside edges, offset from blue resize handles) */}
+                <button
+                  type="button"
+                  data-testid="spacing-handle-margin-top"
+                  title={`Drag top margin (${boxSpacing.margin.top}px) — Shift: Y-axis, Alt: All`}
+                  aria-label={`Drag top margin (${boxSpacing.margin.top}px)`}
+                  onPointerDown={(e) => startSpacingDrag('margin', 'top', e)}
+                  className="pointer-events-auto touch-none absolute left-[72%] -top-3.5 -translate-x-1/2 cursor-ns-resize flex h-3 min-w-[26px] items-center justify-center rounded-full bg-amber-500/95 px-1.5 text-[8px] font-mono font-bold text-white shadow-xs transition-transform hover:scale-110"
+                >
+                  {boxSpacing.margin.top > 0 ? (
+                    boxSpacing.margin.top
+                  ) : (
+                    <span className="h-0.5 w-3 rounded-full bg-white/90" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  data-testid="spacing-handle-margin-bottom"
+                  title={`Drag bottom margin (${boxSpacing.margin.bottom}px) — Shift: Y-axis, Alt: All`}
+                  aria-label={`Drag bottom margin (${boxSpacing.margin.bottom}px)`}
+                  onPointerDown={(e) => startSpacingDrag('margin', 'bottom', e)}
+                  className="pointer-events-auto touch-none absolute left-[72%] -bottom-3.5 -translate-x-1/2 cursor-ns-resize flex h-3 min-w-[26px] items-center justify-center rounded-full bg-amber-500/95 px-1.5 text-[8px] font-mono font-bold text-white shadow-xs transition-transform hover:scale-110"
+                >
+                  {boxSpacing.margin.bottom > 0 ? (
+                    boxSpacing.margin.bottom
+                  ) : (
+                    <span className="h-0.5 w-3 rounded-full bg-white/90" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  data-testid="spacing-handle-margin-left"
+                  title={`Drag left margin (${boxSpacing.margin.left}px) — Shift: X-axis, Alt: All`}
+                  aria-label={`Drag left margin (${boxSpacing.margin.left}px)`}
+                  onPointerDown={(e) => startSpacingDrag('margin', 'left', e)}
+                  className="pointer-events-auto touch-none absolute -left-3.5 top-[72%] -translate-y-1/2 cursor-ew-resize flex h-6 w-3 items-center justify-center rounded-full bg-amber-500/95 shadow-xs transition-transform hover:scale-110"
+                >
+                  <span className="h-3 w-0.5 rounded-full bg-white/90" />
+                </button>
+                <button
+                  type="button"
+                  data-testid="spacing-handle-margin-right"
+                  title={`Drag right margin (${boxSpacing.margin.right}px) — Shift: X-axis, Alt: All`}
+                  aria-label={`Drag right margin (${boxSpacing.margin.right}px)`}
+                  onPointerDown={(e) => startSpacingDrag('margin', 'right', e)}
+                  className="pointer-events-auto touch-none absolute -right-3.5 top-[72%] -translate-y-1/2 cursor-ew-resize flex h-6 w-3 items-center justify-center rounded-full bg-amber-500/95 shadow-xs transition-transform hover:scale-110"
+                >
+                  <span className="h-3 w-0.5 rounded-full bg-white/90" />
                 </button>
               </>
             )}
@@ -1895,14 +2380,30 @@ export default function VisualCanvas({
             );
           })}
 
-        {/* Floating Keyboard Nudge / Padding Scrub Live Feedback Pill */}
-        {(nudgeHud || paddingScrubHud) && (
-          <div className="pointer-events-none absolute bottom-3 left-1/2 z-40 -translate-x-1/2 rounded-md bg-slate-900/95 px-2.5 py-1 font-mono text-[11px] font-semibold tabular-nums text-white shadow-lg">
-            {paddingScrubHud
-              ? `padding-${paddingScrubHud.side}: ${paddingScrubHud.px}px`
-              : nudgeHud
-                ? `Offset X: ${nudgeHud.x}px · Y: ${nudgeHud.y}px`
-                : ''}
+        {/* Floating Keyboard Nudge / Padding-Margin Drag Live Feedback Pill */}
+        {(nudgeHud || spacingDragHud) && (
+          <div
+            data-testid="studio-spacing-drag-hud"
+            className={`pointer-events-none absolute bottom-3 left-1/2 z-40 -translate-x-1/2 flex items-center gap-2 rounded-lg px-3 py-1.5 font-mono text-[11px] font-semibold tabular-nums text-white shadow-lg ${
+              spacingDragHud?.kind === 'padding'
+                ? 'bg-emerald-700'
+                : spacingDragHud?.kind === 'margin'
+                ? 'bg-amber-600'
+                : 'bg-slate-900/95'
+            }`}
+          >
+            {spacingDragHud ? (
+              <>
+                <span>{spacingDragHud.label}</span>
+                <span className="hidden sm:inline font-sans text-[10px] font-normal text-white/80">
+                  · {spacingDragHud.hint}
+                </span>
+              </>
+            ) : nudgeHud ? (
+              `Offset X: ${nudgeHud.x}px · Y: ${nudgeHud.y}px`
+            ) : (
+              ''
+            )}
           </div>
         )}
       </div>

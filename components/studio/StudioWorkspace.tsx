@@ -8,6 +8,33 @@ import ExportProductionModal from './ExportProductionModal';
 import CanvasContextMenu from './CanvasContextMenu';
 import CommandPaletteModal from './CommandPaletteModal';
 import MobileToolsSheet from './MobileToolsSheet';
+import BrandRemixerPanel from './BrandRemixerPanel';
+import HistoryTimelinePanel, { type HistoryTimelineEntry } from './HistoryTimelinePanel';
+import QaAuditPanel from './QaAuditPanel';
+import RepeaterEditorPanel from './RepeaterEditorPanel';
+import MultiDeviceWallModal from './MultiDeviceWallModal';
+import {
+  type BrandRemixConfig,
+  DEFAULT_BRAND_REMIX_CONFIG,
+  applyBrandRemixToGlobalCss,
+  stripBrandRemixFromGlobalCss,
+} from '@/lib/studio/brand-remixer';
+import {
+  type QaAuditIssue,
+  type QaRawNodeMetric,
+  analyzeDomMetricsForQa,
+} from '@/lib/studio/qa-audit';
+import {
+  type RepeaterGroup,
+  addRepeaterItemFromLast,
+  detectRepeaterGroups,
+  duplicateRepeaterItem,
+  findRepeaterForElement,
+  moveRepeaterItem,
+  removeRepeaterItem,
+  updateRepeaterSlotText,
+} from '@/lib/studio/repeater-detector';
+import { buildPreviewDocument } from '@/lib/studio/preview-runner';
 import { normalizeLogicRules, type VisualLogicRule } from '@/lib/studio/logic-engine';
 import {
   ElementAnimationConfig,
@@ -133,6 +160,15 @@ export default function StudioWorkspace() {
   );
   const [historyPast, setHistoryPast] = useState<Record<string, string>[]>([]);
   const [historyFuture, setHistoryFuture] = useState<Record<string, string>[]>([]);
+  const [historyTimeline, setHistoryTimeline] = useState<HistoryTimelineEntry[]>(() => [
+    {
+      id: 'cp-initial',
+      label: 'Initial Project',
+      timestamp: 'Start',
+      files: STARTER_NEXTJS_FILES,
+    },
+  ]);
+  const [historyIndex, setHistoryIndex] = useState<number>(0);
 
   const [activeRoute, setActiveRoute] = useState<string>('/');
   const [viewport, setViewport] = useState<ViewportPreset>('desktop');
@@ -146,6 +182,18 @@ export default function StudioWorkspace() {
   const [isCodeDrawerOpen, setIsCodeDrawerOpen] = useState(false);
   const [isLogicPanelOpen, setIsLogicPanelOpen] = useState(false);
   const [isMotionPanelOpen, setIsMotionPanelOpen] = useState(false);
+  const [isBrandRemixerOpen, setIsBrandRemixerOpen] = useState(false);
+  const [brandRemixConfig, setBrandRemixConfig] = useState<BrandRemixConfig>(
+    DEFAULT_BRAND_REMIX_CONFIG
+  );
+  const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState(false);
+  const [isCompareOpen, setIsCompareOpen] = useState(false);
+  const [isQaPanelOpen, setIsQaPanelOpen] = useState(false);
+  const [qaIssues, setQaIssues] = useState<QaAuditIssue[]>([]);
+  const [isQaScanning, setIsQaScanning] = useState(false);
+  const [isRepeaterOpen, setIsRepeaterOpen] = useState(false);
+  const [activeRepeaterGroupIdx, setActiveRepeaterGroupIdx] = useState(0);
+  const [isMultiDeviceWallOpen, setIsMultiDeviceWallOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [codeDrawerFile, setCodeDrawerFile] = useState<string>('app/page.tsx');
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -180,6 +228,7 @@ export default function StudioWorkspace() {
   } | null>(null);
   const [actionToast, setActionToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const qaScanTimeoutRef = useRef<number | null>(null);
   const [externalLibVersion, setExternalLibVersion] = useState(0);
   const [pendingSelectStudioId, setPendingSelectStudioId] = useState<string | null>(null);
   const [lastPageTarget, setLastPageTarget] = useState<{
@@ -217,86 +266,98 @@ export default function StudioWorkspace() {
   const showGlobalStylesPanel = isCompactViewport ? compactGlobalStylesOpen : desktopGlobalStylesOpen;
   const showSmartAligner = isCompactViewport ? compactSmartAlignerOpen : desktopSmartAlignerOpen;
 
+  const closeTransientOverlayPanels = useCallback(() => {
+    setIsLogicPanelOpen(false);
+    setIsMotionPanelOpen(false);
+    setIsBrandRemixerOpen(false);
+    setIsHistoryPanelOpen(false);
+    setIsQaPanelOpen(false);
+    setIsRepeaterOpen(false);
+    setCompactLeftOpen(false);
+    setCompactRightOpen(false);
+    setCompactGradientOpen(false);
+    setCompactGlobalStylesOpen(false);
+    setCompactSmartAlignerOpen(false);
+    if (!isCompactViewport) {
+      setDesktopGradientOpen(false);
+      setDesktopGlobalStylesOpen(false);
+      setDesktopSmartAlignerOpen(false);
+    }
+  }, [isCompactViewport]);
+
   const handleToggleLeftPanel = useCallback(() => {
     if (isCompactViewport) {
-      setCompactLeftOpen((v) => !v);
-      setCompactRightOpen(false);
-      setCompactGradientOpen(false);
-      setCompactGlobalStylesOpen(false);
-      setCompactSmartAlignerOpen(false);
+      const next = !compactLeftOpen;
+      closeTransientOverlayPanels();
+      setCompactLeftOpen(next);
     } else {
       setDesktopLeftOpen((v) => !v);
     }
-  }, [isCompactViewport]);
+  }, [isCompactViewport, compactLeftOpen, closeTransientOverlayPanels]);
 
   const handleToggleRightPanel = useCallback(() => {
     if (isCompactViewport) {
-      setCompactRightOpen((v) => !v);
-      setCompactLeftOpen(false);
-      setCompactGradientOpen(false);
-      setCompactGlobalStylesOpen(false);
-      setCompactSmartAlignerOpen(false);
+      const next = !compactRightOpen;
+      closeTransientOverlayPanels();
+      setCompactRightOpen(next);
     } else {
       setDesktopRightOpen((v) => !v);
     }
-  }, [isCompactViewport]);
+  }, [isCompactViewport, compactRightOpen, closeTransientOverlayPanels]);
 
   const handleToggleGradientPanel = useCallback(() => {
     if (isCompactViewport) {
-      setCompactGradientOpen((v) => !v);
-      setCompactLeftOpen(false);
-      setCompactRightOpen(false);
-      setCompactGlobalStylesOpen(false);
-      setCompactSmartAlignerOpen(false);
+      const next = !compactGradientOpen;
+      closeTransientOverlayPanels();
+      setCompactGradientOpen(next);
     } else {
-      setDesktopGradientOpen((v) => {
-        const next = !v;
-        if (next) {
-          setDesktopSmartAlignerOpen(false);
-          setDesktopGlobalStylesOpen(false);
-        }
-        return next;
-      });
+      const next = !desktopGradientOpen;
+      closeTransientOverlayPanels();
+      setDesktopGradientOpen(next);
     }
-  }, [isCompactViewport]);
+  }, [isCompactViewport, compactGradientOpen, desktopGradientOpen, closeTransientOverlayPanels]);
 
   const handleToggleGlobalStylesPanel = useCallback(() => {
     if (isCompactViewport) {
-      setCompactGlobalStylesOpen((v) => !v);
-      setCompactLeftOpen(false);
-      setCompactRightOpen(false);
-      setCompactGradientOpen(false);
-      setCompactSmartAlignerOpen(false);
+      const next = !compactGlobalStylesOpen;
+      closeTransientOverlayPanels();
+      setCompactGlobalStylesOpen(next);
     } else {
-      setDesktopGlobalStylesOpen((v) => {
-        const next = !v;
-        if (next) {
-          setDesktopGradientOpen(false);
-          setDesktopSmartAlignerOpen(false);
-        }
-        return next;
-      });
+      const next = !desktopGlobalStylesOpen;
+      closeTransientOverlayPanels();
+      setDesktopGlobalStylesOpen(next);
     }
-  }, [isCompactViewport]);
+  }, [isCompactViewport, compactGlobalStylesOpen, desktopGlobalStylesOpen, closeTransientOverlayPanels]);
 
   const handleToggleSmartAligner = useCallback(() => {
     if (isCompactViewport) {
-      setCompactSmartAlignerOpen((v) => !v);
-      setCompactLeftOpen(false);
-      setCompactRightOpen(false);
-      setCompactGradientOpen(false);
-      setCompactGlobalStylesOpen(false);
+      const next = !compactSmartAlignerOpen;
+      closeTransientOverlayPanels();
+      setCompactSmartAlignerOpen(next);
     } else {
-      setDesktopSmartAlignerOpen((v) => {
-        const next = !v;
-        if (next) {
-          setDesktopGradientOpen(false);
-          setDesktopGlobalStylesOpen(false);
-        }
-        return next;
-      });
+      const next = !desktopSmartAlignerOpen;
+      closeTransientOverlayPanels();
+      setDesktopSmartAlignerOpen(next);
     }
-  }, [isCompactViewport]);
+  }, [isCompactViewport, compactSmartAlignerOpen, desktopSmartAlignerOpen, closeTransientOverlayPanels]);
+
+  const handleToggleBrandRemixer = useCallback(() => {
+    const next = !isBrandRemixerOpen;
+    closeTransientOverlayPanels();
+    setIsBrandRemixerOpen(next);
+  }, [isBrandRemixerOpen, closeTransientOverlayPanels]);
+
+  const handleToggleHistoryPanel = useCallback(() => {
+    const next = !isHistoryPanelOpen;
+    closeTransientOverlayPanels();
+    setIsHistoryPanelOpen(next);
+  }, [isHistoryPanelOpen, closeTransientOverlayPanels]);
+
+  const handleToggleQaPanel = useCallback(() => {
+    const next = !isQaPanelOpen;
+    closeTransientOverlayPanels();
+    setIsQaPanelOpen(next);
+  }, [isQaPanelOpen, closeTransientOverlayPanels]);
 
   const activePage = useMemo(() => {
     return (
@@ -441,9 +502,29 @@ export default function StudioWorkspace() {
   }, [cssSignature]);
 
   const commitFilesMutation = useCallback(
-    (nextFiles: Record<string, string>, touchedFile?: string) => {
+    (nextFiles: Record<string, string>, touchedFile?: string, actionLabel?: string) => {
       setHistoryPast((prev) => [...prev.slice(-49), project.files]);
       setHistoryFuture([]);
+      const timestamp = new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+      const fallbackLabel = touchedFile
+        ? `Edited ${touchedFile.split('/').pop()}`
+        : 'Updated Project';
+      const entry: HistoryTimelineEntry = {
+        id: `cp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        label: actionLabel || fallbackLabel,
+        timestamp,
+        files: nextFiles,
+      };
+      setHistoryTimeline((prev) => {
+        const base = prev.slice(0, historyIndex + 1);
+        const next = [...base, entry].slice(-50);
+        setHistoryIndex(next.length - 1);
+        return next;
+      });
       const scanned = scanProjectStructure(nextFiles);
       setProject((prev) => ({
         ...prev,
@@ -456,7 +537,7 @@ export default function StudioWorkspace() {
         setCodeDrawerFile(touchedFile);
       }
     },
-    [project.files]
+    [project.files, historyIndex]
   );
 
   const handleInstallPageDependency = useCallback((command: string): { ok: boolean; error?: string } => {
@@ -505,6 +586,7 @@ export default function StudioWorkspace() {
     const previous = historyPast[historyPast.length - 1];
     setHistoryPast((prev) => prev.slice(0, -1));
     setHistoryFuture((prev) => [project.files, ...prev.slice(0, 49)]);
+    setHistoryIndex((idx) => Math.max(0, idx - 1));
     const scanned = scanProjectStructure(previous);
     setProject((prev) => ({
       ...prev,
@@ -520,6 +602,7 @@ export default function StudioWorkspace() {
     const next = historyFuture[0];
     setHistoryFuture((prev) => prev.slice(1));
     setHistoryPast((prev) => [...prev.slice(-49), project.files]);
+    setHistoryIndex((idx) => Math.min(Math.max(0, historyTimeline.length - 1), idx + 1));
     const scanned = scanProjectStructure(next);
     setProject((prev) => ({
       ...prev,
@@ -528,7 +611,7 @@ export default function StudioWorkspace() {
       framework: scanned.framework,
       globalCssPaths: scanned.globalCssPaths,
     }));
-  }, [historyFuture, project.files]);
+  }, [historyFuture, project.files, historyTimeline.length]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -569,6 +652,7 @@ export default function StudioWorkspace() {
   useEffect(() => {
     return () => {
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+      if (qaScanTimeoutRef.current) window.clearTimeout(qaScanTimeoutRef.current);
     };
   }, []);
 
@@ -1844,6 +1928,18 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
       setProject(nextProj);
       setHistoryPast([]);
       setHistoryFuture([]);
+      setHistoryTimeline([
+        {
+          id: `cp-load-${Date.now()}`,
+          label: `Loaded ${nextProj.name}`,
+          timestamp: 'Start',
+          files: nextProj.files,
+        },
+      ]);
+      setHistoryIndex(0);
+      setBrandRemixConfig(DEFAULT_BRAND_REMIX_CONFIG);
+      setIsCompareOpen(false);
+      setQaIssues([]);
       setIsolatedComponentPath(null);
       setSelected(null);
       setMultiSelected([]);
@@ -2036,6 +2132,15 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
     setProject(restored);
     setHistoryPast([]);
     setHistoryFuture([]);
+    setHistoryTimeline([
+      {
+        id: `cp-draft-${Date.now()}`,
+        label: `Restored Draft: ${draft.title}`,
+        timestamp: 'Restored',
+        files: restored.files,
+      },
+    ]);
+    setHistoryIndex(0);
     setIsolatedComponentPath(null);
     setSelected(null);
     setMultiSelected([]);
@@ -2116,27 +2221,23 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
     [multiSelected, handleWrapMultiSelected, project.files, commitFilesMutation, showToastFeedback]
   );
 
-  const handleOpenLogicForTarget = useCallback((target?: StudioElementSnapshot | null) => {
-    if (target) setSelected(target);
-    setIsMotionPanelOpen(false);
-    setCompactLeftOpen(false);
-    setCompactRightOpen(false);
-    setCompactGradientOpen(false);
-    setCompactGlobalStylesOpen(false);
-    setCompactSmartAlignerOpen(false);
-    setIsLogicPanelOpen(true);
-  }, []);
+  const handleOpenLogicForTarget = useCallback(
+    (target?: StudioElementSnapshot | null) => {
+      if (target) setSelected(target);
+      closeTransientOverlayPanels();
+      setIsLogicPanelOpen(true);
+    },
+    [closeTransientOverlayPanels]
+  );
 
-  const handleOpenMotionForTarget = useCallback((target?: StudioElementSnapshot | null) => {
-    if (target) setSelected(target);
-    setIsLogicPanelOpen(false);
-    setCompactLeftOpen(false);
-    setCompactRightOpen(false);
-    setCompactGradientOpen(false);
-    setCompactGlobalStylesOpen(false);
-    setCompactSmartAlignerOpen(false);
-    setIsMotionPanelOpen(true);
-  }, []);
+  const handleOpenMotionForTarget = useCallback(
+    (target?: StudioElementSnapshot | null) => {
+      if (target) setSelected(target);
+      closeTransientOverlayPanels();
+      setIsMotionPanelOpen(true);
+    },
+    [closeTransientOverlayPanels]
+  );
 
   const handleContextMenuElement = useCallback(
     (payload: {
@@ -2153,6 +2254,352 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
       });
     },
     []
+  );
+
+  // ---- 1-Tap Brand Remixer ----
+  const handleApplyBrandRemix = useCallback(
+    (nextConfig: BrandRemixConfig, actionLabel: string) => {
+      const cssPath =
+        project.globalCssPaths.find((p) => Boolean(project.files[p])) ||
+        Object.keys(project.files).find((p) => /\.css$/i.test(p)) ||
+        (project.framework === 'nextjs-app'
+          ? 'app/globals.css'
+          : project.framework === 'react-vite'
+          ? 'src/index.css'
+          : 'styles.css');
+      const currentCss = project.files[cssPath] || '';
+      const nextCss = applyBrandRemixToGlobalCss(currentCss, nextConfig);
+      setBrandRemixConfig(nextConfig);
+      commitFilesMutation({ ...project.files, [cssPath]: nextCss }, cssPath, actionLabel);
+      showToastFeedback(actionLabel);
+    },
+    [project.globalCssPaths, project.files, project.framework, commitFilesMutation, showToastFeedback]
+  );
+
+  const handleResetBrandRemix = useCallback(() => {
+    const cssPath =
+      project.globalCssPaths.find((p) => Boolean(project.files[p])) ||
+      Object.keys(project.files).find((p) => /\.css$/i.test(p));
+    setBrandRemixConfig(DEFAULT_BRAND_REMIX_CONFIG);
+    if (!cssPath || !project.files[cssPath]) {
+      showToastFeedback('Reset brand theme defaults');
+      return;
+    }
+    const stripped = stripBrandRemixFromGlobalCss(project.files[cssPath]);
+    commitFilesMutation(
+      { ...project.files, [cssPath]: stripped },
+      cssPath,
+      'Reset Brand Remix'
+    );
+    showToastFeedback('Cleared Brand Remix overrides');
+  }, [project.globalCssPaths, project.files, commitFilesMutation, showToastFeedback]);
+
+  // ---- Visual History Timeline & Before/After Diff ----
+  const handleJumpToHistoryIndex = useCallback(
+    (targetIdx: number) => {
+      const clamped = Math.max(0, Math.min(historyTimeline.length - 1, targetIdx));
+      const targetEntry = historyTimeline[clamped];
+      if (!targetEntry) return;
+      const pastEntries = historyTimeline.slice(0, clamped).map((e) => e.files);
+      const futureEntries = historyTimeline.slice(clamped + 1).map((e) => e.files);
+      setHistoryPast(pastEntries);
+      setHistoryFuture(futureEntries);
+      setHistoryIndex(clamped);
+      const scanned = scanProjectStructure(targetEntry.files);
+      setProject((prev) => ({
+        ...prev,
+        files: targetEntry.files,
+        pages: scanned.pages,
+        framework: scanned.framework,
+        globalCssPaths: scanned.globalCssPaths,
+      }));
+      showToastFeedback(`Restored checkpoint: ${targetEntry.label}`);
+    },
+    [historyTimeline, showToastFeedback]
+  );
+
+  const handleResetToOriginal = useCallback(() => {
+    setBrandRemixConfig(DEFAULT_BRAND_REMIX_CONFIG);
+    commitFilesMutation(
+      { ...project.originalFiles },
+      activePage.filePath,
+      'Reset to Original Design'
+    );
+    showToastFeedback('Restored original project state');
+  }, [project.originalFiles, activePage.filePath, commitFilesMutation, showToastFeedback]);
+
+  const [originalCompiledCss, setOriginalCompiledCss] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isCompareOpen) return;
+    const controller = new AbortController();
+    const origCssText = project.globalCssPaths
+      .map((p) => project.originalFiles[p] || '')
+      .join('\n');
+    const origSourceText = Object.entries(project.originalFiles)
+      .filter(([p, c]) => /\.(tsx|jsx|ts|js|html)$/i.test(p) && !isVirtualMediaDataUrlFile(p, c))
+      .map(([, c]) => c)
+      .join('\n');
+
+    (async () => {
+      try {
+        const res = await fetch('/api/compile-css', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            css: origCssText,
+            sources: [origSourceText],
+          }),
+        });
+        const parsed = await safeReadJsonResponse<{ css?: string }>(res);
+        if (!controller.signal.aborted && parsed.ok && typeof parsed.data.css === 'string') {
+          setOriginalCompiledCss(parsed.data.css);
+        }
+      } catch {
+        // Ignore abort or transient compile errors
+      }
+    })();
+
+    return () => controller.abort();
+  }, [isCompareOpen, project.originalFiles, project.globalCssPaths]);
+
+  const beforeSrcDoc = useMemo(() => {
+    if (!isCompareOpen) return null;
+    const origProject: VirtualProject = {
+      ...project,
+      files: project.originalFiles,
+    };
+    return buildPreviewDocument(
+      origProject,
+      canvasTargetPage,
+      originalCompiledCss ?? compiledTailwindCss,
+      'interact',
+      null,
+      { isolateComponent: Boolean(activeIsolatedPath) }
+    ).html;
+  }, [
+    isCompareOpen,
+    project,
+    canvasTargetPage,
+    originalCompiledCss,
+    compiledTailwindCss,
+    activeIsolatedPath,
+  ]);
+
+  const wallSrcDoc = useMemo(() => {
+    if (!isMultiDeviceWallOpen) return '';
+    return buildPreviewDocument(
+      project,
+      canvasTargetPage,
+      compiledTailwindCss,
+      'interact',
+      null,
+      { isolateComponent: Boolean(activeIsolatedPath) }
+    ).html;
+  }, [isMultiDeviceWallOpen, project, canvasTargetPage, compiledTailwindCss, activeIsolatedPath]);
+
+  // ---- Live QA Audit & 1-Click Auto-Fix ----
+  const handleTriggerQaScan = useCallback(() => {
+    setIsQaScanning(true);
+    iframeRef.current?.contentWindow?.postMessage({ type: 'studio:run-qa-scan' }, '*');
+    if (qaScanTimeoutRef.current) window.clearTimeout(qaScanTimeoutRef.current);
+    qaScanTimeoutRef.current = window.setTimeout(() => {
+      setIsQaScanning(false);
+    }, 1500);
+  }, []);
+
+  useEffect(() => {
+    if (!isQaPanelOpen) return;
+    const t = window.setTimeout(() => {
+      handleTriggerQaScan();
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [isQaPanelOpen, viewport, canvasTargetPage.filePath, handleTriggerQaScan]);
+
+  const handleReceiveQaMetrics = useCallback(
+    (nodes: QaRawNodeMetric[], vpWidth: number) => {
+      if (qaScanTimeoutRef.current) {
+        window.clearTimeout(qaScanTimeoutRef.current);
+        qaScanTimeoutRef.current = null;
+      }
+      const nextIssues = analyzeDomMetricsForQa(nodes, vpWidth);
+      setQaIssues(nextIssues);
+      setIsQaScanning(false);
+    },
+    []
+  );
+
+  const handleFocusQaIssue = useCallback((issue: QaAuditIssue) => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: 'studio:select-by-id', studioId: issue.studioId, scroll: true },
+      '*'
+    );
+  }, []);
+
+  const handleAutoFixQaIssue = useCallback(
+    (issue: QaAuditIssue) => {
+      const code = project.files[issue.filePath];
+      if (!code) return;
+      const isHtml = /\.html?$/i.test(issue.filePath);
+      const updated = applyElementPatchToSource(
+        code,
+        issue.elementIndex,
+        isHtml,
+        issue.autoFixPatch
+      );
+      if (updated === code) return;
+      commitFilesMutation(
+        { ...project.files, [issue.filePath]: updated },
+        issue.filePath,
+        `QA Fix: ${issue.title}`
+      );
+      showToastFeedback(`Auto-fixed: ${issue.title}`);
+      window.setTimeout(() => {
+        handleTriggerQaScan();
+      }, 650);
+    },
+    [project.files, commitFilesMutation, showToastFeedback, handleTriggerQaScan]
+  );
+
+  const handleAutoFixAllQaIssues = useCallback(() => {
+    if (qaIssues.length === 0) return;
+    const byFile = new Map<string, Array<{ elementIndex: number; patch: ElementSourcePatch }>>();
+    for (const issue of qaIssues) {
+      if (!project.files[issue.filePath]) continue;
+      const list = byFile.get(issue.filePath) || [];
+      list.push({ elementIndex: issue.elementIndex, patch: issue.autoFixPatch });
+      byFile.set(issue.filePath, list);
+    }
+    const nextFiles = { ...project.files };
+    let firstTouched: string | undefined;
+    for (const [fp, updates] of byFile.entries()) {
+      const code = project.files[fp];
+      if (!code) continue;
+      const isHtml = /\.html?$/i.test(fp);
+      const updated = applyBatchElementPatches(code, isHtml, updates);
+      if (updated !== code) {
+        nextFiles[fp] = updated;
+        if (!firstTouched) firstTouched = fp;
+      }
+    }
+    if (!firstTouched) return;
+    commitFilesMutation(
+      nextFiles,
+      firstTouched,
+      `QA Auto-Fix All (${qaIssues.length})`
+    );
+    showToastFeedback(`Applied ${qaIssues.length} QA auto-fixes`);
+    window.setTimeout(() => {
+      handleTriggerQaScan();
+    }, 700);
+  }, [qaIssues, project.files, commitFilesMutation, showToastFeedback, handleTriggerQaScan]);
+
+  // ---- Smart Card / Grid Repeater Editor ----
+  const repeaterGroups = useMemo<RepeaterGroup[]>(() => {
+    const code = project.files[canvasTargetPage.filePath] || '';
+    if (!code) return [];
+    return detectRepeaterGroups(code, canvasTargetPage.filePath);
+  }, [project.files, canvasTargetPage.filePath]);
+
+  const selectedRepeaterGroup = useMemo<RepeaterGroup | null>(() => {
+    if (!selected) return null;
+    const code = project.files[selected.filePath] || '';
+    if (!code) return null;
+    return findRepeaterForElement(code, selected.filePath, selected.elementIndex);
+  }, [selected, project.files]);
+
+  const handleOpenRepeaterForSelection = useCallback(() => {
+    if (selectedRepeaterGroup) {
+      const idx = repeaterGroups.findIndex(
+        (g) =>
+          g.filePath === selectedRepeaterGroup.filePath &&
+          g.containerElementIndex === selectedRepeaterGroup.containerElementIndex
+      );
+      if (idx >= 0) setActiveRepeaterGroupIdx(idx);
+    }
+    closeTransientOverlayPanels();
+    setIsRepeaterOpen(true);
+  }, [selectedRepeaterGroup, repeaterGroups, closeTransientOverlayPanels]);
+
+  const handleRepeaterAdd = useCallback(
+    (group: RepeaterGroup) => {
+      const code = project.files[group.filePath];
+      if (!code) return;
+      const updated = addRepeaterItemFromLast(code, group.filePath, group);
+      if (updated === code) return;
+      commitFilesMutation(
+        { ...project.files, [group.filePath]: updated },
+        group.filePath,
+        `Added Card in ${group.containerLabel}`
+      );
+      showToastFeedback('Added new card to repeater grid');
+    },
+    [project.files, commitFilesMutation, showToastFeedback]
+  );
+
+  const handleRepeaterDuplicate = useCallback(
+    (group: RepeaterGroup, itemElementIndex: number) => {
+      const code = project.files[group.filePath];
+      if (!code) return;
+      const updated = duplicateRepeaterItem(code, group.filePath, itemElementIndex);
+      if (updated === code) return;
+      commitFilesMutation(
+        { ...project.files, [group.filePath]: updated },
+        group.filePath,
+        'Duplicated Repeater Card'
+      );
+      showToastFeedback('Duplicated card item');
+    },
+    [project.files, commitFilesMutation, showToastFeedback]
+  );
+
+  const handleRepeaterRemove = useCallback(
+    (group: RepeaterGroup, itemElementIndex: number) => {
+      const code = project.files[group.filePath];
+      if (!code) return;
+      const updated = removeRepeaterItem(code, group.filePath, itemElementIndex);
+      if (updated === code) return;
+      setSelected(null);
+      setMultiSelected([]);
+      commitFilesMutation(
+        { ...project.files, [group.filePath]: updated },
+        group.filePath,
+        'Removed Repeater Card'
+      );
+      showToastFeedback('Removed card item');
+    },
+    [project.files, commitFilesMutation, showToastFeedback]
+  );
+
+  const handleRepeaterMove = useCallback(
+    (group: RepeaterGroup, itemElementIndex: number, targetIndex: number) => {
+      const code = project.files[group.filePath];
+      if (!code) return;
+      const updated = moveRepeaterItem(code, group.filePath, itemElementIndex, targetIndex);
+      if (updated === code) return;
+      commitFilesMutation(
+        { ...project.files, [group.filePath]: updated },
+        group.filePath,
+        'Reordered Repeater Card'
+      );
+    },
+    [project.files, commitFilesMutation]
+  );
+
+  const handleRepeaterUpdateSlot = useCallback(
+    (group: RepeaterGroup, slotElementIndex: number, nextText: string) => {
+      const code = project.files[group.filePath];
+      if (!code) return;
+      const updated = updateRepeaterSlotText(code, group.filePath, slotElementIndex, nextText);
+      if (updated === code) return;
+      commitFilesMutation(
+        { ...project.files, [group.filePath]: updated },
+        group.filePath,
+        'Updated Card Copy'
+      );
+    },
+    [project.files, commitFilesMutation]
   );
 
   const commandPaletteItems = useMemo<StudioCommandItem[]>(() => {
@@ -2389,6 +2836,38 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         iconKey: 'save',
       },
       {
+        id: 'tool:brand-remixer',
+        label: '1-Tap Brand Remixer (Palettes, Fonts & Mood)',
+        description: 'Swap curated palettes, font pairings, radius scale & shadow depth',
+        category: 'tools',
+        keywords: ['brand', 'remixer', 'theme', 'palette', 'fonts', 'dark', 'radius'],
+        iconKey: 'sparkles',
+      },
+      {
+        id: 'tool:repeater-editor',
+        label: 'Smart Card / Grid Repeater Editor',
+        description: 'Add, duplicate, reorder, delete & bulk-edit card grid items',
+        category: 'tools',
+        keywords: ['repeater', 'cards', 'grid', 'list', 'items', 'bulk'],
+        iconKey: 'layers',
+      },
+      {
+        id: 'tool:qa-audit',
+        label: 'Live QA Audit & 1-Click Auto-Fix',
+        description: 'Detect contrast, touch target & overflow issues with on-canvas pins',
+        category: 'tools',
+        keywords: ['qa', 'audit', 'contrast', 'wcag', 'overflow', 'fix', 'accessibility'],
+        iconKey: 'inspector',
+      },
+      {
+        id: 'tool:history-timeline',
+        label: 'Visual History Timeline & Diff',
+        description: 'Jump between labeled checkpoints or compare Before / After',
+        category: 'tools',
+        keywords: ['history', 'timeline', 'checkpoints', 'diff', 'before', 'after'],
+        iconKey: 'drafts',
+      },
+      {
         id: 'tool:open-drafts',
         label: `Open Saved Drafts (${savedDrafts.length})`,
         description: 'Restore a saved snapshot or autosaved session',
@@ -2448,6 +2927,22 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         description: 'Preview canvas at smartphone width',
         category: 'canvas',
         keywords: ['viewport', 'mobile', '390', 'phone'],
+        iconKey: 'viewport',
+      },
+      {
+        id: 'canvas:before-after',
+        label: 'Toggle Before / After Split Slider',
+        description: 'Drag vertical divider comparing original design vs current page',
+        category: 'canvas',
+        keywords: ['compare', 'before', 'after', 'split', 'diff', 'slider'],
+        iconKey: 'layout',
+      },
+      {
+        id: 'canvas:multi-device-wall',
+        label: 'Open Multi-Device Preview Wall (3-Up)',
+        description: 'Inspect Desktop (1280px), Tablet (768px) & Mobile (390px) side by side',
+        category: 'canvas',
+        keywords: ['multi', 'device', 'wall', 'responsive', 'desktop', 'tablet', 'mobile'],
         iconKey: 'viewport',
       },
       {
@@ -2621,6 +3116,18 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         case 'tool:save-draft':
           handleQuickSaveDraft();
           break;
+        case 'tool:brand-remixer':
+          handleToggleBrandRemixer();
+          break;
+        case 'tool:repeater-editor':
+          handleOpenRepeaterForSelection();
+          break;
+        case 'tool:qa-audit':
+          handleToggleQaPanel();
+          break;
+        case 'tool:history-timeline':
+          handleToggleHistoryPanel();
+          break;
         case 'tool:open-drafts':
           setIsDraftsOpen(true);
           break;
@@ -2638,6 +3145,12 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
           break;
         case 'canvas:vp-mobile':
           setViewport('mobile');
+          break;
+        case 'canvas:before-after':
+          setIsCompareOpen((v) => !v);
+          break;
+        case 'canvas:multi-device-wall':
+          setIsMultiDeviceWallOpen(true);
           break;
         case 'canvas:replay-motion':
           handleReplayAnimations();
@@ -2671,6 +3184,10 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
       handleToggleLeftPanel,
       handleOpenExportModal,
       handleQuickSaveDraft,
+      handleToggleBrandRemixer,
+      handleOpenRepeaterForSelection,
+      handleToggleQaPanel,
+      handleToggleHistoryPanel,
       handleReplayAnimations,
       handleUndo,
       handleRedo,
@@ -2714,18 +3231,25 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         onToggleGlobalStylesPanel={handleToggleGlobalStylesPanel}
         showLogicPanel={isLogicPanelOpen}
         onToggleLogicPanel={() => {
-          setIsLogicPanelOpen((v) => {
-            if (!v) setIsMotionPanelOpen(false);
-            return !v;
-          });
+          const next = !isLogicPanelOpen;
+          closeTransientOverlayPanels();
+          setIsLogicPanelOpen(next);
         }}
         showMotionPanel={isMotionPanelOpen}
         onToggleMotionPanel={() => {
-          setIsMotionPanelOpen((v) => {
-            if (!v) setIsLogicPanelOpen(false);
-            return !v;
-          });
+          const next = !isMotionPanelOpen;
+          closeTransientOverlayPanels();
+          setIsMotionPanelOpen(next);
         }}
+        showBrandRemixer={isBrandRemixerOpen}
+        onToggleBrandRemixer={handleToggleBrandRemixer}
+        showHistoryPanel={isHistoryPanelOpen}
+        onToggleHistoryPanel={handleToggleHistoryPanel}
+        showQaPanel={isQaPanelOpen}
+        onToggleQaPanel={handleToggleQaPanel}
+        showRepeaterPanel={isRepeaterOpen}
+        onToggleRepeaterPanel={handleOpenRepeaterForSelection}
+        onOpenMultiDeviceWall={() => setIsMultiDeviceWallOpen(true)}
         savedDraftsCount={savedDrafts.length}
         justSavedDraft={justSavedDraft}
         onQuickSaveDraft={handleQuickSaveDraft}
@@ -2807,19 +3331,15 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
             showGlobalStylesPanel ||
             showSmartAligner ||
             isLogicPanelOpen ||
-            isMotionPanelOpen) && (
+            isMotionPanelOpen ||
+            isBrandRemixerOpen ||
+            isHistoryPanelOpen ||
+            isQaPanelOpen ||
+            isRepeaterOpen) && (
             <button
               type="button"
               aria-label="Close panel drawer"
-              onClick={() => {
-                setCompactLeftOpen(false);
-                setCompactRightOpen(false);
-                setCompactGradientOpen(false);
-                setCompactGlobalStylesOpen(false);
-                setCompactSmartAlignerOpen(false);
-                setIsLogicPanelOpen(false);
-                setIsMotionPanelOpen(false);
-              }}
+              onClick={closeTransientOverlayPanels}
               className="absolute inset-0 z-30 bg-slate-900/30"
             />
           )}
@@ -2878,6 +3398,17 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
             onReplayAnimations={handleReplayAnimations}
             onContextMenuElement={handleContextMenuElement}
             onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+            showBeforeAfter={isCompareOpen}
+            beforeSrcDoc={beforeSrcDoc}
+            onToggleBeforeAfter={() => setIsCompareOpen((v) => !v)}
+            showQaOverlay={isQaPanelOpen}
+            qaIssues={qaIssues}
+            onToggleQaOverlay={handleToggleQaPanel}
+            onReceiveQaMetrics={handleReceiveQaMetrics}
+            onFocusQaIssue={handleFocusQaIssue}
+            onOpenMultiDeviceWall={() => setIsMultiDeviceWallOpen(true)}
+            selectedRepeaterCount={selectedRepeaterGroup?.items.length || 0}
+            onOpenRepeaterEditor={handleOpenRepeaterForSelection}
           />
 
           {/* Smart Aligner Panel (docked on desktop) */}
@@ -2945,6 +3476,65 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
               onOpenInMonaco={handleOpenInMonaco}
               onClose={() => setDesktopGlobalStylesOpen(false)}
             />
+          )}
+
+          {/* 1-Tap Brand Remixer (docked on desktop) */}
+          {!isCompactViewport && isBrandRemixerOpen && (
+            <div className="absolute inset-y-0 right-0 z-40 flex shadow-xl">
+              <BrandRemixerPanel
+                config={brandRemixConfig}
+                onApplyConfig={handleApplyBrandRemix}
+                onResetRemix={handleResetBrandRemix}
+                onClose={() => setIsBrandRemixerOpen(false)}
+              />
+            </div>
+          )}
+
+          {/* Visual History Timeline & Diff (docked on desktop) */}
+          {!isCompactViewport && isHistoryPanelOpen && (
+            <div className="absolute inset-y-0 right-0 z-40 flex shadow-xl">
+              <HistoryTimelinePanel
+                entries={historyTimeline}
+                currentIndex={historyIndex}
+                isCompareOpen={isCompareOpen}
+                onToggleCompare={() => setIsCompareOpen((v) => !v)}
+                onJumpToIndex={handleJumpToHistoryIndex}
+                onResetToOriginal={handleResetToOriginal}
+                onClose={() => setIsHistoryPanelOpen(false)}
+              />
+            </div>
+          )}
+
+          {/* Live QA Audit Overlay Panel (docked on desktop) */}
+          {!isCompactViewport && isQaPanelOpen && (
+            <div className="absolute inset-y-0 right-0 z-40 flex shadow-xl">
+              <QaAuditPanel
+                issues={qaIssues}
+                isScanning={isQaScanning}
+                onRescan={handleTriggerQaScan}
+                onFocusIssue={handleFocusQaIssue}
+                onAutoFixIssue={handleAutoFixQaIssue}
+                onAutoFixAll={handleAutoFixAllQaIssues}
+                onClose={() => setIsQaPanelOpen(false)}
+              />
+            </div>
+          )}
+
+          {/* Smart Card / Grid Repeater Editor (docked on desktop) */}
+          {!isCompactViewport && isRepeaterOpen && (
+            <div className="absolute inset-y-0 right-0 z-40 flex shadow-xl">
+              <RepeaterEditorPanel
+                groups={repeaterGroups}
+                activeGroupIndex={activeRepeaterGroupIdx}
+                onSelectGroupIndex={setActiveRepeaterGroupIdx}
+                onAddItem={handleRepeaterAdd}
+                onDuplicateItem={handleRepeaterDuplicate}
+                onRemoveItem={handleRepeaterRemove}
+                onMoveItem={handleRepeaterMove}
+                onUpdateSlotText={handleRepeaterUpdateSlot}
+                onClose={() => setIsRepeaterOpen(false)}
+              />
+            </div>
           )}
 
           <CodeDrawer
@@ -3058,6 +3648,72 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
           </div>
         )}
 
+        {/* 1-Tap Brand Remixer (bottom sheet / drawer on compact screens) */}
+        {isCompactViewport && isBrandRemixerOpen && (
+          <div className={isPhoneViewport ? 'absolute inset-x-0 bottom-0 z-40 flex h-[76vh] max-h-[640px] rounded-t-2xl shadow-2xl overflow-hidden' : 'absolute inset-y-0 right-0 z-40 flex shadow-xl'}>
+            <BrandRemixerPanel
+              config={brandRemixConfig}
+              onApplyConfig={handleApplyBrandRemix}
+              onResetRemix={handleResetBrandRemix}
+              onClose={() => setIsBrandRemixerOpen(false)}
+              isBottomSheet={isPhoneViewport}
+            />
+          </div>
+        )}
+
+        {/* Visual History Timeline & Diff (bottom sheet / drawer on compact screens) */}
+        {isCompactViewport && isHistoryPanelOpen && (
+          <div className={isPhoneViewport ? 'absolute inset-x-0 bottom-0 z-40 flex h-[74vh] max-h-[620px] rounded-t-2xl shadow-2xl overflow-hidden' : 'absolute inset-y-0 right-0 z-40 flex shadow-xl'}>
+            <HistoryTimelinePanel
+              entries={historyTimeline}
+              currentIndex={historyIndex}
+              isCompareOpen={isCompareOpen}
+              onToggleCompare={() => setIsCompareOpen((v) => !v)}
+              onJumpToIndex={handleJumpToHistoryIndex}
+              onResetToOriginal={handleResetToOriginal}
+              onClose={() => setIsHistoryPanelOpen(false)}
+              isBottomSheet={isPhoneViewport}
+            />
+          </div>
+        )}
+
+        {/* Live QA Audit Overlay Panel (bottom sheet / drawer on compact screens) */}
+        {isCompactViewport && isQaPanelOpen && (
+          <div className={isPhoneViewport ? 'absolute inset-x-0 bottom-0 z-40 flex h-[76vh] max-h-[640px] rounded-t-2xl shadow-2xl overflow-hidden' : 'absolute inset-y-0 right-0 z-40 flex shadow-xl'}>
+            <QaAuditPanel
+              issues={qaIssues}
+              isScanning={isQaScanning}
+              onRescan={handleTriggerQaScan}
+              onFocusIssue={(issue) => {
+                handleFocusQaIssue(issue);
+                if (isPhoneViewport) setIsQaPanelOpen(false);
+              }}
+              onAutoFixIssue={handleAutoFixQaIssue}
+              onAutoFixAll={handleAutoFixAllQaIssues}
+              onClose={() => setIsQaPanelOpen(false)}
+              isBottomSheet={isPhoneViewport}
+            />
+          </div>
+        )}
+
+        {/* Smart Card / Grid Repeater Editor (bottom sheet / drawer on compact screens) */}
+        {isCompactViewport && isRepeaterOpen && (
+          <div className={isPhoneViewport ? 'absolute inset-x-0 bottom-0 z-40 flex h-[76vh] max-h-[640px] rounded-t-2xl shadow-2xl overflow-hidden' : 'absolute inset-y-0 right-0 z-40 flex shadow-xl'}>
+            <RepeaterEditorPanel
+              groups={repeaterGroups}
+              activeGroupIndex={activeRepeaterGroupIdx}
+              onSelectGroupIndex={setActiveRepeaterGroupIdx}
+              onAddItem={handleRepeaterAdd}
+              onDuplicateItem={handleRepeaterDuplicate}
+              onRemoveItem={handleRepeaterRemove}
+              onMoveItem={handleRepeaterMove}
+              onUpdateSlotText={handleRepeaterUpdateSlot}
+              onClose={() => setIsRepeaterOpen(false)}
+              isBottomSheet={isPhoneViewport}
+            />
+          </div>
+        )}
+
         {/* Right Panel: docked on >=1024px, slide-over drawer on tablet, bottom sheet on phone */}
         {showRightPanel && (
           <div
@@ -3143,7 +3799,11 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
             showGradientPanel ||
             showGlobalStylesPanel ||
             isLogicPanelOpen ||
-            isMotionPanelOpen
+            isMotionPanelOpen ||
+            isBrandRemixerOpen ||
+            isHistoryPanelOpen ||
+            isQaPanelOpen ||
+            isRepeaterOpen
               ? 'bg-indigo-50 text-indigo-700'
               : 'text-slate-600 active:bg-slate-100'
           }`}
@@ -3330,7 +3990,24 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         onToggleLogicPanel={() => handleOpenLogicForTarget(selected)}
         showMotionPanel={isMotionPanelOpen}
         onToggleMotionPanel={() => handleOpenMotionForTarget(selected)}
+        showBrandRemixer={isBrandRemixerOpen}
+        onToggleBrandRemixer={handleToggleBrandRemixer}
+        showHistoryPanel={isHistoryPanelOpen}
+        onToggleHistoryPanel={handleToggleHistoryPanel}
+        showQaPanel={isQaPanelOpen}
+        onToggleQaPanel={handleToggleQaPanel}
+        showRepeaterPanel={isRepeaterOpen}
+        onToggleRepeaterPanel={handleOpenRepeaterForSelection}
+        onOpenMultiDeviceWall={() => setIsMultiDeviceWallOpen(true)}
         onReplayAnimations={handleReplayAnimations}
+      />
+
+      <MultiDeviceWallModal
+        isOpen={isMultiDeviceWallOpen}
+        pageTitle={canvasTargetPage.title}
+        pageRoute={canvasTargetPage.route}
+        srcDoc={wallSrcDoc}
+        onClose={() => setIsMultiDeviceWallOpen(false)}
       />
 
       {actionToast && (

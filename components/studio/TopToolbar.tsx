@@ -5,6 +5,7 @@ import {
   Check,
   ChevronDown,
   Clapperboard,
+  Clock,
   Code2,
   Download,
   FolderUp,
@@ -12,8 +13,10 @@ import {
   History,
   Images,
   Layers,
+  Layers3,
   LayoutGrid,
   Monitor,
+  MonitorSmartphone,
   MousePointer2,
   PackagePlus,
   Palette,
@@ -22,6 +25,7 @@ import {
   Redo2,
   Save,
   Search,
+  ShieldCheck,
   SlidersHorizontal,
   Smartphone,
   Sparkles,
@@ -68,6 +72,15 @@ interface TopToolbarProps {
   onToggleLogicPanel: () => void;
   showMotionPanel: boolean;
   onToggleMotionPanel: () => void;
+  showBrandRemixer?: boolean;
+  onToggleBrandRemixer?: () => void;
+  showHistoryPanel?: boolean;
+  onToggleHistoryPanel?: () => void;
+  showQaPanel?: boolean;
+  onToggleQaPanel?: () => void;
+  showRepeaterPanel?: boolean;
+  onToggleRepeaterPanel?: () => void;
+  onOpenMultiDeviceWall?: () => void;
   savedDraftsCount: number;
   justSavedDraft: boolean;
   onQuickSaveDraft: () => void;
@@ -113,6 +126,15 @@ export default function TopToolbar({
   onToggleLogicPanel,
   showMotionPanel,
   onToggleMotionPanel,
+  showBrandRemixer = false,
+  onToggleBrandRemixer,
+  showHistoryPanel = false,
+  onToggleHistoryPanel,
+  showQaPanel = false,
+  onToggleQaPanel,
+  showRepeaterPanel = false,
+  onToggleRepeaterPanel,
+  onOpenMultiDeviceWall,
   savedDraftsCount,
   justSavedDraft,
   onQuickSaveDraft,
@@ -145,6 +167,10 @@ export default function TopToolbar({
     showGlobalStylesPanel,
     showLogicPanel,
     showMotionPanel,
+    showBrandRemixer,
+    showHistoryPanel,
+    showQaPanel,
+    showRepeaterPanel,
   ].filter(Boolean).length;
 
   const runMenuAction = (fn: () => void) => {
@@ -153,7 +179,7 @@ export default function TopToolbar({
   };
 
   return (
-    <header className="w-full shrink-0 border-b border-slate-200 bg-white z-30">
+    <header className="relative z-50 w-full shrink-0 border-b border-slate-200 bg-white">
       <div className="flex h-12 items-center justify-between gap-2 px-2.5 sm:px-3 lg:gap-3 lg:px-4">
         {/* Left Zone: Panel Toggle + Brand + Page Selector */}
         <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
@@ -420,7 +446,7 @@ export default function TopToolbar({
               <div
                 role="menu"
                 aria-label="Design and studio tools"
-                className="absolute right-0 top-10 z-50 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl ring-1 ring-slate-900/5"
+                className="absolute right-0 top-10 z-50 max-h-[calc(100vh-72px)] w-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl ring-1 ring-slate-900/5"
               >
                 <button
                   type="button"
@@ -518,6 +544,109 @@ export default function TopToolbar({
                   </span>
                   {showGlobalStylesPanel && <Check className="h-3.5 w-3.5 text-blue-600" />}
                 </button>
+
+                <div className="my-1 border-t border-slate-100" />
+
+                {onToggleBrandRemixer && (
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={showBrandRemixer}
+                    onClick={() => runMenuAction(onToggleBrandRemixer)}
+                    className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                      showBrandRemixer ? 'bg-indigo-50 text-indigo-900' : 'hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Sparkles className="h-4 w-4 shrink-0 text-indigo-600" />
+                      <span>
+                        <span className="block text-xs font-semibold">1-Tap Brand Remixer</span>
+                        <span className="block text-[11px] text-slate-500">Palettes, fonts, radius &amp; dark mode</span>
+                      </span>
+                    </span>
+                    {showBrandRemixer && <Check className="h-3.5 w-3.5 text-indigo-600" />}
+                  </button>
+                )}
+
+                {onToggleRepeaterPanel && (
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={showRepeaterPanel}
+                    onClick={() => runMenuAction(onToggleRepeaterPanel)}
+                    className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                      showRepeaterPanel ? 'bg-violet-50 text-violet-900' : 'hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Layers3 className="h-4 w-4 shrink-0 text-violet-600" />
+                      <span>
+                        <span className="block text-xs font-semibold">Card &amp; Grid Repeater</span>
+                        <span className="block text-[11px] text-slate-500">Add, reorder &amp; edit cards in bulk</span>
+                      </span>
+                    </span>
+                    {showRepeaterPanel && <Check className="h-3.5 w-3.5 text-violet-600" />}
+                  </button>
+                )}
+
+                {onToggleQaPanel && (
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={showQaPanel}
+                    onClick={() => runMenuAction(onToggleQaPanel)}
+                    className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                      showQaPanel ? 'bg-emerald-50 text-emerald-900' : 'hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+                      <span>
+                        <span className="block text-xs font-semibold">Live QA Audit</span>
+                        <span className="block text-[11px] text-slate-500">Contrast, touch targets &amp; 1-click fix</span>
+                      </span>
+                    </span>
+                    {showQaPanel && <Check className="h-3.5 w-3.5 text-emerald-600" />}
+                  </button>
+                )}
+
+                {onToggleHistoryPanel && (
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={showHistoryPanel}
+                    onClick={() => runMenuAction(onToggleHistoryPanel)}
+                    className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                      showHistoryPanel ? 'bg-blue-50 text-blue-900' : 'hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Clock className="h-4 w-4 shrink-0 text-blue-600" />
+                      <span>
+                        <span className="block text-xs font-semibold">History &amp; Before/After</span>
+                        <span className="block text-[11px] text-slate-500">Visual timeline &amp; split diff slider</span>
+                      </span>
+                    </span>
+                    {showHistoryPanel && <Check className="h-3.5 w-3.5 text-blue-600" />}
+                  </button>
+                )}
+
+                {onOpenMultiDeviceWall && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => runMenuAction(onOpenMultiDeviceWall)}
+                    className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-slate-50"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <MonitorSmartphone className="h-4 w-4 shrink-0 text-slate-700" />
+                      <span>
+                        <span className="block text-xs font-semibold">Multi-Device Wall</span>
+                        <span className="block text-[11px] text-slate-500">Desktop, Tablet &amp; Mobile side-by-side</span>
+                      </span>
+                    </span>
+                  </button>
+                )}
               </div>
             )}
           </div>

@@ -1899,6 +1899,290 @@ test('37. Single-element Wrap in Flex Row / Grid works cleanly in JSX and HTML',
   assert.ok(wrappedHtml.includes('<article>Card A</article>'));
 });
 
+import {
+  computeSpacingDragResult,
+  parseComputedBoxSpacing,
+} from './spacing-handles';
+import {
+  DEFAULT_BRAND_REMIX_CONFIG,
+  applyBrandRemixToGlobalCss,
+  stripBrandRemixFromGlobalCss,
+} from './brand-remixer';
+import {
+  analyzeDomMetricsForQa,
+  computeColorContrastRatio,
+  computeQaScore,
+  pickAccessibleForeground,
+} from './qa-audit';
+import {
+  addRepeaterItemFromLast,
+  detectRepeaterGroups,
+  findRepeaterForElement,
+  moveRepeaterItem,
+  removeRepeaterItem,
+  updateRepeaterSlotText,
+} from './repeater-detector';
+
+test('38. spacing-handles computes inward padding, outward margin, clamping, and axis/all symmetry', () => {
+  const parsed = parseComputedBoxSpacing({
+    paddingTop: '16px',
+    paddingRight: '24px',
+    paddingBottom: '16px',
+    paddingLeft: '24px',
+    marginTop: '8px',
+    marginRight: '0px',
+    marginBottom: '12px',
+    marginLeft: '0px',
+  });
+  assert.deepEqual(parsed.padding, { top: 16, right: 24, bottom: 16, left: 24 });
+  assert.deepEqual(parsed.margin, { top: 8, right: 0, bottom: 12, left: 0 });
+
+  // Padding top dragged downward (+20px inward) increases paddingTop from 16 -> 36
+  const padSingle = computeSpacingDragResult({
+    kind: 'padding',
+    side: 'top',
+    initialValues: parsed.padding,
+    deltaX: 0,
+    deltaY: 20,
+    scale: 1,
+    symmetricMode: 'single',
+    snapStep: 4,
+  });
+  assert.equal(padSingle.primaryValue, 36);
+  assert.deepEqual(padSingle.stylePatch, { paddingTop: '36px' });
+
+  // Axis symmetry (Shift) mirrors paddingLeft + paddingRight
+  const padAxis = computeSpacingDragResult({
+    kind: 'padding',
+    side: 'left',
+    initialValues: parsed.padding,
+    deltaX: 16,
+    deltaY: 0,
+    scale: 1,
+    symmetricMode: 'axis',
+    snapStep: 4,
+  });
+  assert.equal(padAxis.primaryValue, 40);
+  assert.deepEqual(padAxis.stylePatch, { paddingLeft: '40px', paddingRight: '40px' });
+
+  // Margin top dragged upward (-16px outward) with Alt (all 4 sides) increases all margins to 24px
+  const marginAll = computeSpacingDragResult({
+    kind: 'margin',
+    side: 'top',
+    initialValues: parsed.margin,
+    deltaX: 0,
+    deltaY: -16,
+    scale: 1,
+    symmetricMode: 'all',
+    snapStep: 4,
+  });
+  assert.equal(marginAll.primaryValue, 24);
+  assert.deepEqual(marginAll.stylePatch, {
+    marginTop: '24px',
+    marginRight: '24px',
+    marginBottom: '24px',
+    marginLeft: '24px',
+  });
+
+  // Clamping prevents negative or >240px values
+  const clamped = computeSpacingDragResult({
+    kind: 'padding',
+    side: 'top',
+    initialValues: parsed.padding,
+    deltaX: 0,
+    deltaY: -500,
+    scale: 1,
+    symmetricMode: 'single',
+    snapStep: 4,
+  });
+  assert.equal(clamped.primaryValue, 0);
+});
+
+test('39. brand-remixer idempotently applies, replaces, and strips Global CSS theme blocks', () => {
+  const baseCss = `@import "tailwindcss";\n\nbody {\n  margin: 0;\n}\n`;
+  const remixed1 = applyBrandRemixToGlobalCss(baseCss, {
+    ...DEFAULT_BRAND_REMIX_CONFIG,
+    paletteId: 'emerald-signal',
+    fontPairingId: 'playfair-dm',
+    radiusScaleId: 'rounded',
+    shadowMoodId: 'elevated',
+    themeMode: 'dark',
+  });
+  assert.ok(remixed1.includes('@import "tailwindcss";'));
+  assert.ok(remixed1.includes('/* atelier-brand-remix:start */'));
+  assert.ok(remixed1.includes('Playfair Display'));
+  assert.ok(remixed1.includes('--bg-canvas: #081410'));
+  assert.ok(remixed1.includes('--radius-base: 20px'));
+
+  // Applying a second remix replaces the block cleanly without duplicating markers
+  const remixed2 = applyBrandRemixToGlobalCss(remixed1, {
+    ...DEFAULT_BRAND_REMIX_CONFIG,
+    paletteId: 'amber-atelier',
+    radiusScaleId: 'sharp',
+    themeMode: 'light',
+  });
+  assert.equal(remixed2.split('atelier-brand-remix:start').length - 1, 1);
+  assert.ok(remixed2.includes('--accent-primary: #D97706'));
+  assert.ok(remixed2.includes('--radius-base: 4px'));
+
+  // Stripping restores clean CSS
+  const stripped = stripBrandRemixFromGlobalCss(remixed2);
+  assert.equal(stripped.includes('atelier-brand-remix'), false);
+  assert.ok(stripped.includes('body {'));
+});
+
+test('40. qa-audit detects low contrast, tiny touch target, horizontal overflow, small text, and missing alt with auto-fix patches', () => {
+  const ratioBlackWhite = computeColorContrastRatio('#000000', '#FFFFFF');
+  assert.ok(ratioBlackWhite !== null && ratioBlackWhite > 20);
+  assert.equal(pickAccessibleForeground('#0F172A'), '#FFFFFF');
+  assert.equal(pickAccessibleForeground('#FFFFFF'), '#0F172A');
+
+  const issues = analyzeDomMetricsForQa(
+    [
+      {
+        studioId: 'app/page.tsx::1',
+        filePath: 'app/page.tsx',
+        elementIndex: 1,
+        tagName: 'p',
+        label: 'p.muted',
+        textContent: 'Low contrast tiny caption',
+        color: 'rgb(203, 213, 225)',
+        backgroundColor: 'rgb(255, 255, 255)',
+        fontSizePx: 10,
+        fontWeight: 400,
+        rect: { x: 20, y: 40, width: 200, height: 18 },
+        isInteractive: false,
+      },
+      {
+        studioId: 'app/page.tsx::2',
+        filePath: 'app/page.tsx',
+        elementIndex: 2,
+        tagName: 'button',
+        label: 'button.tiny',
+        textContent: 'Go',
+        color: 'rgb(255, 255, 255)',
+        backgroundColor: 'rgb(37, 99, 235)',
+        fontSizePx: 14,
+        fontWeight: 600,
+        rect: { x: 20, y: 100, width: 28, height: 26 },
+        isInteractive: true,
+      },
+      {
+        studioId: 'app/page.tsx::3',
+        filePath: 'app/page.tsx',
+        elementIndex: 3,
+        tagName: 'div',
+        label: 'div.wide',
+        textContent: '',
+        color: 'rgb(15, 23, 42)',
+        backgroundColor: 'rgb(255, 255, 255)',
+        fontSizePx: 16,
+        fontWeight: 400,
+        rect: { x: 0, y: 180, width: 520, height: 120 },
+        isInteractive: false,
+      },
+      {
+        studioId: 'app/page.tsx::4',
+        filePath: 'app/page.tsx',
+        elementIndex: 4,
+        tagName: 'img',
+        label: 'img.hero',
+        textContent: '',
+        color: 'rgb(15, 23, 42)',
+        backgroundColor: 'rgb(255, 255, 255)',
+        fontSizePx: 16,
+        fontWeight: 400,
+        rect: { x: 20, y: 320, width: 280, height: 160 },
+        isInteractive: false,
+        hasAlt: false,
+      },
+      {
+        studioId: 'app/page.tsx::5',
+        filePath: 'app/page.tsx',
+        elementIndex: 5,
+        tagName: 'section',
+        label: 'section',
+        textContent: undefined as unknown as string,
+        color: 'rgb(15, 23, 42)',
+        backgroundColor: 'rgb(255, 255, 255)',
+        fontSizePx: 16,
+        fontWeight: 400,
+        rect: { x: 0, y: 500, width: 320, height: 120 },
+        isInteractive: false,
+      },
+    ],
+    390
+  );
+
+  assert.ok(issues.some((i) => i.category === 'contrast' && i.autoFixPatch.styles?.color === '#0F172A'));
+  assert.ok(issues.some((i) => i.category === 'typography' && i.autoFixPatch.styles?.fontSize === '14px'));
+  assert.ok(issues.some((i) => i.category === 'touch-target' && i.autoFixPatch.styles?.minHeight === '44px'));
+  assert.ok(issues.some((i) => i.category === 'overflow' && i.autoFixPatch.styles?.maxWidth === '100%'));
+  assert.ok(issues.some((i) => i.category === 'accessibility'));
+  assert.ok(computeQaScore(issues) < 80);
+  assert.equal(computeQaScore([]), 100);
+});
+
+test('41. repeater-detector detects card grids, prioritizes grid cards first, resolves enclosing group, adds, edits, reorders, and removes cards', () => {
+  const starterPage = STARTER_NEXTJS_FILES['app/page.tsx'];
+  const groups = detectRepeaterGroups(starterPage, 'app/page.tsx');
+  assert.ok(groups.length >= 1);
+
+  // Homogeneous card grid should rank #1 ahead of outer <section> wrapper
+  const cardGrid = groups[0];
+  assert.ok(cardGrid);
+  assert.equal(cardGrid.containerTagName, 'div');
+  assert.equal(cardGrid.items.length, 3);
+  assert.ok(cardGrid.containerLabel.includes('Cards'));
+  assert.equal(cardGrid.items[0].slots.length >= 2, true);
+
+  // Resolving from a nested heading inside card 1 finds the same repeater group
+  const innerHeadingIdx = cardGrid.items[0].slots[0].elementIndex;
+  const resolved = findRepeaterForElement(starterPage, 'app/page.tsx', innerHeadingIdx);
+  assert.equal(resolved?.containerElementIndex, cardGrid.containerElementIndex);
+
+  // Add 4th card
+  const withFourth = addRepeaterItemFromLast(starterPage, 'app/page.tsx', cardGrid);
+  const groupsAfterAdd = detectRepeaterGroups(withFourth, 'app/page.tsx');
+  const expanded = groupsAfterAdd.find((g) => g.items.length === 4);
+  assert.ok(expanded);
+
+  // Update first card title slot
+  const updatedText = updateRepeaterSlotText(
+    withFourth,
+    'app/page.tsx',
+    expanded.items[0].slots[0].elementIndex,
+    'Updated Beam Solver'
+  );
+  assert.ok(updatedText.includes('Updated Beam Solver'));
+
+  // Reorder card 0 -> position 2
+  const groupsForMove = detectRepeaterGroups(updatedText, 'app/page.tsx').find(
+    (g) => g.items.length === 4
+  )!;
+  const reordered = moveRepeaterItem(
+    updatedText,
+    'app/page.tsx',
+    groupsForMove.items[0].elementIndex,
+    2
+  );
+  const groupsAfterMove = detectRepeaterGroups(reordered, 'app/page.tsx').find(
+    (g) => g.items.length === 4
+  )!;
+  assert.equal(groupsAfterMove.items[2].title, 'Updated Beam Solver');
+
+  // Remove the moved card -> back to 3 cards
+  const afterRemove = removeRepeaterItem(
+    reordered,
+    'app/page.tsx',
+    groupsAfterMove.items[2].elementIndex
+  );
+  assert.equal(afterRemove.includes('Updated Beam Solver'), false);
+  const groupsAfterRemove = detectRepeaterGroups(afterRemove, 'app/page.tsx');
+  assert.ok(groupsAfterRemove.some((g) => g.items.length === 3));
+});
+
+
 
 
 
