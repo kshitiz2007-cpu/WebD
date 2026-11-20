@@ -25,6 +25,7 @@ import GradientEditor from './GradientEditor';
 import BorderShadowGradientControls from './BorderShadowGradientControls';
 import ImageBlendDesigner from './ImageBlendDesigner';
 import DesignTokensPresets from './DesignTokensPresets';
+import ProStudioToolkit from './ProStudioToolkit';
 import {
   SHADOW_PRESETS,
   boxShadowToElevationHint,
@@ -248,7 +249,7 @@ export default function StyleInspectorPanel({
   pseudoState = 'default',
   onChangePseudoState,
 }: StyleInspectorPanelProps) {
-  const [activeTab, setActiveTab] = useState<'style' | 'layout' | 'type' | 'comp' | 'fit'>('style');
+  const [activeTab, setActiveTab] = useState<'style' | 'layout' | 'type' | 'comp' | 'fit' | 'pro'>('style');
   const [textDraft, setTextDraft] = useState(selected?.textContent || '');
   const [textColorHex, setTextColorHex] = useState('#0F172A');
   const [borderColorHex, setBorderColorHex] = useState('#E2E8F0');
@@ -564,7 +565,7 @@ export default function StyleInspectorPanel({
 
         {/* Inspector Section Tabs */}
         <div
-          className="mt-2.5 grid grid-cols-5 rounded-lg border border-slate-200 bg-slate-100 p-0.5"
+          className="mt-2.5 grid grid-cols-6 rounded-lg border border-slate-200 bg-slate-100 p-0.5"
           role="tablist"
           aria-label="Inspector sections"
         >
@@ -637,6 +638,9 @@ export default function StyleInspectorPanel({
           >
             <Component className="h-3 w-3" />
             <span>Comp</span>
+          </button>
+          <button type="button" role="tab" aria-selected={activeTab === 'pro'} onClick={() => setActiveTab('pro')} className={`inline-flex items-center justify-center gap-1 rounded-md py-1 text-[11px] font-medium whitespace-nowrap ${activeTab === 'pro' ? 'bg-white text-violet-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}>
+            <Sparkles className="h-3 w-3" /><span>Pro</span>
           </button>
         </div>
 
@@ -2753,6 +2757,7 @@ export default function StyleInspectorPanel({
             </div>
           );
         })()}
+        {activeTab === 'pro' && <ProStudioToolkit selectionKey={selected.studioId} onCommit={commitStyles} onPreview={(styles) => onPreviewStyles(selected.studioId, styles)} />}
       </div>
     </aside>
   );
