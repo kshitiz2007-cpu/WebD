@@ -103,6 +103,9 @@ export default function PagesLayersPanel({
   isBottomSheet = false,
 }: PagesLayersPanelProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [layerSearch, setLayerSearch] = useState('');
+  const collectLayerIds = (nodes: LayerTreeNode[]): string[] => nodes.flatMap((node) => [node.studioId, ...collectLayerIds(node.children || [])]);
+  const matchesLayerSearch = (node: LayerTreeNode, query: string): boolean => !query || node.label.toLowerCase().includes(query.toLowerCase()) || (node.children || []).some((child) => matchesLayerSearch(child, query));
   const [topSectionTab, setTopSectionTab] = useState<'pages' | 'components'>('pages');
   const [newCompName, setNewCompName] = useState('');
   const [compPreset, setCompPreset] = useState<ComponentTemplatePreset>('card');
@@ -127,6 +130,7 @@ export default function PagesLayersPanel({
   };
 
   const renderLayerNode = (node: LayerTreeNode, depth = 0, idx = 0) => {
+    if (!matchesLayerSearch(node, layerSearch)) return null;
     const isSelected = node.studioId === selectedStudioId || multiSelectedIds.includes(node.studioId);
     const hasChildren = node.children.length > 0;
     const isCollapsed = Boolean(collapsed[node.studioId]);
@@ -643,6 +647,11 @@ export default function PagesLayersPanel({
           </h2>
         </div>
 
+        <div className="mb-2 flex gap-1">
+          <input value={layerSearch} onChange={(e) => setLayerSearch(e.target.value)} placeholder="Search layers…" aria-label="Search layers" className="h-8 min-w-0 flex-1 rounded-md border border-slate-200 px-2 text-xs outline-none focus:border-indigo-400" />
+          <button type="button" onClick={() => setCollapsed(Object.fromEntries(collectLayerIds(layerTree).map((id) => [id, true])))} title="Collapse all" className="rounded border px-2 text-[10px]">−</button>
+          <button type="button" onClick={() => setCollapsed({})} title="Expand all" className="rounded border px-2 text-[10px]">+</button>
+        </div>
         <div className="min-h-0 flex-1 overflow-y-auto studio-scroll">
           {layerTree.length === 0 ? (
             <p className="px-2 py-4 text-xs text-slate-400">
