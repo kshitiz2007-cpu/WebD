@@ -215,7 +215,7 @@ export default function PagesLayersPanel({
           )}
         </div>
 
-        {hasChildren && !isCollapsed && (
+        {hasChildren && (!isCollapsed || Boolean(layerSearch.trim())) && (
           <div>{node.children.map((child, childIdx) => renderLayerNode(child, depth + 1, childIdx))}</div>
         )}
       </div>
