@@ -8,11 +8,11 @@ const animations=[{name:'Fade In',key:'fade-in',css:'opacity 0.01'},{name:'Slide
 export default function ProStudioToolkit({selectionKey,onCommit,onPreview}:Props){
  const [tab,setTab]=useState<'canvas'|'logic'|'motion'>('canvas');
  const [layout,setLayout]=useState({width:'auto',height:'auto',minWidth:'',maxWidth:'',minHeight:'',maxHeight:'',display:'block',position:'static',top:'',right:'',bottom:'',left:'',zIndex:'auto',gap:'0px',padding:'0px',margin:'0px',alignItems:'stretch',justifyContent:'start',flexDirection:'column',gridColumns:'1'});
- const [logic,setLogic]=useState<LogicConfig>(logicDefaults);
+ const [logic,setLogic]=useState<LogicConfig>(logicDefaults);\n const [logicReady,setLogicReady]=useState(false);
  const [motion,setMotion]=useState({preset:'None',duration:500,delay:0,easing:'ease',loop:false});
  const key='webd_pro_studio_logic_v1:'+selectionKey;
- useEffect(()=>{try{const raw=localStorage.getItem(key);setLogic(raw?{...logicDefaults,...JSON.parse(raw)}:logicDefaults)}catch{setLogic(logicDefaults)}},[key]);
- useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(logic))}catch{}},[logic,key]);
+ useEffect(()=>{setLogicReady(false);try{const raw=localStorage.getItem(key);setLogic(raw?{...logicDefaults,...JSON.parse(raw)}:logicDefaults)}catch{setLogic(logicDefaults)}setLogicReady(true)},[key]);
+ useEffect(()=>{if(!logicReady)return;try{localStorage.setItem(key,JSON.stringify(logic))}catch{}},[logic,key,logicReady]);
  const applyLayout=()=>onCommit({width:layout.width,height:layout.height,minWidth:layout.minWidth||null,maxWidth:layout.maxWidth||null,minHeight:layout.minHeight||null,maxHeight:layout.maxHeight||null,display:layout.display,position:layout.position,top:layout.top||null,right:layout.right||null,bottom:layout.bottom||null,left:layout.left||null,zIndex:layout.zIndex,gap:layout.gap,padding:layout.padding,margin:layout.margin,alignItems:layout.alignItems,justifyContent:layout.justifyContent,flexDirection:layout.display==='flex'?layout.flexDirection:null,gridTemplateColumns:layout.display==='grid'?layout.gridColumns+'fr':null});
  const fields=(obj:any,set:(v:any)=>void,keys:string[])=>keys.map(k=><label key={k} className="text-[11px] text-slate-600 capitalize">{k.replace(/([A-Z])/g,' $1')}<input value={obj[k]??''} onChange={e=>set({...obj,[k]:e.target.value})} className="mt-1 h-8 w-full rounded border bg-white px-2 text-xs" /></label>);
  return <section className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3">
