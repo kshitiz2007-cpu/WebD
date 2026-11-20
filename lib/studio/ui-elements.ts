@@ -1,5 +1,3 @@
-import type { LucideIcon } from 'lucide-react';
-
 export type UIElementCategory = 'hero' | 'cards' | 'offers' | 'buttons' | 'effects';
 
 export interface UIElementPreset {
