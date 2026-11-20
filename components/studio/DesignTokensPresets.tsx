@@ -3,7 +3,7 @@ import React,{useEffect,useState} from 'react';
 type Props={selectionKey:string; onPreview:(styles:Record<string,string|null>)=>void; onCommit:(styles:Record<string,string|null>)=>void; currentBackground?:string; currentText?:string};
 type Token={name:string;color:string};
 const TOKEN_KEY='webd_studio_global_color_tokens_v1';
-const presets=[
+const presets: {name:string; styles:Record<string,string>}[]=[
 {name:'Soft Glass',styles:{backgroundColor:'rgba(255,255,255,0.72)',backdropFilter:'blur(14px)',border:'1px solid rgba(255,255,255,0.4)',boxShadow:'0 8px 30px rgba(15,23,42,0.12)',borderRadius:'18px'}},
 {name:'Neon',styles:{backgroundColor:'#101827',color:'#E5F4FF',border:'1px solid #36D6FF',boxShadow:'0 0 18px rgba(54,214,255,.38)',borderRadius:'12px'}},
 {name:'Premium Dark',styles:{backgroundColor:'#171717',color:'#F5F0E8',border:'1px solid #3B3B3B',boxShadow:'0 14px 32px rgba(0,0,0,.32)',borderRadius:'16px'}},
