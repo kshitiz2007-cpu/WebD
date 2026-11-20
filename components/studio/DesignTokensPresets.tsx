@@ -17,7 +17,7 @@ export default function DesignTokensPresets({selectionKey,onPreview,onCommit,cur
  useEffect(()=>{try{const raw=localStorage.getItem(TOKEN_KEY);setTokens(raw?JSON.parse(raw):[])}catch{setTokens([])}},[]);
  const persist=(next:Token[])=>{setTokens(next);try{localStorage.setItem(TOKEN_KEY,JSON.stringify(next))}catch{}};
  const save=()=>{if(!/^#[0-9a-f]{6}$/i.test(color))return;const token={name:name.trim()||color,color:color.toUpperCase()};persist([token,...tokens.filter(t=>t.color.toUpperCase()!==token.color)].slice(0,24));};
- const applyColor=(c:string,kind:'background'|'text'|'border')=>{const style=kind==='background'?{backgroundColor:c}:kind==='text'?{color:c}:{borderColor:c};onCommit(style)};
+ const applyColor=(c:string,kind:'background'|'text'|'border')=>{const style:Record<string,string|null>=kind==='background'?{backgroundColor:c}:kind==='text'?{color:c}:{borderColor:c};onCommit(style)};
  return <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-3">
  <header className="flex items-center justify-between"><h3 className="text-xs font-semibold text-slate-800">Global Color Tokens</h3><span className="text-[10px] text-slate-400">Saved palette</span></header>
  <div className="flex gap-1.5"><input value={name} onChange={e=>setName(e.target.value)} placeholder="Token name" className="h-8 min-w-0 flex-1 rounded border px-2 text-xs"/><input type="color" value={color} onChange={e=>setColor(e.target.value)} className="h-8 w-9 rounded border p-0.5"/><button type="button" onClick={save} className="rounded bg-indigo-600 px-2 text-[11px] font-semibold text-white">Save</button></div>
