@@ -2757,7 +2757,7 @@ export default function StyleInspectorPanel({
             </div>
           );
         })()}
-        {activeTab === 'pro' && <ProStudioToolkit selectionKey={selected.studioId} viewport={viewport} onCommit={commitStyles} onPreview={(styles) => onPreviewStyles(selected.studioId, styles)} onCommitResponsive={(styles) => onCommitPatch(selected.filePath, selected.elementIndex, { styles }) />} }
+        {activeTab === 'pro' && <ProStudioToolkit selectionKey={selected.studioId} viewport={viewport} onCommit={commitStyles} onPreview={(styles) => onPreviewStyles(selected.studioId, styles)} onCommitResponsive={(styles) => onCommitPatch(selected.filePath, selected.elementIndex, { styles })} />}
       </div>
     </aside>
   );
