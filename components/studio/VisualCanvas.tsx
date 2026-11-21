@@ -575,14 +575,18 @@ export default function VisualCanvas({
       } else if (msg.type === 'studio:touch-diagnostic') {
         setTouchDiagnostic(msg.detail || {});
       } else if (msg.type === 'studio:select') {
+        setTouchDiagnostic({ stage: 'parent-select-received', mode: 'parent', targetTag: msg.element?.tagName || '', studioId: msg.element?.studioId || msg.diagnosticId || '', extra: 'element=' + Boolean(msg.element) + '; rect=' + Boolean(msg.element?.rect) });
         setHoverInfo(null);
         if (msg.element) {
           setRectOverride({ studioId: msg.element.studioId, rect: msg.element.rect });
-          callbacksRef.current.onSelectElement(
-            msg.element,
-            Boolean(msg.shiftKey),
-            Boolean(msg.preserveMulti)
-          );
+          try {
+            callbacksRef.current.onSelectElement(msg.element, Boolean(msg.shiftKey), Boolean(msg.preserveMulti));
+            setTouchDiagnostic({ stage: 'parent-select-callback-called', mode: 'parent', targetTag: msg.element.tagName || '', studioId: msg.element.studioId || '', extra: 'onSelectElement invoked; awaiting state update' });
+          } catch (err) {
+            setTouchDiagnostic({ stage: 'parent-select-callback-error', mode: 'parent', targetTag: msg.element.tagName || '', studioId: msg.element.studioId || '', error: String(err) });
+          }
+        } else {
+          setTouchDiagnostic({ stage: 'parent-select-empty', mode: 'parent', extra: 'studio:select message contained no element' });
         }
       } else if (msg.type === 'studio:marquee-result' || msg.type === 'studio:multi-rects') {
         if (Array.isArray(msg.elements)) {
