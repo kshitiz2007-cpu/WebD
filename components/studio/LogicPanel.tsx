@@ -110,9 +110,7 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
     const patch = recipes[key]; if (!patch) return;
     onChange([...rules, { ...base, ...patch }]); setRecipe('');
   };
-  const conditionPasses = (value: string) => {
-    const op = ruleForTest?.conditionOperator || 'always';
-    const compare = ruleForTest?.conditionValue || '';
+  const conditionPassesOperator = (op: LogicConditionOperator, value: string, compare: string) => {
     const numeric = Number(value), numericCompare = Number(compare);
     switch (op) {
       case 'always': return true;
@@ -126,8 +124,12 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
       default: return false;
     }
   };
+  const conditionPasses = (rule: VisualLogicRule, value: string) => { const base = conditionPassesOperator(rule.conditionOperator || 'always', value, rule.conditionValue || ''); const groups = rule.conditionGroups || []; if (!groups.length) return base; const groupResults = groups.map(g => conditionPassesOperator(g.operator, value, g.value)); const grouped = (rule.conditionGroupsLogic || 'AND') === 'OR' ? groupResults.some(Boolean) : groupResults.every(Boolean); return (rule.conditionOperator || 'always') === 'always' ? grouped : base && grouped; };
   const ruleForTest = selectedRules[selectedRules.length - 1] || selectedRules[0];
-  const testResult = ruleForTest ? conditionPasses(testValue) : null;
+  const testResult = ruleForTest ? conditionPasses(ruleForTest, testValue) : null;
+  const addConditionGroup = (rule: VisualLogicRule) => updateRule(rule.id, { conditionGroups: [...(rule.conditionGroups || []), { id: `cond-${Date.now()}`, operator: 'isNotEmpty', value: '' }] });
+  const updateConditionGroup = (rule: VisualLogicRule, id: string, patch: { operator?: LogicConditionOperator; value?: string }) => updateRule(rule.id, { conditionGroups: (rule.conditionGroups || []).map(g => g.id === id ? { ...g, ...patch } : g) });
+  const removeConditionGroup = (rule: VisualLogicRule, id: string) => updateRule(rule.id, { conditionGroups: (rule.conditionGroups || []).filter(g => g.id !== id) });
 
 
   return (
@@ -207,6 +209,7 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
                     <input value={rule.conditionValue || ''} onChange={(e) => updateRule(rule.id, { conditionValue: e.target.value })} placeholder="Compare with this value" className={inputClass + ' mt-2'} />
                   )}
                   <p className="mt-1.5 text-[10px] text-slate-500">Condition checks the value/text of the element that triggered this rule.</p>
+                  <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50/70 p-2.5 space-y-2"><div className="flex items-center justify-between gap-2"><p className="text-[11px] font-semibold text-violet-900">Advanced condition group</p><button type="button" onClick={()=>addConditionGroup(rule)} className="rounded-md bg-violet-600 px-2 py-1 text-[10px] font-semibold text-white">＋ Add condition</button></div>{(rule.conditionGroups||[]).length>0&&<select value={rule.conditionGroupsLogic||'AND'} onChange={(e)=>updateRule(rule.id,{conditionGroupsLogic:e.target.value as 'AND'|'OR'})} className={inputClass}><option value="AND">All conditions must match (AND)</option><option value="OR">Any condition can match (OR)</option></select>}{(rule.conditionGroups||[]).map((group,gi)=><div key={group.id} className="rounded-md border border-violet-100 bg-white p-2 space-y-1.5"><div className="flex items-center justify-between"><span className="text-[10px] font-semibold text-violet-700">Condition {gi+1}</span><button type="button" onClick={()=>removeConditionGroup(rule,group.id)} className="text-[10px] text-rose-600">Remove</button></div><select value={group.operator} onChange={(e)=>updateConditionGroup(rule,group.id,{operator:e.target.value as LogicConditionOperator})} className={inputClass}>{CONDITIONS.filter(x=>x.value!=='always').map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select>{['equals','notEquals','contains','greaterThan','lessThan'].includes(group.operator)&&<input value={group.value} onChange={(e)=>updateConditionGroup(rule,group.id,{value:e.target.value})} placeholder="Compare value" className={inputClass}/>}</div>)}{(rule.conditionGroups||[]).length===0&&<p className="text-[10px] text-violet-700">Add extra checks; they are combined with the main condition.</p>}</div>
                 </div>
                 {['setState', 'incrementState', 'addToArray', 'removeFromArray'].includes(rule.action) ? <div><label className={labelClass}>Global state key</label><input value={rule.target} onChange={(e) => updateRule(rule.id, { target: e.target.value })} placeholder="cart.items" className={inputClass} /></div> : !['toast', 'persistState', 'loadState'].includes(rule.action) && <div><label className={labelClass}>{rule.action === 'navigate' ? 'Route' : 'Target element'}</label><input list={rule.action === 'navigate' ? undefined : 'webd-logic-targets'} value={rule.target} onChange={(e) => updateRule(rule.id, { target: e.target.value })} placeholder={rule.action === 'navigate' ? '/about' : 'Choose an element or enter its ID'} className={inputClass} />{rule.action !== 'navigate' && <datalist id="webd-logic-targets">{availableTargets.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</datalist>}</div>}
                 {['setText', 'toast', 'increment', 'decrement', 'setState', 'incrementState', 'addToArray', 'removeFromArray'].includes(rule.action) && <div><label className={labelClass}>{rule.action === 'toast' ? 'Message' : rule.action === 'increment' || rule.action === 'decrement' || rule.action === 'incrementState' ? 'Step amount' : rule.action === 'addToArray' || rule.action === 'removeFromArray' ? 'Item JSON / match value' : 'New value'}</label><input value={rule.value} onChange={(e) => updateRule(rule.id, { value: e.target.value })} placeholder={rule.action === 'increment' || rule.action === 'decrement' || rule.action === 'incrementState' ? '1' : rule.action === 'addToArray' ? '{"id":"sku-1","name":"Product","price":499,"quantity":1}' : 'Enter a value'} className={inputClass} /></div>}
