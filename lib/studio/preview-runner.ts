@@ -286,6 +286,7 @@ function buildDesignerBridgeScript(
     }
     return window.__WEBD_APP_STATE__;
   }
+  try { window.parent.postMessage({ type: 'studio:workflow-state', state: getWorkflowState() }, '*'); } catch (_) {}
   function getStatePath(path) {
     var cursor = getWorkflowState();
     String(path || '').split('.').filter(Boolean).forEach(function(part) {
