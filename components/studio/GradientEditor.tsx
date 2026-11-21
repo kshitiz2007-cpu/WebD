@@ -89,6 +89,30 @@ export default function GradientEditor({
     applyUpdate(next, true);
   };
 
+  const handlePasteHexPalette = (raw: string) => {
+    const colors = raw.match(/#?[0-9a-fA-F]{3,6}/g)?.filter((token) => isValidHexInput(token))?.slice(0, 4);
+    if (!colors || colors.length === 0) return;
+    const normalized = colors.map((c) => normalizeHex(c));
+    const count = normalized.length as 2 | 3 | 4;
+    if (normalized.length === 1) {
+      const nextStops = config.stops.map((s, i) => i === 0 ? { ...s, color: normalized[0] } : s);
+      setHexDrafts(nextStops.map((s) => s.color));
+      applyUpdate({ ...config, type: 'solid', stops: nextStops }, true);
+      return;
+    }
+    const stops = normalized.map((color, i) => ({
+      color,
+      position: Math.round((i / (normalized.length - 1)) * 100),
+    }));
+    const next = { ...config, type: 'linear' as const, stopCount: count, stops };
+    setHexDrafts(stops.map((s) => s.color));
+    applyUpdate(next, true);
+  };
+
+  const paletteLine = config.type === 'solid'
+    ? (hexDrafts[0] || config.stops[0]?.color || '#FFFFFF')
+    : config.stops.slice(0, config.stopCount).map((s) => s.color).join(' --> ');
+
   const handleStopColorPicker = (idx: number, hex: string, commit: boolean) => {
     const normalized = normalizeHex(hex, config.stops[idx]?.color || '#2563EB');
     const nextStops = config.stops.map((s, i) => (i === idx ? { ...s, color: normalized } : s));
@@ -191,6 +215,26 @@ export default function GradientEditor({
         >
           Text Fill
         </button>
+      </div>
+
+      {/* Quick paste HEX palette */}
+      <div className="space-y-1">
+        <label htmlFor="quick-hex-palette" className="text-[11px] font-medium text-slate-600">
+          Quick HEX paste (1 solid / 2–4 gradient colors)
+        </label>
+        <input
+          id="quick-hex-palette"
+          type="text"
+          defaultValue={paletteLine}
+          key={incomingSignature}
+          onBlur={(e) => handlePasteHexPalette(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handlePasteHexPalette((e.target as HTMLInputElement).value);
+          }}
+          placeholder="#FFFFFF --> #****** --> #******"
+          className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 font-mono text-[11px] text-slate-800 focus:border-blue-500 focus:outline-none"
+        />
+        <p className="text-[10px] text-slate-400">Paste colors separated by arrows, spaces, or commas. Up to 4 stops.</p>
       </div>
 
       {/* Solid Color Controls */}
