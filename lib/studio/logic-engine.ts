@@ -49,6 +49,12 @@ export interface VisualFlowNode {
   conditionValue?: string;
 }
 
+export interface LogicConditionGroupItem {
+  id: string;
+  operator: LogicConditionOperator;
+  value: string;
+}
+
 export interface VisualLogicRule {
   id: string;
   componentId: string;
@@ -61,6 +67,9 @@ export interface VisualLogicRule {
   /** Optional v2 condition. Missing means always run (legacy compatibility). */
   conditionOperator?: LogicConditionOperator;
   conditionValue?: string;
+  /** Advanced grouped conditions; combine using conditionGroupsLogic. */
+  conditionGroupsLogic?: 'AND' | 'OR';
+  conditionGroups?: LogicConditionGroupItem[];
   /** Whether an action uses the typed value or the triggering control's value/text. */
   valueSource?: LogicValueSource;
   /** Optional ELSE branch; absent means the rule simply does nothing when its condition fails. */
@@ -116,6 +125,8 @@ export function normalizeLogicRules(value: unknown): VisualLogicRule[] {
       enabled: rule.enabled !== false,
       conditionOperator,
       conditionValue: typeof rule.conditionValue === 'string' ? rule.conditionValue.slice(0, 1000) : '',
+      conditionGroupsLogic: rule.conditionGroupsLogic === 'OR' ? 'OR' : 'AND',
+      conditionGroups: Array.isArray(rule.conditionGroups) ? rule.conditionGroups.flatMap((group): LogicConditionGroupItem[] => { if (!group || typeof group !== 'object') return []; const g=group as Record<string,unknown>; return CONDITIONS.has(g.operator as LogicConditionOperator) && typeof g.id === 'string' ? [{ id:g.id.slice(0,100), operator:g.operator as LogicConditionOperator, value:typeof g.value==='string'?g.value.slice(0,1000):'' }] : []; }).slice(0,20) : [],
       valueSource,
       elseAction: ACTIONS.has(rule.elseAction as LogicAction) ? rule.elseAction as LogicAction : undefined,
       elseTarget: typeof rule.elseTarget === 'string' ? rule.elseTarget.slice(0, 512) : '',
