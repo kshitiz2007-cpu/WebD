@@ -26,6 +26,7 @@ import BorderShadowGradientControls from './BorderShadowGradientControls';
 import ImageBlendDesigner from './ImageBlendDesigner';
 import DesignTokensPresets from './DesignTokensPresets';
 import ProStudioToolkit from './ProStudioToolkit';
+import { layoutContainerCss, layoutGapPreset, sizingModeCss, type LayoutAxis, type SizingMode } from '@/lib/studio/layout-engine';
 import {
   SHADOW_PRESETS,
   boxShadowToElevationHint,
@@ -1137,8 +1138,67 @@ export default function StyleInspectorPanel({
           const widthMode = detectBreakpointSizeMode(selected.className, ins.width, 'width', effectiveBp);
           const heightMode = detectBreakpointSizeMode(selected.className, ins.height, 'height', effectiveBp);
 
+          const layoutGap = Number.parseInt(ins.gap || cs.gap || '8', 10) || 0;
+          const layoutPadding = Number.parseInt(ins.padding || cs.padding || '0', 10) || 0;
+          const layoutAxis: LayoutAxis = isGrid ? 'grid' : (ins.flexDirection || cs.flexDirection || 'column') === 'row' ? 'horizontal' : 'vertical';
+          const layoutWrap = (ins.flexWrap || cs.flexWrap || 'nowrap') === 'wrap';
+          const layoutAlign = (ins.alignItems || cs.alignItems || 'flex-start') === 'center' ? 'center' :
+            (ins.alignItems || cs.alignItems || 'flex-start') === 'flex-end' ? 'end' :
+            (ins.alignItems || cs.alignItems || 'flex-start') === 'stretch' ? 'stretch' : 'start';
+          const applyAutoLayout = (axis: LayoutAxis, gap = layoutGap, padding = layoutPadding, wrap = layoutWrap, align = layoutAlign) => {
+            commitStyles(layoutContainerCss({ axis, gap, padding, wrap, align }));
+          };
+          const applySizing = (axis: 'width' | 'height', mode: SizingMode) => commitStyles(sizingModeCss(mode, axis));
           return (
             <>
+              <section className="space-y-3 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-semibold text-slate-900">Auto Layout Engine</h3>
+                    <p className="text-[10px] text-slate-500">Apply layout rules directly to this element</p>
+                  </div>
+                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] text-blue-700">New</span>
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  {(['horizontal', 'vertical', 'grid'] as LayoutAxis[]).map((axis) => (
+                    <button key={axis} type="button" onClick={() => applyAutoLayout(axis)}
+                      className={`rounded-md border px-2 py-1.5 text-[10px] font-medium capitalize ${layoutAxis === axis ? 'border-blue-500 bg-blue-100 text-blue-800' : 'border-slate-200 bg-white text-slate-600'}`}>
+                      {axis}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="space-y-1 text-[10px] text-slate-500">Gap
+                    <input type="number" min="0" max="128" value={layoutGap} onChange={(e) => applyAutoLayout(layoutAxis, layoutGapPreset(Number(e.target.value)), layoutPadding)}
+                      className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-800" />
+                  </label>
+                  <label className="space-y-1 text-[10px] text-slate-500">Padding
+                    <input type="number" min="0" max="128" value={layoutPadding} onChange={(e) => applyAutoLayout(layoutAxis, layoutGap, Math.max(0, Number(e.target.value)))}
+                      className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-800" />
+                  </label>
+                </div>
+                <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-2 py-2">
+                  <span className="text-[11px] text-slate-700">Wrap children</span>
+                  <button type="button" onClick={() => applyAutoLayout(layoutAxis, layoutGap, layoutPadding, !layoutWrap)}
+                    className={`rounded px-2 py-1 text-[10px] ${layoutWrap ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{layoutWrap ? 'On' : 'Off'}</button>
+                </div>
+                <label className="block space-y-1 text-[10px] text-slate-500">Align items
+                  <select value={layoutAlign} onChange={(e) => applyAutoLayout(layoutAxis, layoutGap, layoutPadding, layoutWrap, e.target.value as 'start' | 'center' | 'end' | 'stretch')}
+                    className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-800">
+                    <option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option>
+                  </select>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['width', 'height'] as const).map((axis) => (
+                    <label key={axis} className="space-y-1 text-[10px] text-slate-500 capitalize">{axis} sizing
+                      <select defaultValue="fixed" onChange={(e) => applySizing(axis, e.target.value as SizingMode)}
+                        className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-800">
+                        <option value="fixed">Fixed</option><option value="hug">Hug content</option><option value="fill">Fill container</option>
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              </section>
               {/* Smart Aligner Quick Section */}
               {(onSmartAutoAlign || onSmartAlignElement || onSmartRedesignBlock) && (
                 <section className="space-y-2.5 border-b border-slate-100 pb-4">
