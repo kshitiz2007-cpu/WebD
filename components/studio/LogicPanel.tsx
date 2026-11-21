@@ -91,6 +91,44 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
   };
 
   const removeRule = (id: string) => onChange(rules.filter((rule) => rule.id !== id));
+  const [recipe, setRecipe] = useState('');
+  const [testValue, setTestValue] = useState('');
+  const [testOpen, setTestOpen] = useState(false);
+  const applyRecipe = (key: string) => {
+    if (!selected) return;
+    const base = createRule(selected);
+    const recipes: Record<string, Partial<VisualLogicRule>> = {
+      showOnClick: { trigger: 'onClick', action: 'show', target: '', conditionOperator: 'always' },
+      hideOnClick: { trigger: 'onClick', action: 'hide', target: '', conditionOperator: 'always' },
+      toggleOnClick: { trigger: 'onClick', action: 'toggle', target: '', conditionOperator: 'always' },
+      toastOnClick: { trigger: 'onClick', action: 'toast', value: 'Done!', conditionOperator: 'always' },
+      goToPage: { trigger: 'onClick', action: 'navigate', target: '/page', conditionOperator: 'always' },
+      inputRequired: { trigger: 'onSubmit', action: 'toast', value: 'Please fill out this field', conditionOperator: 'isEmpty', conditionValue: '' },
+      copyInput: { trigger: 'onChange', action: 'setTextFromValue', target: '', valueSource: 'eventValue', conditionOperator: 'always' },
+      incrementCounter: { trigger: 'onClick', action: 'increment', target: '', value: '1', conditionOperator: 'always' },
+    };
+    const patch = recipes[key]; if (!patch) return;
+    onChange([...rules, { ...base, ...patch }]); setRecipe('');
+  };
+  const conditionPasses = (value: string) => {
+    const op = ruleForTest?.conditionOperator || 'always';
+    const compare = ruleForTest?.conditionValue || '';
+    const numeric = Number(value), numericCompare = Number(compare);
+    switch (op) {
+      case 'always': return true;
+      case 'equals': return value === compare;
+      case 'notEquals': return value !== compare;
+      case 'contains': return value.includes(compare);
+      case 'greaterThan': return Number.isFinite(numeric) && Number.isFinite(numericCompare) && numeric > numericCompare;
+      case 'lessThan': return Number.isFinite(numeric) && Number.isFinite(numericCompare) && numeric < numericCompare;
+      case 'isEmpty': return value.trim() === '';
+      case 'isNotEmpty': return value.trim() !== '';
+      default: return false;
+    }
+  };
+  const ruleForTest = selectedRules[selectedRules.length - 1] || selectedRules[0];
+  const testResult = ruleForTest ? conditionPasses(testValue) : null;
+
 
   return (
     <aside className={`flex h-full w-full flex-col border-l border-slate-200 bg-white shadow-xl ${isBottomSheet ? 'rounded-t-2xl' : 'max-w-[360px]'}`}>
@@ -128,6 +166,14 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
           <div><h3 className="text-sm font-semibold text-slate-900">Interactions</h3><p className="text-[11px] text-slate-500">{selectedRules.length} rule(s) for this component</p></div>
           <button type="button" onClick={addRule} disabled={!selected} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"><Plus className="h-3.5 w-3.5" /> Add rule</button>
         </div>
+
+        <section className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 space-y-2">
+          <div><h3 className="text-sm font-semibold text-emerald-900">Quick-start recipes</h3><p className="text-[11px] text-emerald-700">Ready-made interactions — choose one and customize it.</p></div>
+          <select value={recipe} onChange={(e)=>{setRecipe(e.target.value); if(e.target.value) applyRecipe(e.target.value);}} className={inputClass} disabled={!selected}>
+            <option value="">Choose a recipe…</option><option value="showOnClick">Click → Show another element</option><option value="hideOnClick">Click → Hide another element</option><option value="toggleOnClick">Click → Toggle another element</option><option value="toastOnClick">Click → Show notification</option><option value="goToPage">Click → Navigate to page</option><option value="inputRequired">Form → Required-field warning</option><option value="copyInput">Input → Copy typed value</option><option value="incrementCounter">Click → Increase counter</option>
+          </select>
+          {!selected && <p className="text-[10px] text-emerald-700">Select an element first to use recipes.</p>}
+        </section>
 
         {selectedRules.length === 0 && (
           <div className="rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center">
@@ -173,6 +219,10 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
           </article>
         ))}
 
+        <section className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 space-y-2">
+          <div className="flex items-center justify-between"><div><h3 className="text-sm font-semibold text-blue-900">Logic test bench</h3><p className="text-[11px] text-blue-700">Try sample values without changing the preview.</p></div><button type="button" onClick={()=>setTestOpen(!testOpen)} className="rounded-md border border-blue-200 bg-white px-2 py-1 text-xs font-medium text-blue-700">{testOpen?'Hide test':'Test rule'}</button></div>
+          {testOpen && <div className="space-y-2"><label className={labelClass}>Sample trigger value</label><input value={testValue} onChange={(e)=>setTestValue(e.target.value)} placeholder="Try text, number, or leave blank" className={inputClass}/>{ruleForTest ? <div className="rounded-lg bg-white p-2 text-xs"><p className="font-semibold text-slate-800">Condition: {CONDITIONS.find(x=>x.value===(ruleForTest.conditionOperator||'always'))?.label||'Always run'}</p><p className="mt-1 text-slate-600">Compare with: <code>{ruleForTest.conditionValue||'(empty)'}</code></p><p className="mt-2 font-semibold">{testResult?'✓ IF branch would run':'↪ ELSE / no action branch would run'}</p><p className="mt-1 text-slate-600">Preview action: {testResult?ruleForTest.action:(ruleForTest.elseAction||'No ELSE action')} {testResult?ruleForTest.target:(ruleForTest.elseTarget||'')} {testResult?ruleForTest.value:(ruleForTest.elseValue||'')}</p></div>:<p className="text-xs text-slate-500">Add a rule to test it here.</p>}<button type="button" onClick={()=>setTestValue('')} className="rounded-md border bg-white px-2 py-1 text-xs">Reset sample</button></div>}
+        </section>
         <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-[11px] leading-relaxed text-violet-900"><p className="font-semibold">Visual workflow + shared state</p><p className="mt-1">Flow view displays each interaction as connected Trigger → Action nodes. Global state actions let workflows share data across routes. Use keys like <code>cart.items</code>; add an <b>Add item to state array</b> action, then <b>Save state to storage</b> before navigating to checkout.</p><p className="mt-2">Rules execute in Preview → Interact mode. Element actions still target canvas elements; state actions operate on the shared app state.</p></div>
       </div>
     </aside>
