@@ -99,6 +99,7 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
   const [runtimeState, setRuntimeState] = useState<Record<string, unknown> | null>(null);
   const [runtimeStateUpdatedAt, setRuntimeStateUpdatedAt] = useState<number | null>(null);
   const [runtimeStateFilter, setRuntimeStateFilter] = useState('');
+  const filteredRuntimeKeys = runtimeState ? Object.keys(runtimeState).filter((key) => !runtimeStateFilter || key.toLowerCase().includes(runtimeStateFilter.toLowerCase()) || JSON.stringify(runtimeState[key]).toLowerCase().includes(runtimeStateFilter.toLowerCase())) : [];
   React.useEffect(() => {
     const onRuntimeState = (event: MessageEvent) => {
       const message = event.data;
@@ -255,6 +256,15 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
           <div className="flex gap-1.5"><button type="button" onClick={()=>{setDebugStep(0);setDebugPaused(true);}} className="rounded-md border bg-white px-2 py-1 text-xs">Reset</button><button type="button" onClick={()=>setDebugPaused(!debugPaused)} className="rounded-md border bg-white px-2 py-1 text-xs">{debugPaused?'Resume':'Pause'}</button><button type="button" disabled={!debugPaused || debugStep>=selectedRules.length} onClick={()=>setDebugStep(v=>Math.min(selectedRules.length,v+1))} className="rounded-md bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-40">Next step</button></div>
           {selectedRules.length>0 ? <div className="space-y-1.5"><p className="text-[11px] font-medium text-slate-700">Execution trace</p>{selectedRules.map((r,i)=><div key={r.id} className={`rounded-md border px-2 py-1.5 text-[11px] ${i===debugStep-1?'border-blue-400 bg-blue-50':i<debugStep?'border-emerald-200 bg-emerald-50':'border-slate-200 bg-white'}}><span className="font-semibold">{i<debugStep?'✓':i===debugStep?'▶':'○'} Step {i+1}</span> · {r.trigger} → {r.action}{r.target?(` · ${r.target}`):''}{r.delayMs?(` · wait ${r.delayMs}ms`):''}{r.repeatCount&&r.repeatCount>1?(` · ×${r.repeatCount}`):''}</div>)}</div>:<p className="text-xs text-slate-500">Add rules to inspect their order here.</p>}
           <p className="text-[10px] text-slate-500">This panel steps through the rule list for inspection; it does not execute preview-side effects.</p>
+        </section>
+        <section className="rounded-xl border border-teal-200 bg-teal-50/60 p-3 space-y-2">
+          <div><h3 className="text-sm font-semibold text-teal-950">Runtime state inspector</h3><p className="text-[11px] text-teal-800">Live snapshots from preview shared state.</p></div>
+          <input value={runtimeStateFilter} onChange={(e)=>setRuntimeStateFilter(e.target.value)} placeholder="Filter keys or values" className={inputClass}/>
+          {runtimeState===null ? <p className="text-xs text-slate-600">Waiting for a workflow-state snapshot from Preview…</p> : <div className="rounded-lg border border-teal-100 bg-white p-2.5 space-y-1.5">
+            <div className="flex items-center justify-between text-[10px] text-slate-500"><span>{runtimeStateUpdatedAt ? new Date(runtimeStateUpdatedAt).toLocaleTimeString() : 'Snapshot'}</span><button type="button" onClick={()=>{try{navigator.clipboard.writeText(JSON.stringify(runtimeState,null,2));}catch(_){}}} className="rounded border px-2 py-0.5 text-teal-700">Copy JSON</button></div>
+            {filteredRuntimeKeys.length===0 ? <p className="text-xs text-slate-500">No matching keys.</p> : filteredRuntimeKeys.map((key)=><div key={key} className="border-b border-slate-100 py-1.5 last:border-0"><div className="text-[11px] font-semibold text-slate-700">{key}</div><pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-[11px] text-slate-600">{JSON.stringify(runtimeState[key],null,2)}</pre></div>)}
+          </div>}
+          <p className="text-[10px] text-teal-800">Read-only snapshot. It updates when preview emits a state change; state editing/reset is not connected yet.</p>
         </section>
         <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-[11px] leading-relaxed text-violet-900"><p className="font-semibold">Visual workflow + shared state</p><p className="mt-1">Flow view displays each interaction as connected Trigger → Action nodes. Global state actions let workflows share data across routes. Use keys like <code>cart.items</code>; add an <b>Add item to state array</b> action, then <b>Save state to storage</b> before navigating to checkout.</p><p className="mt-2">Rules execute in Preview → Interact mode. Element actions still target canvas elements; state actions operate on the shared app state.</p></div>
       </div>
