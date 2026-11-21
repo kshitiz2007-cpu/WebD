@@ -2605,6 +2605,34 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
   const commandPaletteItems = useMemo<StudioCommandItem[]>(() => {
     const items: StudioCommandItem[] = [];
 
+    const quickInsertItems: Array<{ label: string; description: string; keywords: string[]; iconKey: StudioCommandItem['iconKey']; snippet: string }> = [
+      { label: 'Insert Heading', description: 'Add a heading text element', keywords: ['text', 'title', 'heading', 'h1'], iconKey: 'block', snippet: '<h2 className="text-2xl font-bold">Your Heading</h2>' },
+      { label: 'Insert Paragraph', description: 'Add a paragraph text block', keywords: ['text', 'paragraph', 'p', 'copy'], iconKey: 'block', snippet: '<p className="text-sm leading-6 text-slate-600">Write your text here.</p>' },
+      { label: 'Insert Name Input', description: 'Add a name input bar', keywords: ['name', 'input', 'field', 'form', 'text'], iconKey: 'block', snippet: '<input type="text" name="name" placeholder="Enter your name" className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500" />' },
+      { label: 'Insert Email Input', description: 'Add an email input bar', keywords: ['email', 'input', 'field', 'form'], iconKey: 'block', snippet: '<input type="email" name="email" placeholder="Enter your email" className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500" />' },
+      { label: 'Insert Password Input', description: 'Add a password input bar', keywords: ['password', 'input', 'field', 'form', 'login'], iconKey: 'block', snippet: '<input type="password" name="password" placeholder="Enter password" className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500" />' },
+      { label: 'Insert Phone Input', description: 'Add a phone input bar', keywords: ['phone', 'mobile', 'number', 'input', 'field'], iconKey: 'block', snippet: '<input type="tel" name="phone" placeholder="Enter phone number" className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500" />' },
+      { label: 'Insert Textarea', description: 'Add a multiline text input', keywords: ['textarea', 'message', 'input', 'form'], iconKey: 'block', snippet: '<textarea name="message" placeholder="Write your message..." rows={4} className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500" />' },
+      { label: 'Insert Button', description: 'Add a styled button', keywords: ['button', 'click', 'submit', 'cta'], iconKey: 'block', snippet: '<button type="button" className="rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700">Click Me</button>' },
+      { label: 'Insert Checkbox', description: 'Add a checkbox with label', keywords: ['checkbox', 'check', 'form', 'toggle'], iconKey: 'block', snippet: '<label className="flex items-center gap-2 text-sm"><input type="checkbox" /> Accept terms</label>' },
+      { label: 'Insert Navbar', description: 'Add a simple navigation bar', keywords: ['navbar', 'navigation', 'header', 'menu', 'bar'], iconKey: 'layout', snippet: '<nav className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 px-5 py-4"><strong>Brand</strong><div className="flex gap-4 text-sm"><a href="#">Home</a><a href="#">About</a><a href="#">Contact</a></div></nav>' },
+      { label: 'Insert Container', description: 'Add a bordered content container', keywords: ['container', 'box', 'section', 'card', 'layout'], iconKey: 'layout', snippet: '<section className="rounded-xl border border-slate-200 p-6"><h3 className="text-lg font-semibold">Section title</h3><p className="mt-2 text-sm text-slate-600">Content goes here.</p></section>' },
+      { label: 'Insert Divider', description: 'Add a horizontal divider line', keywords: ['divider', 'line', 'hr', 'separator'], iconKey: 'block', snippet: '<hr className="my-4 border-slate-200" />' },
+      { label: 'Insert Select Dropdown', description: 'Add a select dropdown', keywords: ['select', 'dropdown', 'option', 'form'], iconKey: 'block', snippet: '<select name="choice" className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"><option value="">Choose an option</option><option value="one">Option 1</option><option value="two">Option 2</option></select>' },
+    ];
+    items.push(...quickInsertItems.map((quick) => ({
+      id: `quick:${quick.label}`,
+      label: quick.label,
+      description: quick.description,
+      category: 'blocks' as const,
+      keywords: ['quick insert', 'insert', ...quick.keywords],
+      iconKey: quick.iconKey,
+      onExecute: () => {
+        handleInsertLayoutBlock(quick.snippet);
+        showToastFeedback(`${quick.label.replace('Insert ', '')} inserted`);
+      },
+    })));
+
     if (selected) {
       const target = selected;
       const canExtract = /\.(tsx|jsx)$/i.test(target.filePath);
@@ -3006,6 +3034,8 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
     historyFuture.length,
     project.pages,
     projectComponents,
+    handleInsertLayoutBlock,
+    showToastFeedback,
   ]);
 
   const handleExecuteCommand = useCallback(
