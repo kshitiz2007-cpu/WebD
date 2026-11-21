@@ -96,6 +96,20 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
   const [testOpen, setTestOpen] = useState(false);
   const [debugStep, setDebugStep] = useState(0);
   const [debugPaused, setDebugPaused] = useState(true);
+  const [runtimeState, setRuntimeState] = useState<Record<string, unknown> | null>(null);
+  const [runtimeStateUpdatedAt, setRuntimeStateUpdatedAt] = useState<number | null>(null);
+  const [runtimeStateFilter, setRuntimeStateFilter] = useState('');
+  React.useEffect(() => {
+    const onRuntimeState = (event: MessageEvent) => {
+      const message = event.data;
+      if (!message || message.type !== 'studio:workflow-state') return;
+      if (!message.state || typeof message.state !== 'object' || Array.isArray(message.state)) return;
+      setRuntimeState(message.state as Record<string, unknown>);
+      setRuntimeStateUpdatedAt(Date.now());
+    };
+    window.addEventListener('message', onRuntimeState);
+    return () => window.removeEventListener('message', onRuntimeState);
+  }, []);
   const applyRecipe = (key: string) => {
     if (!selected) return;
     const base = createRule(selected);
