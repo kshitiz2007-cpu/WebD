@@ -25,7 +25,7 @@ export function simplifyVectorPoints(points: VectorPoint[], tolerance = 1.5): Ve
   const result = [points[0]];
   for (let i = 1; i < points.length - 1; i++) {
     const previous = result[result.length - 1], current = points[i], next = points[i + 1];
-    const area = Math.abs((current.x - previous.x) * (next.y - previous.y) - (current.y - previous.y) * (next.x - previous.x);
+    const area = Math.abs((current.x - previous.x) * (next.y - previous.y) - (current.y - previous.y) * (next.x - previous.x));
     const length = Math.hypot(next.x - previous.x, next.y - previous.y) || 1;
     if (area / length > tolerance) result.push(current);
   }
