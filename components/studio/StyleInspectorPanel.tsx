@@ -773,6 +773,36 @@ export default function StyleInspectorPanel({
             <section className="space-y-3">
               <h3 className="text-[11px] font-semibold text-slate-700">Border &amp; Elevation</h3>
 
+              <div className="grid grid-cols-4 gap-1.5" aria-label="Quick shape presets">
+                {[
+                  { label: 'Square', radius: '0' },
+                  { label: 'Rounded', radius: '12px' },
+                  { label: 'Circle', radius: '50%' },
+                  { label: 'Oval', radius: '50% / 35%' },
+                  { label: 'Pill', radius: '9999px' },
+                  { label: 'Teardrop', radius: '50% 50% 50% 0' },
+                  { label: 'Leaf', radius: '0 100% 0 100%' },
+                  { label: 'Squircle', radius: '28px' },
+                ].map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    title={preset.label}
+                    onClick={() => {
+                      setRadiusDraft(preset.radius);
+                      commitStyles({ borderRadius: preset.radius });
+                    }}
+                    className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-1.5 py-2 text-[10px] text-slate-600 hover:border-blue-400 hover:bg-blue-50"
+                  >
+                    <span
+                      className="h-5 w-7 border-2 border-blue-500 bg-blue-100"
+                      style={{ borderRadius: preset.radius }}
+                    />
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <ScrubLabel
