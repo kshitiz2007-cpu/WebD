@@ -254,7 +254,17 @@ export default function LogicPanel({ selected, rules, availableTargets = [], onC
         <section className="rounded-xl border border-slate-300 bg-slate-50 p-3 space-y-2">
           <div className="flex items-center justify-between"><div><h3 className="text-sm font-semibold text-slate-900">Step debugger</h3><p className="text-[11px] text-slate-500">Inspect selected rules in order (simulation only).</p></div><span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-slate-600">{Math.min(debugStep, selectedRules.length)}/{selectedRules.length}</span></div>
           <div className="flex gap-1.5"><button type="button" onClick={()=>{setDebugStep(0);setDebugPaused(true);}} className="rounded-md border bg-white px-2 py-1 text-xs">Reset</button><button type="button" onClick={()=>setDebugPaused(!debugPaused)} className="rounded-md border bg-white px-2 py-1 text-xs">{debugPaused?'Resume':'Pause'}</button><button type="button" disabled={!debugPaused || debugStep>=selectedRules.length} onClick={()=>setDebugStep(v=>Math.min(selectedRules.length,v+1))} className="rounded-md bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-40">Next step</button></div>
-          {selectedRules.length>0 ? <div className="space-y-1.5"><p className="text-[11px] font-medium text-slate-700">Execution trace</p>{selectedRules.map((r,i)=><div key={r.id} className={`rounded-md border px-2 py-1.5 text-[11px] ${i===debugStep-1?'border-blue-400 bg-blue-50':i<debugStep?'border-emerald-200 bg-emerald-50':'border-slate-200 bg-white'}}><span className="font-semibold">{i<debugStep?'✓':i===debugStep?'▶':'○'} Step {i+1}</span> · {r.trigger} → {r.action}{r.target?(` · ${r.target}`):''}{r.delayMs?(` · wait ${r.delayMs}ms`):''}{r.repeatCount&&r.repeatCount>1?(` · ×${r.repeatCount}`):''}</div>)}</div>:<p className="text-xs text-slate-500">Add rules to inspect their order here.</p>}
+          {selectedRules.length > 0 ? (
+            <div className="space-y-1.5">
+              <p className="text-[11px] font-medium text-slate-700">Execution trace</p>
+              {selectedRules.map((r, i) => (
+                <div key={r.id} className={`rounded-md border px-2 py-1.5 text-[11px] ${i === debugStep - 1 ? 'border-blue-400 bg-blue-50' : i < debugStep ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
+                  <span className="font-semibold">{i < debugStep ? '✓' : i === debugStep ? '▶' : '○'} Step {i + 1}</span>
+                  {' - '}{r.trigger}{' -> '}{r.action}{r.target ? (' - ' + r.target) : ''}{r.delayMs ? (' - wait ' + r.delayMs + 'ms') : ''}{r.repeatCount && r.repeatCount > 1 ? (' x' + r.repeatCount) : ''}
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-xs text-slate-500">Add rules to inspect their order here.</p>}
           <p className="text-[10px] text-slate-500">This panel steps through the rule list for inspection; it does not execute preview-side effects.</p>
         </section>
         <section className="rounded-xl border border-teal-200 bg-teal-50/60 p-3 space-y-2">
