@@ -104,6 +104,19 @@ export default function LogicFlowCanvas({ rule, triggers, actions, onChange }: P
   };
   const updateFlowNode = (id:string, patch:Partial<VisualFlowNode>) => onChange({flowNodes:flowNodes.map((node)=>node.id===id?{...node,...patch}:node)});
   const removeFlowNode = (id:string) => { onChange({flowNodes:flowNodes.filter((node)=>node.id!==id)}); saveEdges(edges.filter((edge)=>edge.from!==id&&edge.to!==id)); };
+  const validation = useMemo(() => {
+    const issues: string[] = [];
+    const ids = new Set(['trigger','condition','yes','no',...flowNodes.map((n)=>n.id)]);
+    edges.forEach((edge)=>{ if(!ids.has(edge.from)||!ids.has(edge.to)) issues.push('A connection points to a missing node. Remove or reconnect it.'); if(edge.from===edge.to) issues.push('A node is connected to itself.'); });
+    flowNodes.forEach((n)=>{ if(!edges.some((e)=>e.from===n.id||e.to===n.id)) issues.push((n.label||n.type)+' is disconnected from the workflow.'); });
+    if(!edges.some((e)=>e.from==='trigger')) issues.push('Trigger has no outgoing connection.');
+    if(flowNodes.some((n)=>n.type==='condition')) flowNodes.filter((n)=>n.type==='condition').forEach((n)=>{const outs=edges.filter(e=>e.from===n.id);if(!outs.some(e=>['true','if true'].includes(String(e.label||'').toLowerCase())))issues.push((n.label||'Condition')+' has no TRUE branch connection.');if(!outs.some(e=>String(e.label||'').toLowerCase()==='false'))issues.push((n.label||'Condition')+' has no FALSE branch connection.');});
+    const adjacency:Record<string,string[]>={}; edges.forEach(e=>{(adjacency[e.from]||(adjacency[e.from]=[])).push(e.to);});
+    const visiting=new Set<string>(), visited=new Set<string>(); let hasCycle=false;
+    const dfs=(id:string)=>{if(visiting.has(id)){hasCycle=true;return;}if(visited.has(id))return;visiting.add(id);(adjacency[id]||[]).forEach(dfs);visiting.delete(id);visited.add(id);};
+    ['trigger',...flowNodes.map(n=>n.id)].forEach(dfs); if(hasCycle)issues.push('Loop detected. The preview runner stops revisiting nodes to protect against infinite loops.');
+    return issues;
+  },[edges,flowNodes]);
   const edgePath = (edge: Edge) => {
     const a=positions[edge.from] || defaults[edge.from], b=positions[edge.to] || defaults[edge.to];
     if (!a || !b) return null;
@@ -164,6 +177,10 @@ export default function LogicFlowCanvas({ rule, triggers, actions, onChange }: P
         </div>
       </div>
     </div>
+    <section className={validation.length?'rounded-xl border border-amber-200 bg-amber-50 p-3':'rounded-xl border border-emerald-200 bg-emerald-50 p-3'}>
+      <div className="flex items-center justify-between"><span className="text-xs font-semibold">Workflow validation</span><span className="text-[10px] font-bold">{validation.length?validation.length+' issue(s)':'Looks connected'}</span></div>
+      {validation.length===0?<p className="mt-1 text-[10px]">No obvious connection issues detected. This is a structural check, not a full runtime test.</p>:<ul className="mt-2 space-y-1 text-[10px]">{validation.slice(0,8).map((issue,i)=><li key={i}>• {issue}</li>)}</ul>}
+    </section>
     <div className="flex flex-wrap items-center gap-2">
       <button type="button" onClick={()=>{saveEdges(defaultEdges);setConnectFrom(null);}} className="rounded-md border px-2 py-1 text-[10px] font-semibold">Auto-connect defaults</button>
       <button type="button" onClick={()=>saveEdges([])} className="rounded-md border px-2 py-1 text-[10px] font-semibold">Clear all wires</button>
