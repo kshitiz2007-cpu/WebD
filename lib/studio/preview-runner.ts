@@ -1360,6 +1360,19 @@ function runLogicRule(rule, event) {
     }
   }, true);
 
+  // Touch/pen devices can delay or omit the synthetic click after gestures; select on pointerdown.
+  document.addEventListener('pointerdown', function(e) {
+    if (CURRENT_MODE !== 'design' || (e.pointerType !== 'touch' && e.pointerType !== 'pen')) return;
+    if (EDITING_EL && EDITING_EL.contains(e.target)) return;
+    var target = findSelectableTarget(e.target);
+    if (!target) return;
+    e.preventDefault();
+    e.stopPropagation();
+    SELECTED_ID = target.getAttribute('data-studio-id');
+    window.parent.postMessage({ type: 'studio:select', element: extractSnapshot(target), shiftKey: Boolean(e.shiftKey) }, '*');
+  }, true);
+
+
   document.addEventListener('click', function(e) {
     if (Date.now() < SUPPRESS_CLICK_UNTIL) {
       e.preventDefault();
