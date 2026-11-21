@@ -800,15 +800,27 @@ function runLogicRule(rule, event) {
   }
 
   function findSelectableTarget(node) {
-    var cur = node && node.closest ? node.closest('[data-studio-id]') : null;
+    var start = node && node.nodeType === 3 ? node.parentElement : node;
+    var cur = start && start.closest ? start.closest('[data-studio-id]') : null;
     while (cur) {
       var sid = cur.getAttribute('data-studio-id');
-      if (sid && !LOCKED_IDS[sid] && !HIDDEN_IDS[sid]) {
-        return cur;
-      }
+      if (sid && !LOCKED_IDS[sid] && !HIDDEN_IDS[sid]) return cur;
       cur = cur.parentElement ? cur.parentElement.closest('[data-studio-id]') : null;
     }
     return null;
+  }
+  function findSelectableAtPoint(x, y, fallbackNode) {
+    var hit = null;
+    try { hit = document.elementFromPoint(x, y); } catch (_) {}
+    return findSelectableTarget(hit) || findSelectableTarget(fallbackNode);
+  }
+  function sendCanvasSelection(target, shiftKey) {
+    if (!target || CURRENT_MODE !== 'design') return false;
+    var sid = target.getAttribute('data-studio-id');
+    if (!sid) return false;
+    SELECTED_ID = sid;
+    window.parent.postMessage({ type: 'studio:select', element: extractSnapshot(target), shiftKey: Boolean(shiftKey) }, '*');
+    return true;
   }
 
   function clearTrackedPreviewStyles() {
@@ -1140,21 +1152,12 @@ function runLogicRule(rule, event) {
     if (CURRENT_MODE !== 'design') return;
     if (EDITING_EL && EDITING_EL.contains(e.target)) return;
     if (!e.touches || e.touches.length !== 1) return;
-    var target = findSelectableTarget(e.target);
-    if (!target) return;
     var touch = e.touches[0];
+    var target = findSelectableAtPoint(touch.clientX, touch.clientY, e.target);
+    if (!target) return;
     TAP_START = { x: touch.clientX, y: touch.clientY, target: target };
     LONG_PRESS_START = { x: touch.clientX, y: touch.clientY, target: target };
-    // Select immediately on touchstart: touchend can be retargeted or cancelled by mobile scrolling.
-    var touchSid = target.getAttribute('data-studio-id');
-    if (touchSid) {
-      SELECTED_ID = touchSid;
-      window.parent.postMessage({
-        type: 'studio:select',
-        element: extractSnapshot(target),
-        shiftKey: Boolean(e.shiftKey)
-      }, '*');
-    }
+    sendCanvasSelection(target, e.shiftKey);
     LONG_PRESS_TIMER = setTimeout(function() {
       if (!LONG_PRESS_START) return;
       var el = LONG_PRESS_START.target;
@@ -1392,12 +1395,9 @@ function runLogicRule(rule, event) {
   document.addEventListener('pointerdown', function(e) {
     if (CURRENT_MODE !== 'design' || (e.pointerType !== 'touch' && e.pointerType !== 'pen')) return;
     if (EDITING_EL && EDITING_EL.contains(e.target)) return;
-    var target = findSelectableTarget(e.target);
+    var target = findSelectableAtPoint(e.clientX, e.clientY, e.target);
     if (!target) return;
-    // Do not cancel/stop touch pointer events: native scrolling, drag, and touchend
-    // should still run. Touch selection is finalized by the touchend fallback.
-    SELECTED_ID = target.getAttribute('data-studio-id');
-    window.parent.postMessage({ type: 'studio:select', element: extractSnapshot(target), shiftKey: Boolean(e.shiftKey) }, '*');
+    sendCanvasSelection(target, e.shiftKey);
   }, true);
 
 
