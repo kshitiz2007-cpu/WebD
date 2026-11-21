@@ -510,7 +510,7 @@ function buildDesignerBridgeScript(
     }
     edges.filter(function(edge) { return edge.from === 'trigger'; }).forEach(function(edge) { walk(edge.to); });
   }
-  function runLogicRule(rule, event) {
+  function runLogicRuleOnce(rule, event) {
     if (!rule || rule.enabled === false) return;
     if (Array.isArray(rule.flowNodes) && rule.flowNodes.length) {
       runFlowGraph(rule, event);
@@ -632,7 +632,21 @@ function buildDesignerBridgeScript(
       window.setTimeout(function() { toast.remove(); }, 2600);
     }
   }
-  function runLogicForEvent(trigger, event) {
+function runLogicRule(rule, event) {
+    if (!rule || rule.enabled === false) return;
+    var delay = Math.max(0, Math.min(60000, Number(rule.delayMs) || 0));
+    var count = Math.max(1, Math.min(20, Math.floor(Number(rule.repeatCount) || 1)));
+    var iteration = 0;
+    function executeNext() {
+      if (iteration >= count) return;
+      iteration += 1;
+      runLogicRuleOnce(rule, event);
+      if (iteration < count) window.setTimeout(executeNext, delay);
+    }
+    if (delay > 0) window.setTimeout(executeNext, delay);
+    else executeNext();
+  }
+    function runLogicForEvent(trigger, event) {
     if (CURRENT_MODE !== 'interact' || LOGIC_EXECUTING) return;
     var seeds = [event.target];
     if (trigger === 'onSubmit' && event.submitter) seeds.push(event.submitter);
