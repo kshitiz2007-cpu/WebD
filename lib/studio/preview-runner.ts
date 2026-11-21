@@ -1123,6 +1123,8 @@ function runLogicRule(rule, event) {
 
   var LONG_PRESS_TIMER = null;
   var LONG_PRESS_START = null;
+  // Keep the original tap target: mobile browsers may retarget touchend to body/overlay.
+  var TAP_START = null;
   var SUPPRESS_CLICK_UNTIL = 0;
 
   function clearLongPress() {
@@ -1141,6 +1143,7 @@ function runLogicRule(rule, event) {
     var target = findSelectableTarget(e.target);
     if (!target) return;
     var touch = e.touches[0];
+    TAP_START = { x: touch.clientX, y: touch.clientY, target: target };
     LONG_PRESS_START = { x: touch.clientX, y: touch.clientY, target: target };
     LONG_PRESS_TIMER = setTimeout(function() {
       if (!LONG_PRESS_START) return;
@@ -1161,12 +1164,15 @@ function runLogicRule(rule, event) {
   }, { capture: true, passive: true });
 
   document.addEventListener('touchmove', function(e) {
-    if (!LONG_PRESS_START || !e.touches || e.touches.length !== 1) {
+    if (!e.touches || e.touches.length !== 1) {
       clearLongPress();
+      TAP_START = null;
       return;
     }
     var touch = e.touches[0];
-    if (Math.hypot(touch.clientX - LONG_PRESS_START.x, touch.clientY - LONG_PRESS_START.y) > 10) {
+    var movedFromTap = TAP_START && Math.hypot(touch.clientX - TAP_START.x, touch.clientY - TAP_START.y) > 12;
+    if (movedFromTap) TAP_START = null;
+    if (!LONG_PRESS_START || Math.hypot(touch.clientX - LONG_PRESS_START.x, touch.clientY - LONG_PRESS_START.y) > 10) {
       clearLongPress();
     }
   }, { capture: true, passive: true });
@@ -1322,7 +1328,8 @@ function runLogicRule(rule, event) {
     var hitTarget = touchPoint && document.elementFromPoint
       ? document.elementFromPoint(touchPoint.clientX, touchPoint.clientY)
       : e.target;
-    var target = findSelectableTarget(hitTarget || e.target);
+    var target = findSelectableTarget(hitTarget || e.target) || (TAP_START && TAP_START.target) || null;
+    TAP_START = null;
     if (!target) return;
     var sid = target.getAttribute('data-studio-id');
     var now = Date.now();
