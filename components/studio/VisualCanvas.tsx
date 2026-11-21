@@ -43,6 +43,7 @@ import {
 import MultiAlignBar from './MultiAlignBar';
 import { clampCanvasZoom, stepCanvasZoom } from '@/lib/studio/canvas-engine';
 import SplitMobileTwin from './SplitMobileTwin';
+import VectorPenOverlay from './VectorPenOverlay';
 import {
   AlignmentGuide,
   SnapCandidate,
@@ -1648,6 +1649,9 @@ export default function VisualCanvas({
             sandbox="allow-scripts allow-same-origin"
             className="h-full w-full border-0 bg-white"
           />
+
+          {/* Interactive Vector Pen / Node Editor overlay */}
+          <VectorPenOverlay width={targetWidth} height={frameHeight} />
 
           {/* Before / After Live Comparison Overlay (Original vs Edited) */}
           {showBeforeAfter && beforeSrcDoc && (
