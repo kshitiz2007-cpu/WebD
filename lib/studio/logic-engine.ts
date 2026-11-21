@@ -132,6 +132,8 @@ export function normalizeLogicRules(value: unknown): VisualLogicRule[] {
       target: typeof rule.target === 'string' ? rule.target.slice(0, 512) : '',
       value: typeof rule.value === 'string' ? rule.value.slice(0, 4000) : '',
       enabled: rule.enabled !== false,
+      delayMs: Math.max(0, Math.min(60000, Number.isFinite(Number(rule.delayMs)) ? Number(rule.delayMs) : 0)),
+      repeatCount: Math.max(1, Math.min(20, Math.floor(Number.isFinite(Number(rule.repeatCount)) ? Number(rule.repeatCount) : 1))),
       conditionOperator,
       conditionValue: typeof rule.conditionValue === 'string' ? rule.conditionValue.slice(0, 1000) : '',
       conditionGroupsLogic: rule.conditionGroupsLogic === 'OR' ? 'OR' : 'AND',
