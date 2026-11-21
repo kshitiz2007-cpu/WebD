@@ -55,6 +55,13 @@ export interface LogicConditionGroupItem {
   value: string;
 }
 
+export interface LogicVariableDefinition {
+  id: string;
+  key: string;
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object';
+  initialValue: string;
+}
+
 export interface VisualLogicRule {
   id: string;
   componentId: string;
@@ -78,6 +85,8 @@ export interface VisualLogicRule {
   elseValue?: string;
   flowLayout?: Record<string, { x: number; y: number }>;
   flowEdges?: Array<{ id: string; from: string; to: string; label?: string }>;
+  /** Workflow variables are editable definitions; actions can reference their keys through shared state. */
+  variables?: LogicVariableDefinition[];
   /** Arbitrary action and nested condition nodes used by the graph executor. */
   flowNodes?: VisualFlowNode[];
 }
@@ -138,6 +147,7 @@ export function normalizeLogicRules(value: unknown): VisualLogicRule[] {
           ? [[key.slice(0, 80), { x: Math.max(0, Math.min(5000, candidate.x)), y: Math.max(0, Math.min(5000, candidate.y)) }]] : [];
       })) : undefined,
       flowEdges: Array.isArray(rule.flowEdges) ? rule.flowEdges.filter((edge): edge is {id:string;from:string;to:string;label?:string} => !!edge && typeof edge.id === 'string' && typeof edge.from === 'string' && typeof edge.to === 'string').slice(0,300) : undefined,
+      variables: Array.isArray(rule.variables) ? rule.variables.flatMap((variable): LogicVariableDefinition[] => { if (!variable || typeof variable !== 'object') return []; const v = variable as Record<string, unknown>; return typeof v.id === 'string' && typeof v.key === 'string' && ['string','number','boolean','array','object'].includes(String(v.type)) ? [{ id:v.id.slice(0,100), key:v.key.trim().slice(0,120), type:v.type as LogicVariableDefinition['type'], initialValue:typeof v.initialValue==='string'?v.initialValue.slice(0,4000):'' }] : []; }).slice(0,50) : [],
       flowNodes: Array.isArray(rule.flowNodes) ? rule.flowNodes.flatMap((node): VisualFlowNode[] => {
         if (!node || typeof node !== 'object' || typeof node.id !== 'string' || !['action','condition'].includes(String(node.type))) return [];
         const n = node as Record<string, unknown>;
