@@ -1318,7 +1318,11 @@ function runLogicRule(rule, event) {
     clearLongPress();
     if (CURRENT_MODE !== 'design') return;
     if (Date.now() < SUPPRESS_CLICK_UNTIL) return;
-    var target = findSelectableTarget(e.target);
+    var touchPoint = e.changedTouches && e.changedTouches.length ? e.changedTouches[0] : null;
+    var hitTarget = touchPoint && document.elementFromPoint
+      ? document.elementFromPoint(touchPoint.clientX, touchPoint.clientY)
+      : e.target;
+    var target = findSelectableTarget(hitTarget || e.target);
     if (!target) return;
     var sid = target.getAttribute('data-studio-id');
     var now = Date.now();
@@ -1373,8 +1377,8 @@ function runLogicRule(rule, event) {
     if (EDITING_EL && EDITING_EL.contains(e.target)) return;
     var target = findSelectableTarget(e.target);
     if (!target) return;
-    e.preventDefault();
-    e.stopPropagation();
+    // Do not cancel/stop touch pointer events: native scrolling, drag, and touchend
+    // should still run. Touch selection is finalized by the touchend fallback.
     SELECTED_ID = target.getAttribute('data-studio-id');
     window.parent.postMessage({ type: 'studio:select', element: extractSnapshot(target), shiftKey: Boolean(e.shiftKey) }, '*');
   }, true);
