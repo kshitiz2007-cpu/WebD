@@ -230,6 +230,7 @@ export default function VisualCanvas({
     () => false
   );
   const [lucideVersion, setLucideVersion] = useState(0);
+  const [touchDiagnostic, setTouchDiagnostic] = useState<Record<string, unknown> | null>(null);
   const [stageWidth, setStageWidth] = useState(900);
   const [stageHeight, setStageHeight] = useState(760);
   const [hoverInfo, setHoverInfo] = useState<{
@@ -571,6 +572,8 @@ export default function VisualCanvas({
       } else if (msg.type === 'studio:hover') {
         if (!msg.studioId) setHoverInfo(null);
         else setHoverInfo({ studioId: msg.studioId, tagName: msg.tagName, rect: msg.rect });
+      } else if (msg.type === 'studio:touch-diagnostic') {
+        setTouchDiagnostic(msg.detail || {});
       } else if (msg.type === 'studio:select') {
         setHoverInfo(null);
         if (msg.element) {
@@ -1641,6 +1644,14 @@ export default function VisualCanvas({
             transform: `scale(${scale})`,
           }}
         >
+          {touchDiagnostic && (
+            <div className="absolute left-1 top-1 z-[100] max-w-[95%] rounded bg-black/90 px-2 py-1 font-mono text-[10px] leading-tight text-white pointer-events-none" data-testid="studio-touch-diagnostic">
+              <div className="font-bold">TOUCH DEBUG · {String(touchDiagnostic.stage || '')}</div>
+              <div>{String(touchDiagnostic.eventType || '')} · mode={String(touchDiagnostic.mode || '')} · target={String(touchDiagnostic.targetTag || '')}</div>
+              <div>id={String(touchDiagnostic.studioId || touchDiagnostic.targetId || 'none')} · xy={String(touchDiagnostic.x ?? '?')},{String(touchDiagnostic.y ?? '?')}</div>
+              <div>{String(touchDiagnostic.extra || touchDiagnostic.error || '')}</div>
+            </div>
+          )}
           <iframe
             ref={iframeRef}
             title={`Visual preview of ${activePage.route}`}
