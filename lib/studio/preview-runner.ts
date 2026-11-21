@@ -1145,6 +1145,16 @@ function runLogicRule(rule, event) {
     var touch = e.touches[0];
     TAP_START = { x: touch.clientX, y: touch.clientY, target: target };
     LONG_PRESS_START = { x: touch.clientX, y: touch.clientY, target: target };
+    // Select immediately on touchstart: touchend can be retargeted or cancelled by mobile scrolling.
+    var touchSid = target.getAttribute('data-studio-id');
+    if (touchSid) {
+      SELECTED_ID = touchSid;
+      window.parent.postMessage({
+        type: 'studio:select',
+        element: extractSnapshot(target),
+        shiftKey: Boolean(e.shiftKey)
+      }, '*');
+    }
     LONG_PRESS_TIMER = setTimeout(function() {
       if (!LONG_PRESS_START) return;
       var el = LONG_PRESS_START.target;
