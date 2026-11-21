@@ -1318,7 +1318,7 @@ function runLogicRule(rule, event) {
     clearLongPress();
     if (CURRENT_MODE !== 'design') return;
     if (Date.now() < SUPPRESS_CLICK_UNTIL) return;
-    var target = e.target && e.target.closest ? e.target.closest('[data-studio-id]') : null;
+    var target = findSelectableTarget(e.target);
     if (!target) return;
     var sid = target.getAttribute('data-studio-id');
     var now = Date.now();
@@ -1332,6 +1332,13 @@ function runLogicRule(rule, event) {
     }
     LAST_TAP_TIME = now;
     LAST_TAP_STUDIO_ID = sid;
+    // Reliable touch selection fallback if pointerdown/click is swallowed by mobile gestures.
+    SELECTED_ID = sid;
+    window.parent.postMessage({
+      type: 'studio:select',
+      element: extractSnapshot(target),
+      shiftKey: Boolean(e.shiftKey)
+    }, '*');
   }, { capture: true, passive: true });
   document.addEventListener('touchcancel', clearLongPress, { capture: true, passive: true });
 
