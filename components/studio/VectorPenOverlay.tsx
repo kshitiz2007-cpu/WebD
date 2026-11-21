@@ -71,8 +71,8 @@ export default function VectorPenOverlay({ width, height }: { width: number; hei
     }));
   };
   return (
-    <div className="absolute inset-0 z-[70]">
-      <div className="absolute left-2 top-2 z-10 flex items-center gap-1 rounded-lg border border-indigo-200 bg-white/95 p-1.5 shadow-lg backdrop-blur">
+    <div className="pointer-events-none absolute inset-0 z-[70]">
+      <div className="pointer-events-auto absolute left-2 top-2 z-10 flex items-center gap-1 rounded-lg border border-indigo-200 bg-white/95 p-1.5 shadow-lg backdrop-blur">
         <button onClick={() => { setActive(v => !v); setClosed(false); }} className={`flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold ${active ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`}><PenTool className="h-3.5 w-3.5"/> Pen {active ? 'On' : ''}</button>
         <button onClick={() => setCurved(v => !v)} className={`rounded px-2 py-1 text-xs ${curved ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'}`}>Curve</button>
         <button onClick={finish} disabled={points.length < 2} className="rounded px-2 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-40">Finish</button>
