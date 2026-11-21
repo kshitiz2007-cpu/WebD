@@ -257,6 +257,12 @@ function buildDesignerBridgeScript(
     if (op === 'lessThan') return actual.trim() !== '' && Number(actual) < Number(expected);
     return true;
   }
+  function conditionGroupsMatch(rule, event) {
+    var groups = Array.isArray(rule.conditionGroups) ? rule.conditionGroups : [];
+    if (!groups.length) return true;
+    var results = groups.map(function(group) { return conditionMatches({ conditionOperator: group.operator || 'always', conditionValue: group.value || '' }, event); });
+    return rule.conditionGroupsLogic === 'OR' ? results.some(Boolean) : results.every(Boolean);
+  }
   function setControlValue(target, value) {
     var next = String(value == null ? '' : value);
     var proto = target.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype
@@ -510,7 +516,7 @@ function buildDesignerBridgeScript(
       runFlowGraph(rule, event);
       return;
     }
-    var conditionPassed = conditionMatches(rule, event);
+    var conditionPassed = conditionMatches(rule, event) && conditionGroupsMatch(rule, event);
     var connectedTrigger = Array.isArray(rule.flowEdges) ? rule.flowEdges.some(function(edge) { return edge.from === 'trigger' && edge.to === 'condition'; }) : true;
     var connectedBranch = Array.isArray(rule.flowEdges) ? rule.flowEdges.some(function(edge) { return edge.from === 'condition' && edge.to === (conditionPassed ? 'yes' : 'no'); }) : true;
     if (!connectedTrigger || !connectedBranch) return;
