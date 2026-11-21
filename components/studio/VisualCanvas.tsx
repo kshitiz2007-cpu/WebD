@@ -573,7 +573,7 @@ export default function VisualCanvas({
         if (!msg.studioId) setHoverInfo(null);
         else setHoverInfo({ studioId: msg.studioId, tagName: msg.tagName, rect: msg.rect });
       } else if (msg.type === 'studio:touch-diagnostic') {
-        setTouchDiagnostic(msg.detail || {});
+        setTouchDiagnostic(null);
       } else if (msg.type === 'studio:select') {
         setTouchDiagnostic({ stage: 'parent-select-received', mode: 'parent', targetTag: msg.element?.tagName || '', studioId: msg.element?.studioId || msg.diagnosticId || '', extra: 'element=' + Boolean(msg.element) + '; rect=' + Boolean(msg.element?.rect) });
         setHoverInfo(null);
