@@ -1470,12 +1470,7 @@ function runLogicRule(rule, event) {
     e.preventDefault();
     e.stopPropagation();
 
-    SELECTED_ID = target.getAttribute('data-studio-id');
-    window.parent.postMessage({
-      type: 'studio:select',
-      element: extractSnapshot(target),
-      shiftKey: Boolean(e.shiftKey)
-    }, '*');
+    sendCanvasSelection(target, e.shiftKey);
   }, true);
 
   document.addEventListener('dblclick', function(e) {
