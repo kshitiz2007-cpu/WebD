@@ -71,6 +71,10 @@ export interface VisualLogicRule {
   target: string;
   value: string;
   enabled: boolean;
+  /** Delay before running and spacing between repeated executions (milliseconds). */
+  delayMs?: number;
+  /** Bounded number of times this rule action executes. */
+  repeatCount?: number;
   /** Optional v2 condition. Missing means always run (legacy compatibility). */
   conditionOperator?: LogicConditionOperator;
   conditionValue?: string;
