@@ -1157,38 +1157,7 @@ function runLogicRule(rule, event) {
     LONG_PRESS_START = null;
   }
 
-  function reportTouchDiag(stage, event, target, extra) {
-    try {
-      var t = target || (event && event.target) || null;
-      var sid = t && t.closest ? (t.closest('[data-studio-id]') && t.closest('[data-studio-id]').getAttribute('data-studio-id')) : null;
-      var detail = {
-        stage: stage,
-        mode: CURRENT_MODE,
-        eventType: event && event.type || '',
-        targetTag: t && t.tagName || (t && t.nodeType === 3 ? '#text' : 'none'),
-        targetId: t && t.id || '',
-        studioId: sid || '',
-        x: event && typeof event.clientX === 'number' ? event.clientX : (event && event.touches && event.touches[0] ? event.touches[0].clientX : null),
-        y: event && typeof event.clientY === 'number' ? event.clientY : (event && event.touches && event.touches[0] ? event.touches[0].clientY : null),
-        iframeWidth: window.innerWidth,
-        iframeHeight: window.innerHeight,
-        extra: extra || ''
-      };
-      window.parent.postMessage({ type: 'studio:touch-diagnostic', detail: detail }, '*');
-    } catch (err) {
-      window.parent.postMessage({ type: 'studio:touch-diagnostic', detail: { stage: 'diagnostic-error', error: String(err) } }, '*');
-    }
-  }
-  ['touchstart','touchmove','touchend','touchcancel','pointerdown','pointerup','click'].forEach(function(type) {
-    document.addEventListener(type, function(e) {
-      var x = e.clientX;
-      var y = e.clientY;
-      if (e.touches && e.touches[0]) { x = e.touches[0].clientX; y = e.touches[0].clientY; }
-      else if (e.changedTouches && e.changedTouches[0]) { x = e.changedTouches[0].clientX; y = e.changedTouches[0].clientY; }
-      var hit = typeof x === 'number' && typeof y === 'number' ? document.elementFromPoint(x, y) : e.target;
-      reportTouchDiag(type, e, hit || e.target, 'defaultPrevented=' + Boolean(e.defaultPrevented) + '; hit=' + (hit && hit.tagName || 'none'));
-    }, { capture: true, passive: true });
-  });
+  function reportTouchDiag() { return; }
   document.addEventListener('touchstart', function(e) {
     clearLongPress();
     if (CURRENT_MODE !== 'design') return;
