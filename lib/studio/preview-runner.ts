@@ -815,12 +815,22 @@ function runLogicRule(rule, event) {
     return findSelectableTarget(hit) || findSelectableTarget(fallbackNode);
   }
   function sendCanvasSelection(target, shiftKey) {
-    if (!target || CURRENT_MODE !== 'design') return false;
-    var sid = target.getAttribute('data-studio-id');
-    if (!sid) return false;
-    SELECTED_ID = sid;
-    window.parent.postMessage({ type: 'studio:select', element: extractSnapshot(target), shiftKey: Boolean(shiftKey) }, '*');
-    return true;
+    var sid = target && target.getAttribute ? target.getAttribute('data-studio-id') : null;
+    reportTouchDiag('selection-attempt', null, target, 'mode=' + CURRENT_MODE + '; studioId=' + (sid || 'none') + '; selectable=' + Boolean(target) + '; locked=' + Boolean(sid && LOCKED_IDS[sid]) + '; hidden=' + Boolean(sid && HIDDEN_IDS[sid]));
+    if (!target || CURRENT_MODE !== 'design' || !sid) {
+      reportTouchDiag('selection-aborted', null, target, 'reason=' + (!target ? 'no-target' : CURRENT_MODE !== 'design' ? 'not-design-mode' : 'missing-studio-id'));
+      return false;
+    }
+    try {
+      var snapshot = extractSnapshot(target);
+      SELECTED_ID = sid;
+      window.parent.postMessage({ type: 'studio:select', element: snapshot, shiftKey: Boolean(shiftKey), diagnosticId: sid }, '*');
+      reportTouchDiag('selection-message-sent', null, target, 'studioId=' + sid + '; snapshot=' + Boolean(snapshot));
+      return true;
+    } catch (err) {
+      reportTouchDiag('selection-send-error', null, target, String(err && err.message || err));
+      return false;
+    }
   }
 
   function clearTrackedPreviewStyles() {
