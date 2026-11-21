@@ -81,14 +81,14 @@ export default function VectorPenOverlay({ width, height }: { width: number; hei
         <button onClick={reset} title="Clear vector" className="rounded p-1 text-slate-600 hover:bg-slate-100"><X className="h-3.5 w-3.5"/></button>
         <span className="px-1 text-[10px] text-slate-500">{points.length} nodes</span>
       </div>
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="absolute inset-0 h-full w-full" style={{ cursor: active ? 'crosshair' : 'default', pointerEvents: active || points.length ? 'auto' : 'none' }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={() => setDrag(null)} onPointerCancel={() => setDrag(null)}>
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="absolute inset-0 h-full w-full" style={{ cursor: active ? 'crosshair' : 'default', pointerEvents: active ? 'auto' : 'none' }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={() => setDrag(null)} onPointerCancel={() => setDrag(null)}>
         <path d={d} fill={closed ? 'rgba(99,102,241,.08)' : 'none'} stroke="#6366f1" strokeWidth={2} vectorEffect="non-scaling-stroke" strokeDasharray={active && !closed ? '5 4' : undefined}/>
         {points.map((p,i) => <g key={i}>
           {selected === i && (curved || p.outX !== 0 || p.outY !== 0) && <g>
             <line x1={p.x} y1={p.y} x2={p.x+p.outX} y2={p.y+p.outY} stroke="#94a3b8" strokeDasharray="3 3"/>
-            <circle cx={p.x+p.outX} cy={p.y+p.outY} r={5} fill="white" stroke="#6366f1" onPointerDown={e=>onHandleDown(e,i)} style={{cursor:'grab'}}/>
+            <circle cx={p.x+p.outX} cy={p.y+p.outY} r={5} fill="white" stroke="#6366f1" onPointerDown={e=>onHandleDown(e,i)} style={{cursor:'grab', pointerEvents:'auto'}}/>
           </g>}
-          <circle cx={p.x} cy={p.y} r={5} fill={selected===i?'#4f46e5':'white'} stroke="#4f46e5" strokeWidth={2} onPointerDown={e=>onNodeDown(e,i)} style={{cursor:'move'}}/>
+          <circle cx={p.x} cy={p.y} r={5} fill={selected===i?'#4f46e5':'white'} stroke="#4f46e5" strokeWidth={2} onPointerDown={e=>onNodeDown(e,i)} style={{cursor:'move', pointerEvents:'auto'}}/>
         </g>)}
       </svg>
     </div>
