@@ -1142,7 +1142,7 @@ export default function StyleInspectorPanel({
           const layoutPadding = Number.parseInt(ins.padding || cs.padding || '0', 10) || 0;
           const layoutAxis: LayoutAxis = isGrid ? 'grid' : (ins.flexDirection || cs.flexDirection || 'column') === 'row' ? 'horizontal' : 'vertical';
           const layoutWrap = (ins.flexWrap || cs.flexWrap || 'nowrap') === 'wrap';
-          const layoutAlign = (ins.alignItems || cs.alignItems || 'flex-start') === 'center' ? 'center' :
+          const layoutAlign: 'start' | 'center' | 'end' | 'stretch' = (ins.alignItems || cs.alignItems || 'flex-start') === 'center' ? 'center' :
             (ins.alignItems || cs.alignItems || 'flex-start') === 'flex-end' ? 'end' :
             (ins.alignItems || cs.alignItems || 'flex-start') === 'stretch' ? 'stretch' : 'start';
           const applyAutoLayout = (axis: LayoutAxis, gap = layoutGap, padding = layoutPadding, wrap = layoutWrap, align = layoutAlign) => {
