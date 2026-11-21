@@ -41,6 +41,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import MultiAlignBar from './MultiAlignBar';
+import { clampCanvasZoom, stepCanvasZoom } from '@/lib/studio/canvas-engine';
 import SplitMobileTwin from './SplitMobileTwin';
 import {
   AlignmentGuide,
@@ -70,10 +71,8 @@ import type { QaAuditIssue, QaRawNodeMetric } from '@/lib/studio/qa-audit';
 import {
   MultiAlignAction,
   NUDGE_GRID_STEPS,
-  clampZoomScale,
   computeNudgeOffsets,
   computeRedlineMeasurements,
-  stepZoomScale,
 } from '@/lib/studio/visual-refinement';
 import {
   CanvasInteractionMode,
@@ -351,7 +350,7 @@ export default function VisualCanvas({
     return Math.min(1, Number((usable / targetWidth).toFixed(4)));
   }, [stageWidth, targetWidth, splitView]);
 
-  const scale = zoomMode === 'fit' ? fitScale : clampZoomScale(zoomMode);
+  const scale = zoomMode === 'fit' ? fitScale : clampCanvasZoom(zoomMode);
   const frameHeight = Math.max(540, Math.round((stageHeight - 72) / Math.min(1, fitScale)));
 
   const docKey = mounted
@@ -784,7 +783,7 @@ export default function VisualCanvas({
     if (!(e.ctrlKey || e.metaKey)) return;
     e.preventDefault();
     const cur = scale;
-    const next = stepZoomScale(cur, e.deltaY < 0 ? 'in' : 'out');
+    const next = stepCanvasZoom(cur, e.deltaY < 0 ? 'in' : 'out');
     setZoomMode(next);
   };
 
@@ -1298,7 +1297,7 @@ export default function VisualCanvas({
             <button
               type="button"
               aria-label="Zoom out canvas"
-              onClick={() => setZoomMode(stepZoomScale(scale, 'out'))}
+              onClick={() => setZoomMode(stepCanvasZoom(scale, 'out'))}
               className="rounded p-1 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             >
               <ZoomOut className="h-3 w-3" />
@@ -1322,7 +1321,7 @@ export default function VisualCanvas({
             <button
               type="button"
               aria-label="Zoom in canvas"
-              onClick={() => setZoomMode(stepZoomScale(scale, 'in'))}
+              onClick={() => setZoomMode(stepCanvasZoom(scale, 'in'))}
               className="rounded p-1 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             >
               <ZoomIn className="h-3 w-3" />
