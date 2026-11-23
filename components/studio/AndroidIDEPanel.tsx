@@ -264,7 +264,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
           {onExitAndroid && <button onClick={onExitAndroid} className="rounded px-2 py-1 text-[11px] text-slate-400 hover:bg-slate-800 sm:hidden">Web IDE</button>}
           <Smartphone size={16} className="text-emerald-400" />
           <span className="text-sm font-semibold">Android Studio Mode</span>
-          <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">PHASE 1</span>
+          <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">PHASE 3 · MOBILE</span>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           <div className="relative shrink-0">
