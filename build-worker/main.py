@@ -47,7 +47,7 @@ def build(req: BuildRequest, authorization: str | None = Header(default=None)):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
         # Constrain Gradle memory and parallelism for small Railway containers.
-        (root / "gradle.properties").write_text("org.gradle.jvmargs=-Xmx512m -XX:MaxMetaspaceSize=256m -Dfile.encoding=UTF-8\n" + "org.gradle.workers.max=1\n" + "org.gradle.parallel=false\n" + "org.gradle.caching=true\n" + "android.useAndroidX=true\n" + "android.enableJetifier=true\nkotlin.compiler.execution.strategy=in-process\nkotlin.daemon.enabled=false\n", encoding="utf-8")
+        (root / "gradle.properties").write_text("org.gradle.jvmargs=-Xmx256m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m -Dfile.encoding=UTF-8\n" + "org.gradle.workers.max=1\n" + "org.gradle.parallel=false\n" + "org.gradle.caching=true\n" + "android.useAndroidX=true\n" + "android.enableJetifier=true\nkotlin.compiler.execution.strategy=in-process\nkotlin.daemon.enabled=false\n", encoding="utf-8")
         # Force Java and Kotlin compilation to the same JVM target (17).
         init_script = root / "webd-jvm-target.gradle"
         init_script.write_text("""allprojects {
