@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';\nimport JSZip from 'jszip';
+import React, { useEffect, useMemo, useState } from 'react';
+import JSZip from 'jszip';
 import { Code2, Folder, FolderOpen, Smartphone, Play, Hammer, RefreshCw, Plus, ChevronDown, FileCode2, FileJson, FileText, Settings, Terminal, Eye, X } from 'lucide-react';
 import MonacoCodeEditorClient from './MonacoCodeEditorClient';
 import AndroidEmulatorScreen from './AndroidEmulatorScreen';
@@ -217,16 +218,20 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
     try {
       setLogMessage('Extracting ZIP project…');
       const zip = await JSZip.loadAsync(file);
+      const entries = Object.values(zip.files).filter((entry) => !entry.dir);
+      const firstSegments = entries.map((entry) => entry.name.split('/')[0]);
+      const hasSingleRoot = firstSegments.length > 0 && firstSegments.every((segment) => segment === firstSegments[0]) && entries.every((entry) => entry.name.includes('/'));
       const incoming: Record<string, string> = {};
-      for (const entry of Object.values(zip.files)) {
-        if (entry.dir) continue;
-        let path = entry.name.split('/').slice(1).join('/');
-        if (!path) path = entry.name;
+      for (const entry of entries) {
+        let path = hasSingleRoot ? entry.name.slice(firstSegments[0].length + 1) : entry.name;
+        path = path.replace(/^\/+/, '');
         if (!path || path.startsWith('/') || path.split('/').includes('..') || path.startsWith('.git/')) continue;
         if (Object.keys(incoming).length >= 1200) break;
-        if (entry.name.endsWith('/') || /\\.(png|jpe?g|gif|webp|ico|apk|aab|jar|class|so|zip|pdf|mp4|mp3)$/i.test(path)) continue;
-        const text = await entry.async('string');
-        if (text.length <= 1_000_000) incoming[path] = text;
+        if (/\.(png|jpe?g|gif|webp|ico|apk|aab|jar|class|so|zip|pdf|mp4|mp3|woff2?|ttf|otf)$/i.test(path)) continue;
+        try {
+          const text = await entry.async('string');
+          if (text.length <= 1_000_000) incoming[path] = text;
+        } catch { /* Skip binary or unreadable files */ }
       }
       importProjectFiles(incoming, 'ZIP');
     } catch (e) { setLogMessage(e instanceof Error ? e.message : 'ZIP import failed'); }
@@ -332,7 +337,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex min-h-0 flex-col bg-[#0b1120] text-slate-200">\n      {emulatorSession && <div className="absolute inset-0 z-[80] flex min-h-0 flex-col bg-black"><AndroidEmulatorScreen sessionToken={emulatorSession} onDisconnect={stopEmulator} /></div>}
+    <div className="absolute inset-0 z-50 flex min-h-0 flex-col bg-[#0b1120] text-slate-200">
       <header className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-y-1 border-b border-slate-800 bg-[#111827] px-2 py-1 sm:flex-nowrap sm:px-3">
         <div className="flex items-center gap-2">
           {onExitAndroid && <button onClick={onExitAndroid} className="rounded px-2 py-1 text-[11px] text-slate-400 hover:bg-slate-800">Web IDE</button>}
