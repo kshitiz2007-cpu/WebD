@@ -5,8 +5,10 @@ RUN mkdir -p /opt/android-sdk/cmdline-tools && curl -fsSL https://dl.google.com/
 RUN yes | sdkmanager --licenses >/dev/null 2>&1 || true && sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 RUN curl -fsSL https://services.gradle.org/distributions/gradle-8.9-bin.zip -o /tmp/gradle.zip && unzip -q /tmp/gradle.zip -d /opt && rm /tmp/gradle.zip && ln -s /opt/gradle-8.9/bin/gradle /usr/local/bin/gradle
 RUN pip install --no-cache-dir fastapi uvicorn
+RUN useradd -m -u 10001 builder && mkdir -p /gradle-cache /app && chown -R builder:builder /gradle-cache /app
 WORKDIR /app
 COPY main.py /app/main.py
+USER builder
 ENV ANDROID_BUILD_TOKEN=""
 ENV BUILD_TIMEOUT_SECONDS=240
 EXPOSE 8080
