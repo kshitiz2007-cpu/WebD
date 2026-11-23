@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import JSZip from 'jszip';
 import { Code2, Folder, FolderOpen, Smartphone, Play, Hammer, RefreshCw, Plus, ChevronDown, FileCode2, FileJson, FileText, Settings, Terminal, Eye, X } from 'lucide-react';
 import MonacoCodeEditorClient from './MonacoCodeEditorClient';
@@ -132,6 +132,7 @@ function getLanguage(path: string) {
 }
 
 export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () => void }) {
+  const zipInputRef = useRef<HTMLInputElement>(null);
   const [showOutput, setShowOutput] = useState(true);
   const [builtApkBase64, setBuiltApkBase64] = useState<string | null>(null);
   const [emulatorSession, setEmulatorSession] = useState<string | null>(null);
@@ -356,7 +357,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
             </div>}
           </div>
           <button onClick={createFile} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><Plus size={14}/> File</button>
-          <label className="flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><FolderOpen size={14}/> ZIP<input type="file" accept=".zip,application/zip" className="hidden" onChange={(e) => { void importZipFile(e.target.files?.[0]); e.currentTarget.value = ''; }} /></label>
+          <button type="button" onClick={() => zipInputRef.current?.click()} className="flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><FolderOpen size={14}/> ZIP</button><input ref={zipInputRef} type="file" accept=".zip,application/zip" className="sr-only" onChange={(e) => { void importZipFile(e.target.files?.[0]); e.currentTarget.value = ''; }} />
           <button onClick={importGithubRepo} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><Code2 size={14}/> GitHub</button>
           <button onClick={refreshPreview} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><RefreshCw size={14}/> Preview</button>
           <button onClick={handleBuildApk} disabled={isBuilding} className="flex shrink-0 items-center gap-1 rounded bg-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"><Hammer size={13}/> {isBuilding ? "Building…" : "Build APK"}</button><button onClick={handleRun} className="flex shrink-0 items-center gap-1 rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500"><Play size={13}/> {emulatorSession ? "Emulator Live" : "Run Emulator"}</button><button onClick={fetchLogcat} className="flex shrink-0 items-center gap-1 rounded bg-slate-700 px-2 py-1 text-xs text-white"><Terminal size={13}/> Logcat</button><button onClick={() => setShowOutput(v => !v)} className="flex shrink-0 items-center gap-1 rounded bg-slate-700 px-2 py-1 text-xs text-white sm:hidden"><Terminal size={13}/> Output</button>
