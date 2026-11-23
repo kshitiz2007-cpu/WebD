@@ -157,6 +157,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
   const [previewButton, setPreviewButton] = useState('Tap count: 0');
   const [counter, setCounter] = useState(0);
   const [showProjectMenu, setShowProjectMenu] = useState(false);
+  const [expandedOutput, setExpandedOutput] = useState(false);
 
   const tree = useMemo(() => Object.keys(files).sort((a, b) => a.localeCompare(b)), [files]);
   const activeContent = files[activeFile] || '';
@@ -367,9 +368,9 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
             <MonacoCodeEditorClient filePath={activeFile} value={activeContent} onChange={updateFile} theme="vs-dark" wordWrap="on" />
           </div>
           <div className="flex h-8 shrink-0 items-center gap-2 border-t border-slate-800 bg-[#111827] px-3 text-[10px] text-slate-400"><Code2 size={12}/> {getLanguage(activeFile)} <span className="ml-auto">Ln 1 · Android editor</span></div>
-          <div className={`${showOutput ? "block" : "hidden"} h-32 shrink-0 overflow-auto border-t border-slate-800 bg-[#090e18] p-2 font-mono text-[10px] text-slate-400 md:h-36`}>
-            <div className="mb-1 flex items-center gap-1 text-slate-300"><Terminal size={12}/> Output</div>
-            {logMessage}
+          <div className={(showOutput ? "block " : "hidden ") + (expandedOutput ? "h-[45vh] md:h-64" : "h-32 md:h-36") + " shrink-0 overflow-hidden border-t border-slate-800 bg-[#090e18] font-mono text-[10px] text-slate-300"}>
+            <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-800 bg-[#090e18] px-2 py-1.5 text-slate-200"><Terminal size={12}/> Build / Output Log <button type="button" onClick={() => setExpandedOutput((v) => !v)} className="ml-auto rounded bg-slate-800 px-2 py-1 text-[10px]">{expandedOutput ? "Collapse" : "Full log"}</button><button type="button" onClick={() => { navigator.clipboard?.writeText(logMessage); }} className="rounded bg-slate-800 px-2 py-1 text-[10px]">Copy</button></div>
+            <pre className="h-[calc(100%-30px)] overflow-auto whitespace-pre-wrap break-words p-2 select-text">{logMessage || "No output yet."}</pre>
           </div>
         </section>
 
