@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Code2, Folder, FolderOpen, Smartphone, Play, RefreshCw, Plus, ChevronDown, FileCode2, FileJson, FileText, Settings, Terminal, Eye, X } from 'lucide-react';
 import MonacoCodeEditorClient from './MonacoCodeEditorClient';
 
@@ -130,7 +130,7 @@ function getLanguage(path: string) {
 }
 
 export default function AndroidIDEPanel() {
-  const [files, setFiles] = useState<AndroidFiles>(starterFiles);
+  const [files, setFiles] = useState<AndroidFiles>(starterFiles);\n  const [storageReady, setStorageReady] = useState(false);\n\n  useEffect(() => {\n    try {\n      const saved = localStorage.getItem('webd-android-project-phase1');\n      if (saved) {\n        const parsed = JSON.parse(saved) as AndroidFiles;\n        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) setFiles(parsed);\n      }\n    } catch { /* Ignore malformed local draft data and keep the starter project. */ }\n    setStorageReady(true);\n  }, []);\n\n  useEffect(() => {\n    if (!storageReady) return;\n    try { localStorage.setItem('webd-android-project-phase1', JSON.stringify(files)); }\n    catch { setLogMessage('Could not persist project locally (browser storage may be full or disabled).'); }\n  }, [files, storageReady]);
   const [activeFile, setActiveFile] = useState('app/src/main/java/com/webd/starter/MainActivity.kt');
   const [openFiles, setOpenFiles] = useState<string[]>([activeFile]);
   const [expanded, setExpanded] = useState<string[]>(['app', 'app/src', 'app/src/main', 'app/src/main/java', 'app/src/main/java/com', 'app/src/main/java/com/webd', 'app/src/main/java/com/webd/starter', 'app/src/main/res', 'app/src/main/res/values']);
