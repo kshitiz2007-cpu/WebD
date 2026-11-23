@@ -129,7 +129,8 @@ function getLanguage(path: string) {
   return 'plaintext';
 }
 
-export default function AndroidIDEPanel() {
+export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () => void }) {
+  const [showOutput, setShowOutput] = useState(true);
   const [files, setFiles] = useState<AndroidFiles>(starterFiles);
   const [storageReady, setStorageReady] = useState(false);
 
@@ -258,7 +259,7 @@ export default function AndroidIDEPanel() {
 
   return (
     <div className="absolute inset-0 z-50 flex min-h-0 flex-col bg-[#0b1120] text-slate-200">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-slate-800 bg-[#111827] px-3">
+      <header className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-y-1 border-b border-slate-800 bg-[#111827] px-2 py-1 sm:flex-nowrap sm:px-3">
         <div className="flex items-center gap-2">
           <Smartphone size={16} className="text-emerald-400" />
           <span className="text-sm font-semibold">Android Studio Mode</span>
@@ -275,7 +276,7 @@ export default function AndroidIDEPanel() {
           </div>
           <button onClick={createFile} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><Plus size={14}/> File</button>
           <button onClick={refreshPreview} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><RefreshCw size={14}/> Preview</button>
-          <button onClick={handleBuildApk} disabled={isBuilding} className="flex items-center gap-1 rounded bg-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"><Hammer size={13}/> {isBuilding ? "Building…" : "Build APK"}</button><button onClick={handleRun} className="flex items-center gap-1 rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500"><Play size={13}/> Run Preview</button>
+          <button onClick={handleBuildApk} disabled={isBuilding} className="flex items-center gap-1 rounded bg-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"><Hammer size={13}/> {isBuilding ? "Building…" : "Build APK"}</button><button onClick={handleRun} className="flex shrink-0 items-center gap-1 rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500"><Play size={13}/> Run Preview</button><button onClick={() => setShowOutput(v => !v)} className="flex shrink-0 items-center gap-1 rounded bg-slate-700 px-2 py-1 text-xs text-white sm:hidden"><Terminal size={13}/> Output</button>
         </div>
       </header>
 
@@ -297,7 +298,7 @@ export default function AndroidIDEPanel() {
             <MonacoCodeEditorClient filePath={activeFile} value={activeContent} onChange={updateFile} theme="vs-dark" wordWrap="on" />
           </div>
           <div className="flex h-8 shrink-0 items-center gap-2 border-t border-slate-800 bg-[#111827] px-3 text-[10px] text-slate-400"><Code2 size={12}/> {getLanguage(activeFile)} <span className="ml-auto">Ln 1 · Phase 1 editor</span></div>
-          <div className="h-32 shrink-0 overflow-auto border-t border-slate-800 bg-[#090e18] p-2 font-mono text-[10px] text-slate-400 md:h-36">
+          <div className={`${showOutput ? "block" : "hidden"} h-32 shrink-0 overflow-auto border-t border-slate-800 bg-[#090e18] p-2 font-mono text-[10px] text-slate-400 md:h-36`}>
             <div className="mb-1 flex items-center gap-1 text-slate-300"><Terminal size={12}/> Output</div>
             {logMessage}
           </div>
