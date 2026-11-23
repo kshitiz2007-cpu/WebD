@@ -181,7 +181,11 @@ export default function AndroidIDEPanel() {
     setActiveFile('app/src/main/java/com/webd/starter/MainActivity.kt');
     setOpenFiles(['app/src/main/java/com/webd/starter/MainActivity.kt']);
     setCounter(0);
-    if (kind === 'empty') {\n      setFiles((old) => ({ ...old, 'app/src/main/java/com/webd/starter/MainActivity.kt': `package com.webd.starter\n\nimport android.os.Bundle\nimport androidx.activity.ComponentActivity\nimport androidx.activity.compose.setContent\nimport androidx.compose.material3.MaterialTheme\nimport androidx.compose.runtime.Composable\nimport androidx.compose.foundation.layout.Box\nimport androidx.compose.foundation.layout.fillMaxSize\nimport androidx.compose.ui.Modifier\n\nclass MainActivity : ComponentActivity() {\n    override fun onCreate(savedInstanceState: Bundle?) {\n        super.onCreate(savedInstanceState)\n        setContent { MaterialTheme { EmptyScreen() } }\n    }\n}\n\n@Composable\nfun EmptyScreen() {\n    Box(modifier = Modifier.fillMaxSize())\n}\n` }));\n    }\n    if (kind === 'login') {
+    if (kind === 'empty') {
+      const mainPath = 'app/src/main/java/com/webd/starter/MainActivity.kt';
+      setFiles((old) => ({ ...old, [mainPath]: old[mainPath].replace('        Button(onClick = { count++ }) {\n            Text("Tap count: $count")\n        }\n', '') }));
+    }
+    if (kind === 'login') {
       setFiles((old) => ({ ...old, 'app/src/main/java/com/webd/starter/MainActivity.kt': old['app/src/main/java/com/webd/starter/MainActivity.kt'].replace('Hello, Android!', 'Welcome back').replace('Your Compose app is ready.', 'Sign in to continue') }));
     }
     setLogMessage(`New ${kind === 'empty' ? 'Empty Compose' : kind === 'counter' ? 'Counter' : 'Login UI'} project created`);
