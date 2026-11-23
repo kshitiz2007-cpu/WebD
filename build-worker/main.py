@@ -55,8 +55,10 @@ def build(req: BuildRequest, authorization: str | None = Header(default=None)):
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-        kotlinOptions.jvmTarget = "17"
+    tasks.configureEach {
+        if (name.toLowerCase().contains("kotlin") && hasProperty("kotlinOptions")) {
+            kotlinOptions.jvmTarget = "17"
+        }
     }
 }
 """, encoding="utf-8")
