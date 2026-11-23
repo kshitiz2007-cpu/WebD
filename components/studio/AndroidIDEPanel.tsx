@@ -254,7 +254,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
 
   const handleRun = async () => {
     if (!builtApkBase64) { setLogMessage('Build APK first, then tap Run Emulator.'); return; }
-    setLogMessage('Starting emulator and installing APK…');
+    setLogMessage('Starting Android Emulator and installing APK…');
     try {
       const response = await fetch('/api/android/emulator/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apkBase64: builtApkBase64, packageName: 'com.webd.starter' }) });
       const result = await response.json();
@@ -279,7 +279,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex min-h-0 flex-col bg-[#0b1120] text-slate-200">\n      {emulatorSession && <div className="absolute inset-0 z-[80] flex min-h-0 flex-col bg-black"><AndroidEmulatorScreen sessionToken={emulatorSession} onDisconnect={stopEmulator} /></div>}
+    <div className="absolute inset-0 z-50 flex min-h-0 flex-col bg-[#0b1120] text-slate-200">\n      {emulatorSession && <div className="absolute inset-0 z-[80] flex min-h-0 flex-col bg-black"><AndroidEmulatorScreen sessionToken={emulatorSession} onDisconnect={stopEmulator} /></div>}\n      {emulatorSession && <div className="absolute inset-0 z-[80] flex min-h-0 flex-col bg-black"><AndroidEmulatorScreen sessionToken={emulatorSession} onDisconnect={stopEmulator} /></div>}
       <header className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-y-1 border-b border-slate-800 bg-[#111827] px-2 py-1 sm:flex-nowrap sm:px-3">
         <div className="flex items-center gap-2">
           {onExitAndroid && <button onClick={onExitAndroid} className="rounded px-2 py-1 text-[11px] text-slate-400 hover:bg-slate-800">Web IDE</button>}
