@@ -77,7 +77,7 @@ class InputRequest(BaseModel):
     action: str
     x: int = 0
     y: int = 0
-    text: str = ""
+    text: str = ""\n    x2: int = 0\n    y2: int = 0\n    duration: int = 350\n    keycode: int = 0
 
 @app.post("/input")
 def input_action(req: InputRequest, authorization: str | None = Header(default=None)):
