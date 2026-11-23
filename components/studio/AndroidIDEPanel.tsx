@@ -272,9 +272,26 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ files }),
       });
-      const result = await response.json();
+      const raw = await response.text();
+      let result: any;
+      try { result = JSON.parse(raw); }
+      catch { result = { success: false, error: raw || 'Build endpoint returned non-JSON response.', log: raw }; }
       if (!response.ok || !result.success) {
-        setLogMessage(result.log || result.error || 'Gradle build failed.');
+        const report = [
+          'WEBD ANDROID BUILD REPORT',
+          'Status: FAILED',
+          'HTTP: ' + response.status,
+          '',
+          'ERROR:',
+          result.error || result.detail || 'Gradle build failed.',
+          result.detail ? ('DETAIL:\n' + result.detail) : '',
+          '',
+          'BUILD LOGS:',
+          result.log || raw || '(No logs returned)',
+        ].filter(Boolean).join('\n');
+        setLogMessage(report);
+        setShowOutput(true);
+        setShowFullLog(true);
         return;
       }
       setBuiltApkBase64(result.apkBase64);
