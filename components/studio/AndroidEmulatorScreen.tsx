@@ -15,7 +15,8 @@ export default function AndroidEmulatorScreen({ sessionToken, onDisconnect }: { 
       return;
     }
     const ws = base.replace(/^http/, 'ws').replace(/\/$/, '') + '/ws/vnc?session=' + encodeURIComponent(sessionToken);
-    import('@novnc/novnc').then(({ default: RFBClass }) => {
+    const moduleUrl = 'https://cdn.jsdelivr.net/npm/@novnc/novnc@1.5.0/lib/rfb.js';
+    import(/* webpackIgnore: true */ moduleUrl).then(({ default: RFBClass }) => {
       if (disposed || !mount) return;
       const rfb = new RFBClass(mount, ws, { shared: true });
       rfb.scaleViewport = true;
