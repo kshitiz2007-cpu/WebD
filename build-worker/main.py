@@ -47,7 +47,7 @@ def build(req: BuildRequest, authorization: str | None = Header(default=None)):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
         # Constrain Gradle memory and parallelism for small Railway containers.
-        (root / "gradle.properties").write_text("org.gradle.jvmargs=-Xmx768m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8\n" + "org.gradle.workers.max=1\n" + "org.gradle.parallel=false\n" + "org.gradle.caching=true\n", encoding="utf-8")
+        (root / "gradle.properties").write_text("org.gradle.jvmargs=-Xmx768m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8\n" + "org.gradle.workers.max=1\n" + "org.gradle.parallel=false\n" + "org.gradle.caching=true\n" + "android.useAndroidX=true\n" + "android.enableJetifier=true\n", encoding="utf-8")
         gradle = shutil.which("gradle")
         if not gradle:
             raise HTTPException(500, "Gradle is not installed in build worker")
