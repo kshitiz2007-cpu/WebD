@@ -284,7 +284,7 @@ export default function AndroidIDEPanel() {
           <div className="flex h-9 items-center gap-2 border-b border-slate-800 px-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400"><FolderOpen size={14}/> Project</div>
           <div className="studio-scroll flex-1 overflow-auto p-2">
             <div className="mb-2 px-2 text-xs font-semibold text-slate-300">WebDAndroid</div>
-            {tree.map((path) => <button key={path} onClick={() => openFile(path)} className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] ${activeFile === path ? 'bg-indigo-500/15 text-indigo-200' : 'text-slate-300 hover:bg-slate-800'}>{getFileIcon(path)}<span className="truncate">{path.split('/').pop()}</span></button>)}
+            {tree.map((path) => <button key={path} onClick={() => openFile(path)} className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] ${activeFile === path ? 'bg-indigo-500/15 text-indigo-200' : 'text-slate-300 hover:bg-slate-800'}`}>{getFileIcon(path)}<span className="truncate">{path.split('/').pop()}</span></button>)}
           </div>
           <div className="border-t border-slate-800 p-2 text-[10px] text-slate-500"><Folder size={12} className="mr-1 inline"/> Gradle project structure</div>
         </aside>
