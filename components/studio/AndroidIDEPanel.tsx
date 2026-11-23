@@ -163,8 +163,8 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
 
   const tree = useMemo(() => Object.keys(files).sort((a, b) => a.localeCompare(b)), [files]);
   const activeContent = files[activeFile] || '';
-  const diagnosticLines = useMemo(() => logMessage.split(/\\r?\\n/).filter((line) => /\\b(error|failed|warning|warn)\\b/i.test(line)), [logMessage);
-  const filteredBuildLog = useMemo(() => buildLogSearch ? logMessage.split(/\\r?\\n/).filter((line) => line.toLowerCase().includes(buildLogSearch.toLowerCase())).join('\\n') : logMessage, [logMessage, buildLogSearch]);
+  const diagnosticLines = useMemo(() => logMessage.split(/\r?\n/).filter((line) => /\b(error|failed|warning|warn)\b/i.test(line)), [logMessage]);
+  const filteredBuildLog = useMemo(() => buildLogSearch ? logMessage.split(/\r?\n/).filter((line) => line.toLowerCase().includes(buildLogSearch.toLowerCase())).join('\n') : logMessage, [logMessage, buildLogSearch]);
   const diagnosticLocations = useMemo(() => {
     const found: Array<{ path: string; line: number }> = [];
     for (const line of logMessage.split(/\\r?\\n/)) {
