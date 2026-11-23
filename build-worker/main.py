@@ -66,7 +66,7 @@ def build(req: BuildRequest, authorization: str | None = Header(default=None)):
         if not gradle:
             raise HTTPException(500, "Gradle is not installed in build worker")
         try:
-            proc = subprocess.run([gradle, "--no-daemon", "--max-workers=1", "--init-script", str(init_script), "--stacktrace", "assembleDebug"], cwd=root, capture_output=True, text=True, timeout=BUILD_TIMEOUT, env={"PATH": os.environ.get("PATH", ""), "ANDROID_HOME": os.environ.get("ANDROID_HOME", "/opt/android-sdk"), "ANDROID_SDK_ROOT": os.environ.get("ANDROID_SDK_ROOT", "/opt/android-sdk"), "JAVA_HOME": os.environ.get("JAVA_HOME", ""), "HOME": "/home/builder", "GRADLE_USER_HOME": "/gradle-cache", "LANG": "C.UTF-8"})
+            proc = subprocess.run([gradle, "--no-daemon", "--max-workers=1", "--init-script", str(init_script), "--stacktrace", "assembleDebug"], cwd=root, capture_output=True, text=True, timeout=BUILD_TIMEOUT, env={"PATH": os.environ.get("PATH", ""), "ANDROID_HOME": os.environ.get("ANDROID_HOME", "/opt/android-sdk"), "ANDROID_SDK_ROOT": os.environ.get("ANDROID_SDK_ROOT", "/opt/android-sdk"), "JAVA_HOME": os.environ.get("JAVA_HOME", ""), "HOME": str(root), "GRADLE_USER_HOME": str(gradle_home), "LANG": "C.UTF-8"})
         except subprocess.TimeoutExpired as ex:
             raise HTTPException(408, f"Build timed out after {BUILD_TIMEOUT}s.\n{(ex.stdout or b'').decode(errors='ignore')[-100000:]}")
 
