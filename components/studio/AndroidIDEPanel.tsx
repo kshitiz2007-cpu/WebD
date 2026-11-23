@@ -261,12 +261,13 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
     <div className="absolute inset-0 z-50 flex min-h-0 flex-col bg-[#0b1120] text-slate-200">
       <header className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-y-1 border-b border-slate-800 bg-[#111827] px-2 py-1 sm:flex-nowrap sm:px-3">
         <div className="flex items-center gap-2">
+          {onExitAndroid && <button onClick={onExitAndroid} className="rounded px-2 py-1 text-[11px] text-slate-400 hover:bg-slate-800 sm:hidden">Web IDE</button>}
           <Smartphone size={16} className="text-emerald-400" />
           <span className="text-sm font-semibold">Android Studio Mode</span>
           <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">PHASE 1</span>
         </div>
-        <div className="flex items-center gap-1">
-          <div className="relative">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          <div className="relative shrink-0">
             <button onClick={() => setShowProjectMenu((v) => !v)} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><Plus size={14}/> New project <ChevronDown size={12}/></button>
             {showProjectMenu && <div className="absolute right-0 top-8 z-50 w-44 rounded-md border border-slate-700 bg-slate-900 p-1 shadow-xl">
               <button onClick={() => newProject('empty')} className="w-full rounded px-2 py-2 text-left text-xs hover:bg-slate-800">Empty Compose project</button>
@@ -276,7 +277,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
           </div>
           <button onClick={createFile} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><Plus size={14}/> File</button>
           <button onClick={refreshPreview} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><RefreshCw size={14}/> Preview</button>
-          <button onClick={handleBuildApk} disabled={isBuilding} className="flex items-center gap-1 rounded bg-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"><Hammer size={13}/> {isBuilding ? "Building…" : "Build APK"}</button><button onClick={handleRun} className="flex shrink-0 items-center gap-1 rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500"><Play size={13}/> Run Preview</button><button onClick={() => setShowOutput(v => !v)} className="flex shrink-0 items-center gap-1 rounded bg-slate-700 px-2 py-1 text-xs text-white sm:hidden"><Terminal size={13}/> Output</button>
+          <button onClick={handleBuildApk} disabled={isBuilding} className="flex shrink-0 items-center gap-1 rounded bg-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"><Hammer size={13}/> {isBuilding ? "Building…" : "Build APK"}</button><button onClick={handleRun} className="flex shrink-0 items-center gap-1 rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500"><Play size={13}/> Run Preview</button><button onClick={() => setShowOutput(v => !v)} className="flex shrink-0 items-center gap-1 rounded bg-slate-700 px-2 py-1 text-xs text-white sm:hidden"><Terminal size={13}/> Output</button>
         </div>
       </header>
 
