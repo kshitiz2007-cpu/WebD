@@ -22,7 +22,10 @@ export async function POST(request: NextRequest) {
   if (bytes > 8 * 1024 * 1024) return NextResponse.json({ error: 'Project exceeds 8 MB request limit' }, { status: 413 });
   try {
     const response = await fetch(serviceUrl + '/build', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(body), signal: AbortSignal.timeout(290000) });
-    const data = await response.json();
+    const raw = await response.text();
+    let data: unknown;
+    try { data = JSON.parse(raw); }
+    catch { data = { success: false, error: raw || `Build worker returned HTTP ${response.status} without JSON.`, log: raw }; }
     return NextResponse.json(data, { status: response.status });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Build service unavailable' }, { status: 502 });
