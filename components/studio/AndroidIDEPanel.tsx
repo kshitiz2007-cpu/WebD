@@ -111,6 +111,10 @@ fun StarterScreen() {
 </resources>`,
 };
 
+const ANDROID_DRAFT_DB = 'webd-android-drafts';
+function openDraftDb(): Promise<IDBDatabase> { return new Promise((resolve, reject) => { const req = indexedDB.open(ANDROID_DRAFT_DB, 1); req.onupgradeneeded = () => req.result.createObjectStore('projects'); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); }); }
+async function readDraft(): Promise<AndroidFiles | null { const db = await openDraftDb(); return new Promise((resolve, reject) => { const req = db.transaction('projects', 'readonly').objectStore('projects').get('current'); req.onsuccess = () => { db.close(); resolve(req.result || null); }; req.onerror = () => { db.close(); reject(req.error); }; }); }
+async function writeDraft(files: AndroidFiles): Promise<void> { const db = await openDraftDb(); await new Promise<void>((resolve, reject) => { const req = db.transaction('projects', 'readwrite').objectStore('projects').put(files, 'current'); req.onsuccess = () => resolve(); req.onerror = () => reject(req.error); }); db.close(); }
 const fileIcons: Record<string, React.ReactNode> = {
   kt: <FileCode2 size={14} className="text-violet-400" />,
   kts: <Code2 size={14} className="text-emerald-400" />,
@@ -139,27 +143,8 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
   const [files, setFiles] = useState<AndroidFiles>(starterFiles);
   const [storageReady, setStorageReady] = useState(false);
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('webd-android-project-phase1');
-      if (saved) {
-        const parsed = JSON.parse(saved) as AndroidFiles;
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) setFiles(parsed);
-      }
-    } catch {
-      // Ignore malformed local draft data and keep the starter project.
-    }
-    setStorageReady(true);
-  }, []);
-
-  useEffect(() => {
-    if (!storageReady) return;
-    try {
-      localStorage.setItem('webd-android-project-phase1', JSON.stringify(files));
-    } catch {
-      setLogMessage('Could not persist project locally (browser storage may be full or disabled).');
-    }
-  }, [files, storageReady]);
+  useEffect(() => { let cancelled = false; readDraft().then((saved) => { if (!cancelled && saved && typeof saved === 'object') setFiles(saved); }).catch(() => {}).finally(() => { if (!cancelled) setStorageReady(true); }); return () => { cancelled = true; }; }, []);
+  useEffect(() => { if (!storageReady) return; writeDraft(files).catch(() => setLogMessage('Project imported, but browser storage could not save the draft. Use Export ZIP for backup.')); }, [files, storageReady]);
   const [activeFile, setActiveFile] = useState('app/src/main/java/com/webd/starter/MainActivity.kt');
   const [openFiles, setOpenFiles] = useState<string[]>([activeFile]);
   const [expanded, setExpanded] = useState<string[]>(['app', 'app/src', 'app/src/main', 'app/src/main/java', 'app/src/main/java/com', 'app/src/main/java/com/webd', 'app/src/main/java/com/webd/starter', 'app/src/main/res', 'app/src/main/res/values']);
