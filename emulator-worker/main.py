@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-import os, subprocess, tempfile, base64, pathlib, time, asyncio, shutil
+import os, subprocess, tempfile, base64, pathlib, time, asyncio, shutil, secrets
 
 app = FastAPI(title="WebD Android Emulator Worker")
 TOKEN = os.environ.get("ANDROID_EMULATOR_TOKEN", "")
@@ -10,7 +10,7 @@ EMULATOR = os.environ.get("EMULATOR", "/opt/android-sdk/emulator/emulator")
 VNC_PORT = 5900
 SESSION_DIR = pathlib.Path("/tmp/webd-emulator")
 APK_PATH = SESSION_DIR / "session.apk"
-AVD = os.environ.get("AVD_NAME", "WebD_API_35")
+AVD = os.environ.get("AVD_NAME", "WebD_API_35")\nSESSIONS: dict[str, float] = {}\nSESSION_TTL = int(os.environ.get("SESSION_TTL_SECONDS", "3600"))\n\ndef session_auth(session: str | None):\n    expiry = SESSIONS.get(session or "")\n    if not expiry or expiry < time.time():\n        SESSIONS.pop(session or "", None)\n        raise HTTPException(401, "Emulator session expired; start again")\n    SESSIONS[session] = time.time() + SESSION_TTL
 MAX_APK_BYTES = 180 * 1024 * 1024
 
 def auth(token: str | None):
@@ -65,7 +65,7 @@ def start(req: StartRequest, authorization: str | None = Header(default=None)):
     if install["code"] != 0:
         return JSONResponse(status_code=500, content={"ok":False,"error":"APK install failed","log":install})
     launch=adb("shell","monkey","-p",req.packageName,"-c","android.intent.category.LAUNCHER","1",timeout=30)
-    return {"ok":True,"message":"APK installed and launched","install":install,"launch":launch,"streamUrl":"/ws/vnc"}
+    session = secrets.token_urlsafe(24)\n    SESSIONS[session] = time.time() + SESSION_TTL\n    return {"ok":True,"message":"APK installed and launched","install":install,"launch":launch,"sessionToken":session,"streamPath":"/ws/vnc"}
 
 @app.get("/logcat")
 def logcat(authorization: str | None = Header(default=None)):
