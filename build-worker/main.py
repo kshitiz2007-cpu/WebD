@@ -52,9 +52,9 @@ def build(req: BuildRequest, authorization: str | None = Header(default=None)):
         try:
             proc = subprocess.run([gradle, "--no-daemon", "--stacktrace", "assembleDebug"], cwd=root, capture_output=True, text=True, timeout=BUILD_TIMEOUT, env={"PATH": os.environ.get("PATH", ""), "ANDROID_HOME": os.environ.get("ANDROID_HOME", "/opt/android-sdk"), "ANDROID_SDK_ROOT": os.environ.get("ANDROID_SDK_ROOT", "/opt/android-sdk"), "JAVA_HOME": os.environ.get("JAVA_HOME", ""), "HOME": "/home/builder", "GRADLE_USER_HOME": "/gradle-cache", "LANG": "C.UTF-8"})
         except subprocess.TimeoutExpired as ex:
-            raise HTTPException(408, f"Build timed out after {BUILD_TIMEOUT}s.\n{(ex.stdout or b'').decode(errors='ignore')[-5000:]}")
+            raise HTTPException(408, f"Build timed out after {BUILD_TIMEOUT}s.\n{(ex.stdout or b'').decode(errors='ignore')[-100000:]}")
 
-        log = ((proc.stdout or "") + "\n" + (proc.stderr or ""))[-18000:]
+        log = ((proc.stdout or "") + "\n" + (proc.stderr or ""))[-100000:]
         if proc.returncode != 0:
             return JSONResponse(status_code=422, content={"success": False, "log": log, "error": "Gradle build failed"})
         apk_path = root / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
