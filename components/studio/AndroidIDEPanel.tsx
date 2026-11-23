@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Code2, Folder, FolderOpen, Smartphone, Play, RefreshCw, Plus, ChevronDown, FileCode2, FileJson, FileText, Settings, Terminal, Eye, X } from 'lucide-react';
+import { Code2, Folder, FolderOpen, Smartphone, Play, Hammer, RefreshCw, Plus, ChevronDown, FileCode2, FileJson, FileText, Settings, Terminal, Eye, X } from 'lucide-react';
 import MonacoCodeEditorClient from './MonacoCodeEditorClient';
 
 type AndroidFiles = Record<string, string>;
@@ -137,6 +137,7 @@ export default function AndroidIDEPanel() {
   const [device, setDevice] = useState('Pixel 8');
   const [logMessage, setLogMessage] = useState('Android preview is a Compose UI simulator in Phase 1. Gradle builds and emulator execution are planned for Phase 2/3.');
   const [previewCount, setPreviewCount] = useState(0);
+  const [isBuilding, setIsBuilding] = useState(false);
   const [previewTitle, setPreviewTitle] = useState('Hello, Android!');
   const [previewText, setPreviewText] = useState('Your Compose app is ready.');
   const [previewButton, setPreviewButton] = useState('Tap count: 0');
@@ -192,6 +193,41 @@ export default function AndroidIDEPanel() {
     setShowProjectMenu(false);
   };
 
+  const handleBuildApk = async () => {
+    if (isBuilding) return;
+    setIsBuilding(true);
+    setLogMessage('Sending project to Gradle build worker...');
+    try {
+      const response = await fetch('/api/android/build', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        setLogMessage(result.log || result.error || 'Gradle build failed.');
+        return;
+      }
+      const binary = atob(result.apkBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'application/vnd.android.package-archive' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = result.fileName || 'app-debug.apk';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setLogMessage('Build successful! APK downloaded (' + Math.round((result.sizeBytes || bytes.length) / 1024) + ' KB).\n' + (result.log || 'Gradle build finished.'));
+    } catch (error) {
+      setLogMessage(error instanceof Error ? error.message : 'Android build service unavailable.');
+    } finally {
+      setIsBuilding(false);
+    }
+  };
+
   const handleRun = () => {
     setLogMessage('Phase 1: preview simulator started. Real Gradle build and emulator run will be enabled in later phases.');
     refreshPreview();
@@ -216,7 +252,7 @@ export default function AndroidIDEPanel() {
           </div>
           <button onClick={createFile} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><Plus size={14}/> File</button>
           <button onClick={refreshPreview} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><RefreshCw size={14}/> Preview</button>
-          <button onClick={handleRun} className="flex items-center gap-1 rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500"><Play size={13}/> Run Preview</button>
+          <button onClick={handleBuildApk} disabled={isBuilding} className="flex items-center gap-1 rounded bg-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"><Hammer size={13}/> {isBuilding ? "Building…" : "Build APK"}</button><button onClick={handleRun} className="flex items-center gap-1 rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500"><Play size={13}/> Run Preview</button>
         </div>
       </header>
 
