@@ -159,9 +159,20 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
   const [counter, setCounter] = useState(0);
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   const [expandedOutput, setExpandedOutput] = useState(false);
+  const [buildLogSearch, setBuildLogSearch] = useState('');
 
   const tree = useMemo(() => Object.keys(files).sort((a, b) => a.localeCompare(b)), [files]);
   const activeContent = files[activeFile] || '';
+  const diagnosticLines = useMemo(() => logMessage.split(/\\r?\\n/).filter((line) => /\\b(error|failed|warning|warn)\\b/i.test(line)), [logMessage);
+  const filteredBuildLog = useMemo(() => buildLogSearch ? logMessage.split(/\\r?\\n/).filter((line) => line.toLowerCase().includes(buildLogSearch.toLowerCase())).join('\\n') : logMessage, [logMessage, buildLogSearch]);
+  const diagnosticLocations = useMemo(() => {
+    const found: Array<{ path: string; line: number }> = [];
+    for (const line of logMessage.split(/\\r?\\n/)) {
+      const match = line.match(/([\\w./-]+\\.(?:kt|kts|xml|java)):(\\d+)/);
+      if (match && files[match[1]]) found.push({ path: match[1], line: Number(match[2]) });
+    }
+    return found;
+  }, [logMessage, files]);
 
   const updateFile = (value: string) => setFiles((old) => ({ ...old, [activeFile]: value }));
 
@@ -286,6 +297,12 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
           result.error || result.detail || 'Gradle build failed.',
           result.detail ? ('DETAIL:\n' + result.detail) : '',
           '',
+          'PROJECT CONFIGURATION:',
+          'Files: ' + Object.keys(files).length,
+          'Active file: ' + activeFile,
+          'Gradle files: ' + Object.keys(files).filter((p) => /gradle\\.kts$|gradle\\.properties$/.test(p)).join(', '),
+          'Manifest: ' + (files['app/src/main/AndroidManifest.xml'] ? 'present' : 'missing'),
+          '',
           'BUILD LOGS:',
           result.log || raw || '(No logs returned)',
         ].filter(Boolean).join('\n');
@@ -344,7 +361,13 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
   return (
     <div className="absolute inset-0 z-50 flex min-h-0 flex-col bg-[#0b1120] text-slate-200">
       {emulatorSession && <div className="fixed inset-0 z-[100] flex min-h-0 flex-col bg-black"><AndroidEmulatorScreen sessionToken={emulatorSession} onDisconnect={stopEmulator} /></div>}
-      {showFullLog && <div className="fixed inset-0 z-[120] flex flex-col bg-[#070b13] text-slate-200"><div className="flex shrink-0 items-center gap-2 border-b border-slate-700 bg-[#111827] p-3"><Terminal size={16}/><strong className="text-sm">Full Build / Output Log</strong><button onClick={() => setShowFullLog(false)} className="ml-auto rounded bg-slate-700 px-3 py-1 text-sm">Close</button><button onClick={() => void navigator.clipboard?.writeText(logMessage)} className="rounded bg-indigo-600 px-3 py-1 text-sm">Copy</button></div><pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs leading-5">{logMessage || "No output yet."}</pre></div>
+      {showFullLog && <div className="fixed inset-0 z-[120] flex flex-col bg-[#070b13] text-slate-200">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-700 bg-[#111827] p-3"><Terminal size={16}/><strong className="text-sm">Build Diagnostics</strong><span className="rounded bg-red-500/15 px-2 py-1 text-xs text-red-300">{diagnosticLines.length} errors/warnings</span><button onClick={() => setShowFullLog(false)} className="ml-auto rounded bg-slate-700 px-3 py-1 text-sm">Close</button><button onClick={() => void navigator.clipboard?.writeText(logMessage)} className="rounded bg-indigo-600 px-3 py-1 text-sm">Copy All</button><button onClick={() => void handleBuildApk()} disabled={isBuilding} className="rounded bg-emerald-600 px-3 py-1 text-sm disabled:opacity-50">{isBuilding ? 'Building…' : 'Retry Build'}</button></div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+          <aside className="max-h-44 shrink-0 overflow-auto border-b border-slate-800 p-3 md:max-h-none md:w-80 md:border-b-0 md:border-r"><div className="mb-2 text-xs font-semibold">Errors & Warnings</div>{diagnosticLines.length ? diagnosticLines.map((line, i) => <div key={i} className="mb-1 rounded border border-slate-800 bg-slate-900 p-2 text-[11px] text-rose-200">{line}</div>) : <div className="text-xs text-slate-500">No diagnostic lines were detected.</div>}<div className="mt-3 text-xs font-semibold">Detected file locations</div>{diagnosticLocations.length ? diagnosticLocations.map((loc, i) => <button key={i} onClick={() => openFile(loc.path)} className="mt-1 block w-full rounded bg-slate-900 p-2 text-left text-xs text-indigo-300 hover:bg-slate-800">{loc.path}:{loc.line} · Open file</button>) : <div className="mt-1 text-xs text-slate-500">No file locations found in logs.</div>}</aside>
+          <section className="flex min-h-0 flex-1 flex-col"><div className="shrink-0 border-b border-slate-800 p-2"><input value={buildLogSearch} onChange={(e) => setBuildLogSearch(e.target.value)} placeholder="Search build log…" className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs outline-none focus:border-indigo-500"/></div><pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs leading-5">{filteredBuildLog || "No output yet."}</pre></section>
+        </div>
+      </div>}
       <header className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-y-1 border-b border-slate-800 bg-[#111827] px-2 py-1 sm:flex-nowrap sm:px-3">
         <div className="flex items-center gap-2">
           {onExitAndroid && <button onClick={onExitAndroid} className="rounded px-2 py-1 text-[11px] text-slate-400 hover:bg-slate-800">Web IDE</button>}
