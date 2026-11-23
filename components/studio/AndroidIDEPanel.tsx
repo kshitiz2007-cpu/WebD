@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Code2, Folder, FolderOpen, Smartphone, Play, Hammer, RefreshCw, Plus, ChevronDown, FileCode2, FileJson, FileText, Settings, Terminal, Eye, X } from 'lucide-react';
+import { Code2, Folder, FolderOpen, Smartphone, Play, RefreshCw, Plus, ChevronDown, FileCode2, FileJson, FileText, Settings, Terminal, Eye, X } from 'lucide-react';
 import MonacoCodeEditorClient from './MonacoCodeEditorClient';
 
 type AndroidFiles = Record<string, string>;
@@ -181,7 +181,7 @@ export default function AndroidIDEPanel() {
     setActiveFile('app/src/main/java/com/webd/starter/MainActivity.kt');
     setOpenFiles(['app/src/main/java/com/webd/starter/MainActivity.kt']);
     setCounter(0);
-    if (kind === 'login') {
+    if (kind === 'empty') {\n      setFiles((old) => ({ ...old, 'app/src/main/java/com/webd/starter/MainActivity.kt': `package com.webd.starter\n\nimport android.os.Bundle\nimport androidx.activity.ComponentActivity\nimport androidx.activity.compose.setContent\nimport androidx.compose.material3.MaterialTheme\nimport androidx.compose.runtime.Composable\nimport androidx.compose.foundation.layout.Box\nimport androidx.compose.foundation.layout.fillMaxSize\nimport androidx.compose.ui.Modifier\n\nclass MainActivity : ComponentActivity() {\n    override fun onCreate(savedInstanceState: Bundle?) {\n        super.onCreate(savedInstanceState)\n        setContent { MaterialTheme { EmptyScreen() } }\n    }\n}\n\n@Composable\nfun EmptyScreen() {\n    Box(modifier = Modifier.fillMaxSize())\n}\n` }));\n    }\n    if (kind === 'login') {
       setFiles((old) => ({ ...old, 'app/src/main/java/com/webd/starter/MainActivity.kt': old['app/src/main/java/com/webd/starter/MainActivity.kt'].replace('Hello, Android!', 'Welcome back').replace('Your Compose app is ready.', 'Sign in to continue') }));
     }
     setLogMessage(`New ${kind === 'empty' ? 'Empty Compose' : kind === 'counter' ? 'Counter' : 'Login UI'} project created`);
@@ -212,7 +212,7 @@ export default function AndroidIDEPanel() {
           </div>
           <button onClick={createFile} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><Plus size={14}/> File</button>
           <button onClick={refreshPreview} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><RefreshCw size={14}/> Preview</button>
-          <button onClick={handleRun} className="flex items-center gap-1 rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500"><Play size={13}/> Run</button>
+          <button onClick={handleRun} className="flex items-center gap-1 rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500"><Play size={13}/> Run Preview</button>
         </div>
       </header>
 
@@ -240,7 +240,7 @@ export default function AndroidIDEPanel() {
           </div>
         </section>
 
-        <aside className="flex w-[320px] shrink-0 flex-col border-l border-slate-800 bg-[#0f172a] max-xl:hidden">
+        <aside className="flex w-[320px] shrink-0 flex-col border-l border-slate-800 bg-[#0f172a] max-lg:hidden">
           <div className="flex h-9 items-center gap-2 border-b border-slate-800 px-3 text-xs font-semibold"><Eye size={14}/> Compose Preview <span className="ml-auto text-[10px] text-slate-500">#{previewCount}</span></div>
           <div className="flex flex-1 items-center justify-center overflow-auto p-3">
             <div className="relative h-[620px] w-[300px] max-h-full rounded-[36px] border-[8px] border-slate-700 bg-black p-2 shadow-2xl">
