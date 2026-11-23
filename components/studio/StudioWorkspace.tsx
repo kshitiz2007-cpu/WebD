@@ -54,6 +54,7 @@ import {
   suggestExtractedComponentName,
 } from '@/lib/studio/workspace-actions';
 import TopToolbar from './TopToolbar';
+import AndroidIDEPanel from './AndroidIDEPanel';
 import PagesLayersPanel from './PagesLayersPanel';
 import VisualCanvas from './VisualCanvas';
 import StyleInspectorPanel from './StyleInspectorPanel';
@@ -158,6 +159,7 @@ export default function StudioWorkspace() {
   const [project, setProject] = useState<VirtualProject>(() =>
     createProjectFromFiles(STARTER_NEXTJS_FILES, 'Starter: Next.js App', 'verve-structural-site')
   );
+  const [isAndroidIdeOpen, setIsAndroidIdeOpen] = useState(false);
   const [historyPast, setHistoryPast] = useState<Record<string, string>[]>([]);
   const [historyFuture, setHistoryFuture] = useState<Record<string, string>[]>([]);
   const [historyTimeline, setHistoryTimeline] = useState<HistoryTimelineEntry[]>(() => [
@@ -3287,6 +3289,11 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
       />
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        {isAndroidIdeOpen && <AndroidIDEPanel />}
+        <div className="absolute left-3 top-2 z-40 flex overflow-hidden rounded-lg border border-slate-200 bg-white/95 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+          <button type="button" onClick={() => setIsAndroidIdeOpen(false)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Code2 size={14}/> Web IDE</button>
+          <button type="button" onClick={() => setIsAndroidIdeOpen(true)} className="flex items-center gap-1.5 border-l border-slate-200 px-3 py-1.5 text-xs font-medium \${isAndroidIdeOpen ? 'bg-emerald-600 text-white' : 'text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'}"><Layers size={14}/> Android IDE</button>
+        </div>
         {/* Left Panel: docked on >=1024px, slide-over drawer on tablet, bottom sheet on phone */}
         {showLeftPanel && (
           <div
