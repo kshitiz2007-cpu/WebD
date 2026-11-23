@@ -10,7 +10,16 @@ EMULATOR = os.environ.get("EMULATOR", "/opt/android-sdk/emulator/emulator")
 VNC_PORT = 5900
 SESSION_DIR = pathlib.Path("/tmp/webd-emulator")
 APK_PATH = SESSION_DIR / "session.apk"
-AVD = os.environ.get("AVD_NAME", "WebD_API_35")\nSESSIONS: dict[str, float] = {}\nSESSION_TTL = int(os.environ.get("SESSION_TTL_SECONDS", "3600"))\n\ndef session_auth(session: str | None):\n    expiry = SESSIONS.get(session or "")\n    if not expiry or expiry < time.time():\n        SESSIONS.pop(session or "", None)\n        raise HTTPException(401, "Emulator session expired; start again")\n    SESSIONS[session] = time.time() + SESSION_TTL
+AVD = os.environ.get("AVD_NAME", "WebD_API_35")
+SESSIONS: dict[str, float] = {}
+SESSION_TTL = int(os.environ.get("SESSION_TTL_SECONDS", "3600"))
+
+def session_auth(session: str | None):
+    expiry = SESSIONS.get(session or "")
+    if not expiry or expiry < time.time():
+        SESSIONS.pop(session or "", None)
+        raise HTTPException(401, "Emulator session expired; start again")
+    SESSIONS[session] = time.time() + SESSION_TTL
 MAX_APK_BYTES = 180 * 1024 * 1024
 
 def auth(token: str | None):
@@ -65,7 +74,9 @@ def start(req: StartRequest, authorization: str | None = Header(default=None)):
     if install["code"] != 0:
         return JSONResponse(status_code=500, content={"ok":False,"error":"APK install failed","log":install})
     launch=adb("shell","monkey","-p",req.packageName,"-c","android.intent.category.LAUNCHER","1",timeout=30)
-    session = secrets.token_urlsafe(24)\n    SESSIONS[session] = time.time() + SESSION_TTL\n    return {"ok":True,"message":"APK installed and launched","install":install,"launch":launch,"sessionToken":session,"streamPath":"/ws/vnc"}
+    session = secrets.token_urlsafe(24)
+    SESSIONS[session] = time.time() + SESSION_TTL
+    return {"ok":True,"message":"APK installed and launched","install":install,"launch":launch,"sessionToken":session,"streamPath":"/ws/vnc"}
 
 @app.get("/logcat")
 def logcat(authorization: str | None = Header(default=None)):
@@ -77,7 +88,11 @@ class InputRequest(BaseModel):
     action: str
     x: int = 0
     y: int = 0
-    text: str = ""\n    x2: int = 0\n    y2: int = 0\n    duration: int = 350\n    keycode: int = 0
+    text: str = ""
+    x2: int = 0
+    y2: int = 0
+    duration: int = 350
+    keycode: int = 0
 
 @app.post("/input")
 def input_action(req: InputRequest, authorization: str | None = Header(default=None)):
