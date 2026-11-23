@@ -276,12 +276,24 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
   const handleBuildApk = async () => {
     if (isBuilding) return;
     setIsBuilding(true);
-    setLogMessage('Sending project to Gradle build worker...');
+    setLogMessage('Checking Android build worker connection…');
     try {
+      const healthResponse = await fetch('/api/android/build', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(12000) });
+      const healthRaw = await healthResponse.text();
+      let health: any;
+      try { health = JSON.parse(healthRaw); } catch { health = { error: healthRaw }; }
+      if (!healthResponse.ok || !health?.reachable) {
+        setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: WORKER UNREACHABLE', 'HTTP: ' + healthResponse.status, '', 'Worker health response:', healthRaw || '(empty response)', '', 'Check Railway worker deployment and ANDROID_BUILD_SERVICE_URL / token configuration.'].join('\\n'));
+        setShowOutput(true);
+        setShowFullLog(true);
+        return;
+      }
+      setLogMessage('Worker online. Sending project to Gradle build worker…');
       const response = await fetch('/api/android/build', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ files }),
+        signal: AbortSignal.timeout(300000),
       });
       const raw = await response.text();
       let result: any;
@@ -326,7 +338,10 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
       URL.revokeObjectURL(url);
       setLogMessage('Build successful! APK downloaded (' + Math.round((result.sizeBytes || bytes.length) / 1024) + ' KB).\n' + (result.log || 'Gradle build finished.'));
     } catch (error) {
-      setLogMessage(error instanceof Error ? error.message : 'Android build service unavailable.');
+      const detail = error instanceof Error ? error.message : String(error);
+      setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: REQUEST FAILED', '', 'Error: ' + detail, '', 'The request failed before a Gradle log was returned. Check worker health, Railway deployment, URL/token settings, and network connectivity.', '', 'Try again after confirming the worker is deployed and reachable.'].join('\\n'));
+      setShowOutput(true);
+      setShowFullLog(true);
     } finally {
       setIsBuilding(false);
     }
