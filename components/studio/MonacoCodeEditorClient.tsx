@@ -10,6 +10,33 @@ function ensureMonacoConfigured() {
   if (monacoConfigured || typeof window === 'undefined') return;
   monacoConfigured = true;
 
+  if (!monaco.languages.getLanguages().some((language) => language.id === 'kotlin')) {
+    monaco.languages.register({ id: 'kotlin', extensions: ['.kt', '.kts'], aliases: ['Kotlin', 'kotlin'] });
+    monaco.languages.setMonarchTokensProvider('kotlin', {
+      keywords: ['package', 'import', 'class', 'object', 'interface', 'fun', 'val', 'var', 'return', 'if', 'else', 'when', 'for', 'while', 'in', 'is', 'as', 'try', 'catch', 'finally', 'throw', 'private', 'public', 'protected', 'internal', 'override', 'open', 'abstract', 'data', 'sealed', 'enum', 'inline', 'suspend', 'const', 'lateinit', 'this', 'super', 'null', 'true', 'false'],
+      typeKeywords: ['String', 'Int', 'Long', 'Float', 'Double', 'Boolean', 'Unit', 'Any', 'List', 'Map', 'Set'],
+      operators: ['=', '>', '<', '!', '~', '?', ':', '==', '<=', '>=', '!=', '&&', '||', '++', '--', '+', '-', '*', '/', '&', '|', '^', '%'],
+      tokenizer: {
+        root: [
+          [/\/\/.*$/, 'comment'],
+          [/\/\*/, 'comment', '@comment'],
+          [/@[\w.]+/, 'annotation'],
+          [/\b[A-Z][\w]*\b/, 'type.identifier'],
+          [/\b\d+(\.\d+)?\b/, 'number'],
+          [/"/, 'string', '@string'],
+          [/'/, 'string', '@stringSingle'],
+          [/[a-zA-Z_$][\w$]*/, { cases: { '@keywords': 'keyword', '@typeKeywords': 'type', '@default': 'identifier' } }],
+          [/[{}()[\]]/, '@brackets'],
+          [/[;,.]/, 'delimiter'],
+          [/[=><!~?&|+\-*\/%^]/, 'operator'],
+        ],
+        comment: [[/[^/*]+/, 'comment'], [/\*\//, 'comment', '@pop'], [/[/\*]/, 'comment']],
+        string: [[/\\./, 'string.escape'], [/[^\\"]+/, 'string'], [/"/, 'string', '@pop']],
+        stringSingle: [[/\\./, 'string.escape'], [/[^\\']+/, 'string'], [/'/, 'string', '@pop']],
+      },
+    });
+  }
+
   const win = window as unknown as {
     MonacoEnvironment?: {
       getWorker?: (_moduleId: string, label: string) => Worker;
@@ -97,6 +124,7 @@ function ensureMonacoConfigured() {
 
 export function detectMonacoLanguage(filePath: string): string {
   const lower = filePath.toLowerCase();
+  if (lower.endsWith('.kt') || lower.endsWith('.kts')) return 'kotlin';
   if (lower.endsWith('.tsx') || lower.endsWith('.ts')) return 'typescript';
   if (lower.endsWith('.jsx') || lower.endsWith('.js') || lower.endsWith('.mjs')) return 'javascript';
   if (lower.endsWith('.css')) return 'css';
