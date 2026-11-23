@@ -113,7 +113,7 @@ fun StarterScreen() {
 
 const ANDROID_DRAFT_DB = 'webd-android-drafts';
 function openDraftDb(): Promise<IDBDatabase> { return new Promise((resolve, reject) => { const req = indexedDB.open(ANDROID_DRAFT_DB, 1); req.onupgradeneeded = () => req.result.createObjectStore('projects'); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); }); }
-async function readDraft(): Promise<AndroidFiles | null { const db = await openDraftDb(); return new Promise((resolve, reject) => { const req = db.transaction('projects', 'readonly').objectStore('projects').get('current'); req.onsuccess = () => { db.close(); resolve(req.result || null); }; req.onerror = () => { db.close(); reject(req.error); }; }); }
+async function readDraft(): Promise<AndroidFiles | null> { const db = await openDraftDb(); return new Promise((resolve, reject) => { const req = db.transaction('projects', 'readonly').objectStore('projects').get('current'); req.onsuccess = () => { db.close(); resolve(req.result || null); }; req.onerror = () => { db.close(); reject(req.error); }; }); }
 async function writeDraft(files: AndroidFiles): Promise<void> { const db = await openDraftDb(); await new Promise<void>((resolve, reject) => { const req = db.transaction('projects', 'readwrite').objectStore('projects').put(files, 'current'); req.onsuccess = () => resolve(); req.onerror = () => reject(req.error); }); db.close(); }
 const fileIcons: Record<string, React.ReactNode> = {
   kt: <FileCode2 size={14} className="text-violet-400" />,
