@@ -191,6 +191,55 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
     setLogMessage('Preview refreshed from MainActivity.kt · Compose source heuristics');
   };
 
+  const importProjectFiles = (incoming: Record<string, string>, source: string) => {
+    const cleaned: Record<string, string> = {};
+    for (const [raw, value] of Object.entries(incoming)) {
+      const path = raw.replace(/^\\/+/, '');
+      if (!path || path.includes('..') || path.startsWith('.git/') || path.length > 240) continue;
+      if (typeof value !== 'string' || value.length > 1_000_000) continue;
+      cleaned[path] = value;
+    }
+    if (!Object.keys(cleaned).length) { setLogMessage('Import archive contains no usable text files.'); return; }
+    setFiles(cleaned);
+    const first = Object.keys(cleaned).find((p) => p.endsWith('MainActivity.kt')) || Object.keys(cleaned)[0];
+    setActiveFile(first);
+    setOpenFiles([first]);
+    setBuiltApkBase64(null);
+    setEmulatorSession(null);
+    setLogMessage(source + ' imported: ' + Object.keys(cleaned).length + ' files. Build APK to continue.');
+  };
+  const importZipFile = async (file?: File) => {
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { setLogMessage('ZIP upload limit is 8 MB.'); return; }
+    try {
+      setLogMessage('Extracting ZIP project…');
+      const zip = await JSZip.loadAsync(file);
+      const incoming: Record<string, string> = {};
+      for (const entry of Object.values(zip.files)) {
+        if (entry.dir) continue;
+        let path = entry.name.split('/').slice(1).join('/');
+        if (!path) path = entry.name;
+        if (!path || path.startsWith('/') || path.split('/').includes('..') || path.startsWith('.git/')) continue;
+        if (Object.keys(incoming).length >= 1200) break;
+        if (entry.name.endsWith('/') || /\\.(png|jpe?g|gif|webp|ico|apk|aab|jar|class|so|zip|pdf|mp4|mp3)$/i.test(path)) continue;
+        const text = await entry.async('string');
+        if (text.length <= 1_000_000) incoming[path] = text;
+      }
+      importProjectFiles(incoming, 'ZIP');
+    } catch (e) { setLogMessage(e instanceof Error ? e.message : 'ZIP import failed'); }
+  };
+  const importGithubRepo = async () => {
+    const url = window.prompt('Public GitHub repository URL (branch optional):');
+    if (!url) return;
+    try {
+      setLogMessage('Downloading public GitHub repository archive…');
+      const response = await fetch('/api/android/import/github', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+      const data = await response.json();
+      if (!response.ok || !data.success) { setLogMessage(data.error || 'GitHub import failed.'); return; }
+      importProjectFiles(data.files, 'GitHub ' + (data.repo || 'repository'));
+    } catch (e) { setLogMessage(e instanceof Error ? e.message : 'GitHub import failed'); }
+  };
+
   const createFile = () => {
     const name = window.prompt('New file path (relative to project root):', 'app/src/main/java/com/webd/starter/NewScreen.kt');
     if (!name) return;
@@ -296,7 +345,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
               <button onClick={() => newProject('login')} className="w-full rounded px-2 py-2 text-left text-xs hover:bg-slate-800">Login UI starter</button>
             </div>}
           </div>
-          <button onClick={createFile} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><Plus size={14}/> File</button>
+          <button onClick={createFile} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><Plus size={14}/> File</button>\n          <label className="flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><FolderOpen size={14}/> ZIP<input type="file" accept=".zip,application/zip" className="hidden" onChange={(e) => { void importZipFile(e.target.files?.[0]); e.currentTarget.value = ''; }} /></label>\n          <button onClick={importGithubRepo} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><Code2 size={14}/> GitHub</button>
           <button onClick={refreshPreview} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><RefreshCw size={14}/> Preview</button>
           <button onClick={handleBuildApk} disabled={isBuilding} className="flex shrink-0 items-center gap-1 rounded bg-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"><Hammer size={13}/> {isBuilding ? "Building…" : "Build APK"}</button><button onClick={handleRun} className="flex shrink-0 items-center gap-1 rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500"><Play size={13}/> {emulatorSession ? "Emulator Live" : "Run Emulator"}</button><button onClick={fetchLogcat} className="flex shrink-0 items-center gap-1 rounded bg-slate-700 px-2 py-1 text-xs text-white"><Terminal size={13}/> Logcat</button><button onClick={() => setShowOutput(v => !v)} className="flex shrink-0 items-center gap-1 rounded bg-slate-700 px-2 py-1 text-xs text-white sm:hidden"><Terminal size={13}/> Output</button>
         </div>
