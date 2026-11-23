@@ -138,6 +138,7 @@ function getLanguage(path: string) {
 export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () => void }) {
   const zipInputRef = useRef<HTMLInputElement>(null);
   const [showOutput, setShowOutput] = useState(true);
+  const [showFullLog, setShowFullLog] = useState(false);
   const [builtApkBase64, setBuiltApkBase64] = useState<string | null>(null);
   const [emulatorSession, setEmulatorSession] = useState<string | null>(null);
   const [files, setFiles] = useState<AndroidFiles>(starterFiles);
@@ -326,6 +327,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
   return (
     <div className="absolute inset-0 z-50 flex min-h-0 flex-col bg-[#0b1120] text-slate-200">
       {emulatorSession && <div className="fixed inset-0 z-[100] flex min-h-0 flex-col bg-black"><AndroidEmulatorScreen sessionToken={emulatorSession} onDisconnect={stopEmulator} /></div>}
+      {showFullLog && <div className="fixed inset-0 z-[120] flex flex-col bg-[#070b13] text-slate-200"><div className="flex shrink-0 items-center gap-2 border-b border-slate-700 bg-[#111827] p-3"><Terminal size={16}/><strong className="text-sm">Full Build / Output Log</strong><button onClick={() => setShowFullLog(false)} className="ml-auto rounded bg-slate-700 px-3 py-1 text-sm">Close</button><button onClick={() => void navigator.clipboard?.writeText(logMessage)} className="rounded bg-indigo-600 px-3 py-1 text-sm">Copy</button></div><pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs leading-5">{logMessage || "No output yet."}</pre></div>
       <header className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-y-1 border-b border-slate-800 bg-[#111827] px-2 py-1 sm:flex-nowrap sm:px-3">
         <div className="flex items-center gap-2">
           {onExitAndroid && <button onClick={onExitAndroid} className="rounded px-2 py-1 text-[11px] text-slate-400 hover:bg-slate-800">Web IDE</button>}
@@ -369,7 +371,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
           </div>
           <div className="flex h-8 shrink-0 items-center gap-2 border-t border-slate-800 bg-[#111827] px-3 text-[10px] text-slate-400"><Code2 size={12}/> {getLanguage(activeFile)} <span className="ml-auto">Ln 1 · Android editor</span></div>
           <div className={(showOutput ? "block " : "hidden ") + (expandedOutput ? "h-[45vh] md:h-64" : "h-32 md:h-36") + " shrink-0 overflow-hidden border-t border-slate-800 bg-[#090e18] font-mono text-[10px] text-slate-300"}>
-            <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-800 bg-[#090e18] px-2 py-1.5 text-slate-200"><Terminal size={12}/> Build / Output Log <button type="button" onClick={() => setExpandedOutput((v) => !v)} className="ml-auto rounded bg-slate-800 px-2 py-1 text-[10px]">{expandedOutput ? "Collapse" : "Full log"}</button><button type="button" onClick={() => { navigator.clipboard?.writeText(logMessage); }} className="rounded bg-slate-800 px-2 py-1 text-[10px]">Copy</button></div>
+            <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-800 bg-[#090e18] px-2 py-1.5 text-slate-200"><Terminal size={12}/> Build / Output Log <button type="button" onClick={() => setShowFullLog(true)} className="ml-auto rounded bg-slate-800 px-2 py-1 text-[10px]">Full log</button><button type="button" onClick={() => { navigator.clipboard?.writeText(logMessage); }} className="rounded bg-slate-800 px-2 py-1 text-[10px]">Copy</button></div>
             <pre className="h-[calc(100%-30px)] overflow-auto whitespace-pre-wrap break-words p-2 select-text">{logMessage || "No output yet."}</pre>
           </div>
         </section>
