@@ -338,6 +338,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
 
   return (
     <div className="absolute inset-0 z-50 flex min-h-0 flex-col bg-[#0b1120] text-slate-200">
+      {emulatorSession && <div className="fixed inset-0 z-[100] flex min-h-0 flex-col bg-black"><AndroidEmulatorScreen sessionToken={emulatorSession} onDisconnect={stopEmulator} /></div>}
       <header className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-y-1 border-b border-slate-800 bg-[#111827] px-2 py-1 sm:flex-nowrap sm:px-3">
         <div className="flex items-center gap-2">
           {onExitAndroid && <button onClick={onExitAndroid} className="rounded px-2 py-1 text-[11px] text-slate-400 hover:bg-slate-800">Web IDE</button>}
@@ -345,7 +346,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
           <span className="text-sm font-semibold">Android Studio Mode</span>
           <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">PHASE 3 · MOBILE</span>
         </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-1">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1 overflow-x-auto">
           <div className="relative shrink-0">
             <button onClick={() => setShowProjectMenu((v) => !v)} className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-slate-800"><Plus size={14}/> New project <ChevronDown size={12}/></button>
             {showProjectMenu && <div className="absolute right-0 top-8 z-50 w-44 rounded-md border border-slate-700 bg-slate-900 p-1 shadow-xl">
