@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import RFB from '@novnc/novnc';
 
 export default function AndroidEmulatorScreen({ sessionToken, onDisconnect }: { sessionToken: string; onDisconnect?: () => void }) {
   const mountRef = useRef<HTMLDivElement>(null);
