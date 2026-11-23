@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   if (!parsed) return NextResponse.json({ error: 'Enter a public GitHub repository URL like https://github.com/owner/repo or /tree/branch' }, { status: 400 });
   const archiveUrl = `https://codeload.github.com/${parsed.owner}/${parsed.repo}/zip/${encodeURIComponent(parsed.branch)}`;
   try {
-    const response = await fetch(archiveUrl, { headers: { 'User-Agent': 'WebD-Android-IDE' }, signal: AbortSignal.timeout(25000 });
+    const response = await fetch(archiveUrl, { headers: { 'User-Agent': 'WebD-Android-IDE' }, signal: AbortSignal.timeout(25000) });
     if (!response.ok) return NextResponse.json({ error: response.status === 404 ? 'Repository or branch not found. Private repositories are not supported.' : `GitHub archive fetch failed (${response.status})` }, { status: response.status });
     const buffer = await response.arrayBuffer();
     if (buffer.byteLength > 8 * 1024 * 1024) return NextResponse.json({ error: 'Repository archive exceeds 8 MB limit.' }, { status: 413 });
