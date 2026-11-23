@@ -145,7 +145,6 @@ export default function AndroidIDEPanel() {
 
   const tree = useMemo(() => Object.keys(files).sort((a, b) => a.localeCompare(b)), [files]);
   const activeContent = files[activeFile] || '';
-  const isKotlin = activeFile.endsWith('.kt');
 
   const updateFile = (value: string) => setFiles((old) => ({ ...old, [activeFile]: value }));
 
@@ -154,7 +153,6 @@ export default function AndroidIDEPanel() {
     setOpenFiles((old) => old.includes(path) ? old : [...old, path]);
   };
 
-  const toggleFolder = (path: string) => setExpanded((old) => old.includes(path) ? old.filter((v) => v !== path) : [...old, path]);
 
   const refreshPreview = () => {
     const source = files['app/src/main/java/com/webd/starter/MainActivity.kt'] || '';
