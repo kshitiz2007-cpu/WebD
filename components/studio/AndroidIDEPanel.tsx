@@ -198,7 +198,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
   const importProjectFiles = (incoming: Record<string, string>, source: string) => {
     const cleaned: Record<string, string> = {};
     for (const [raw, value] of Object.entries(incoming)) {
-      const path = raw.replace(/^\\/+/, '');
+      const path = raw.replace(/^\/+/, '');
       if (!path || path.includes('..') || path.startsWith('.git/') || path.length > 240) continue;
       if (typeof value !== 'string' || value.length > 1_000_000) continue;
       cleaned[path] = value;
