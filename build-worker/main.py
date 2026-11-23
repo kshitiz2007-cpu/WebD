@@ -2,9 +2,19 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 import os, tempfile, pathlib, subprocess, base64, shutil, re
 
 app = FastAPI(title="WebD Android Build Worker")
+
+@app.exception_handler(Exception)
+async def internal_error_handler(request, exc):
+    return JSONResponse(status_code=500, content={"success": False, "error": "Internal build worker error", "detail": str(exc)[:4000]})
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request, exc):
+    return JSONResponse(status_code=422, content={"success": False, "error": "Invalid build request", "detail": str(exc)[:4000]})
 TOKEN = os.environ.get("ANDROID_BUILD_TOKEN", "")
 MAX_FILES = 1200
 MAX_SOURCE_BYTES = 8 * 1024 * 1024
@@ -63,6 +73,8 @@ def build(req: BuildRequest, authorization: str | None = Header(default=None)):
     }
 }
 """, encoding="utf-8")
+        gradle_home = root / "gradle-user-home"
+        gradle_home.mkdir(parents=True, exist_ok=True)
         gradle = shutil.which("gradle")
         if not gradle:
             raise HTTPException(500, "Gradle is not installed in build worker")
