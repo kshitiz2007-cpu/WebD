@@ -278,7 +278,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
     setIsBuilding(true);
     setShowOutput(true);
     setBuiltApkBase64(null);
-    setLogMessage('Checking GitHub Actions build connection…');
+    setLogMessage('Checking self-hosted Android build server…');
     let buildStage = 'health check';
     try {
       const healthResponse = await fetch('/api/android/build', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(25000) });
@@ -286,11 +286,11 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
       let health: any;
       try { health = JSON.parse(healthRaw); } catch { health = { error: healthRaw }; }
       if (!healthResponse.ok || !health?.reachable) {
-        setLogMessage(['GITHUB ACTIONS CONNECTION DIAGNOSTICS', 'Status: BUILD API UNREACHABLE', 'HTTP: ' + healthResponse.status, '', healthRaw || '(empty response)'].join('\n'));
+        setLogMessage(['VPS BUILD SERVER CONNECTION DIAGNOSTICS', 'Status: VPS BUILD API UNREACHABLE', 'HTTP: ' + healthResponse.status, '', healthRaw || '(empty response)'].join('\n'));
         setShowOutput(true); setShowFullLog(true); return;
       }
       buildStage = 'project upload and workflow dispatch';
-      setLogMessage('Connection verified. Uploading project and starting build…');
+      setLogMessage('VPS connected. Uploading project and starting Gradle build…');
       const startResponse = await fetch('/api/android/build', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files }), signal: AbortSignal.timeout(120000) });
       const startRaw = await startResponse.text();
       let startData: any;
@@ -310,7 +310,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
         try { result = JSON.parse(statusRaw); } catch { result = { status: 'failed', error: statusRaw }; }
         if (!statusResponse.ok) throw new Error(result.error || result.detail || 'Build status request failed (HTTP ' + statusResponse.status + ')');
         if (result.status === 'completed' || result.status === 'failed') break;
-        setLogMessage(['ANDROID BUILD LIVE LOG', 'Status: ' + (result.status || 'running').toUpperCase(), 'Job: ' + jobId, 'Elapsed: ' + Math.round((poll + 1) * 2) + 's', '', 'GRADLE OUTPUT:', result.log || 'Gradle is starting; waiting for first output…'].join('\n'));
+        setLogMessage(['VPS ANDROID BUILD LIVE LOG', 'Status: ' + (result.status || 'running').toUpperCase(), 'Job: ' + jobId, 'Elapsed: ' + Math.round((poll + 1) * 2) + 's', '', 'GRADLE OUTPUT:', result.log || 'Gradle is starting; waiting for first output…'].join('\n'));
       }
       if (!result || (result.status !== 'completed' && result.status !== 'failed')) {
         setLogMessage('Build is taking longer than the UI wait limit. Job ID: ' + jobId + '\nThe worker continues running; please check again shortly.');
@@ -332,7 +332,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
       setLogMessage('Build successful! APK downloaded (' + Math.round((result.sizeBytes || bytes.length) / 1024) + ' KB).\n' + (result.log || 'Gradle build finished.'));
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: REQUEST FAILED', 'Failed stage: ' + buildStage, '', 'Error: ' + detail, '', 'Check the failing stage above; this is not necessarily a polling failure.'].join('\n'));
+      setLogMessage(['VPS ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: REQUEST FAILED', 'Failed stage: ' + buildStage, '', 'Error: ' + detail, '', 'Check the failing stage above; this is not necessarily a polling failure.'].join('\n'));
       setShowOutput(true); setShowFullLog(true);
     } finally { setIsBuilding(false); }
   };
