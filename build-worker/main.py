@@ -65,7 +65,6 @@ def run_build(job_id: str, files: dict):
         }
         if (taskClass.contains("KotlinCompile") || taskName.contains("kotlin")) {
             try { task.kotlinOptions.jvmTarget = "17" } catch (Throwable ignored) {}
-            try { task.compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } catch (Throwable ignored) {}
         }
     }
 }
