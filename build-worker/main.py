@@ -56,13 +56,12 @@ def run_build(job_id: str, files: dict):
             (root / "gradle.properties").write_text("org.gradle.jvmargs=-Xmx256m -XX:MaxMetaspaceSize=192m -XX:ReservedCodeCacheSize=32m -Dfile.encoding=UTF-8 -XX:-UsePerfData -Dorg.gradle.internal.instrumentation.agent=false\norg.gradle.workers.max=1\norg.gradle.parallel=false\norg.gradle.caching=true\nandroid.useAndroidX=true\nandroid.enableJetifier=true\nkotlin.compiler.execution.strategy=in-process\nkotlin.daemon.enabled=false\n", encoding="utf-8")
             init_script = root / "webd-jvm-target.gradle"
             init_script.write_text("""allprojects {
-    tasks.configureEach {
-        def taskName = name.toLowerCase()
-        if (taskName.contains("javac") || taskName.contains("java")) {
-            if (hasProperty("sourceCompatibility")) sourceCompatibility = "17"
-            if (hasProperty("targetCompatibility")) targetCompatibility = "17"
-        }
-        if (taskName.contains("kotlin") && hasProperty("kotlinOptions")) kotlinOptions.jvmTarget = "17"
+    tasks.withType(org.gradle.api.tasks.compile.JavaCompile).configureEach {
+        sourceCompatibility = "17"
+        targetCompatibility = "17"
+    }
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        kotlinOptions.jvmTarget = "17"
     }
 }
 """, encoding="utf-8")
