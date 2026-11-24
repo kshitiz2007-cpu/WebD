@@ -276,6 +276,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
   const handleBuildApk = async () => {
     if (isBuilding) return;
     setIsBuilding(true);
+    setBuiltApkBase64(null);
     setLogMessage('Checking Android build worker connection…');
     try {
       const healthResponse = await fetch('/api/android/build', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(12000) });
@@ -283,64 +284,37 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
       let health: any;
       try { health = JSON.parse(healthRaw); } catch { health = { error: healthRaw }; }
       if (!healthResponse.ok || !health?.reachable) {
-        setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: WORKER UNREACHABLE', 'HTTP: ' + healthResponse.status, '', 'Worker health response:', healthRaw || '(empty response)', '', 'Check Railway worker deployment and ANDROID_BUILD_SERVICE_URL / token configuration.'].join('\\n'));
-        setShowOutput(true);
-        setShowFullLog(true);
-        return;
+        setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: WORKER UNREACHABLE', 'HTTP: ' + healthResponse.status, '', healthRaw || '(empty response)'].join('\\n'));
+        setShowOutput(true); setShowFullLog(true); return;
       }
-      setLogMessage('Worker online. Sending project to Gradle build worker…');
-      const startResponse = await fetch('/api/android/build', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files }),
-        signal: AbortSignal.timeout(30000),
-      });
+      setLogMessage('Worker online. Starting background Gradle build…');
+      const startResponse = await fetch('/api/android/build', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files }), signal: AbortSignal.timeout(30000) });
       const startRaw = await startResponse.text();
       let startData: any;
       try { startData = JSON.parse(startRaw); } catch { startData = { error: startRaw }; }
-      if (!startResponse.ok || !startData.jobId) throw new Error(startData.detail || startData.error || 'Build job could not start (HTTP ' + startResponse.status + ').');
-      setLogMessage('Gradle build started in background. Job: ' + startData.jobId + '\\nWaiting for build result…');
-      let result: any = null;
-      let responseStatus = 200;
-      const pollDeadline = Date.now() + 450000;
-      while (Date.now() < pollDeadline) {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-        const statusResponse = await fetch('/api/android/build?jobId=' + encodeURIComponent(startData.jobId), { cache: 'no-store', signal: AbortSignal.timeout(15000) });
-        const statusRaw = await statusResponse.text();
-        let statusData: any;
-        try { statusData = JSON.parse(statusRaw); } catch { statusData = { error: statusRaw }; }
-        if (!statusResponse.ok) throw new Error(statusData.detail || statusData.error || 'Build status check failed (HTTP ' + statusResponse.status + ').');
-        if (statusData.status === 'completed') {
-          result = statusData.result || { success: false, error: 'Job completed without a result.' };
-          responseStatus = result.success ? 200 : 422;
-          break;
-        }
-        setLogMessage('Gradle build running…\\nJob: ' + startData.jobId + '\\nStatus: ' + (statusData.status || 'pending') + '\\nPolling worker for result…');
+      if (!startResponse.ok || !startData.jobId) {
+        setLogMessage(['ANDROID BUILD START FAILED', 'HTTP: ' + startResponse.status, startData.error || startData.detail || startRaw].join('\\n'));
+        setShowOutput(true); setShowFullLog(true); return;
       }
-      if (!result) throw new Error('Build is still running after 7.5 minutes. Job ID: ' + startData.jobId + '. Retry is safe, but avoid starting another build until this one finishes.');
-      if (responseStatus !== 200 || !result.success) {
-        const report = [
-          'WEBD ANDROID BUILD REPORT',
-          'Status: FAILED',
-          'HTTP: ' + responseStatus,
-          '',
-          'ERROR:',
-          result.error || result.detail || 'Gradle build failed.',
-          result.detail ? ('DETAIL:\n' + result.detail) : '',
-          '',
-          'PROJECT CONFIGURATION:',
-          'Files: ' + Object.keys(files).length,
-          'Active file: ' + activeFile,
-          'Gradle files: ' + Object.keys(files).filter((p) => /gradle\\.kts$|gradle\\.properties$/.test(p)).join(', '),
-          'Manifest: ' + (files['app/src/main/AndroidManifest.xml'] ? 'present' : 'missing'),
-          '',
-          'BUILD LOGS:',
-          result.log || startRaw || '(No logs returned)',
-        ].filter(Boolean).join('\n');
-        setLogMessage(report);
-        setShowOutput(true);
-        setShowFullLog(true);
-        return;
+      const jobId = startData.jobId;
+      const maxPolls = 240;
+      let result: any = null;
+      for (let poll = 0; poll < maxPolls; poll++) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const statusResponse = await fetch('/api/android/build?jobId=' + encodeURIComponent(jobId), { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+        const statusRaw = await statusResponse.text();
+        try { result = JSON.parse(statusRaw); } catch { result = { status: 'failed', error: statusRaw }; }
+        if (!statusResponse.ok) throw new Error(result.error || result.detail || 'Build status request failed (HTTP ' + statusResponse.status + ')');
+        if (result.status === 'completed' || result.status === 'failed') break;
+        setLogMessage('Gradle build ' + (result.status || 'running') + '…\\nJob: ' + jobId + '\\nElapsed: ' + Math.round((poll + 1) * 2) + 's');
+      }
+      if (!result || (result.status !== 'completed' && result.status !== 'failed')) {
+        setLogMessage('Build is taking longer than the UI wait limit. Job ID: ' + jobId + '\\nThe worker continues running; please check again shortly.');
+        setShowOutput(true); setShowFullLog(true); return;
+      }
+      if (result.status === 'failed' || !result.success) {
+        setLogMessage(['WEBD ANDROID BUILD REPORT', 'Status: FAILED', 'Job: ' + jobId, '', 'ERROR:', result.error || 'Gradle build failed', '', 'BUILD LOGS:', result.log || '(No logs returned)'].join('\\n'));
+        setShowOutput(true); setShowFullLog(true); return;
       }
       setBuiltApkBase64(result.apkBase64);
       const binary = atob(result.apkBase64);
@@ -349,21 +323,14 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
       const blob = new Blob([bytes], { type: 'application/vnd.android.package-archive' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = url;
-      link.download = result.fileName || 'app-debug.apk';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      setLogMessage('Build successful! APK downloaded (' + Math.round((result.sizeBytes || bytes.length) / 1024) + ' KB).\n' + (result.log || 'Gradle build finished.'));
+      link.href = url; link.download = result.fileName || 'app-debug.apk';
+      document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+      setLogMessage('Build successful! APK downloaded (' + Math.round((result.sizeBytes || bytes.length) / 1024) + ' KB).\\n' + (result.log || 'Gradle build finished.'));
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: REQUEST FAILED', '', 'Error: ' + detail, '', 'The request failed before a Gradle log was returned. Check worker health, Railway deployment, URL/token settings, and network connectivity.', '', 'Try again after confirming the worker is deployed and reachable.'].join('\\n'));
-      setShowOutput(true);
-      setShowFullLog(true);
-    } finally {
-      setIsBuilding(false);
-    }
+      setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: REQUEST FAILED', '', 'Error: ' + detail, '', 'Background build polling failed. Check worker health and status endpoint.'].join('\\n'));
+      setShowOutput(true); setShowFullLog(true);
+    } finally { setIsBuilding(false); }
   };
 
   const handleRun = async () => {
