@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     const baseRef = await gh(token, `/repos/${OWNER}/${REPO}/git/ref/heads/${encodeURIComponent(defaultBranch)}`);
     const treeEntries: Array<{path: string; mode: string; type: string; sha: string}> = [];
     const validFiles = Object.entries(files).filter(([path]) => {
-      const safe = path.replace(/^\\/+/, '');
+      const safe = path.replace(/^\/+/, '');
       if (!safe || safe.split('/').includes('..') || safe.startsWith('.git/') || safe.length > 240) throw new Error('Unsafe project path: ' + path);
       // Imported projects do not need repository workflows or GitHub metadata.
       return !safe.startsWith('.github/');
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < validFiles.length; i += batchSize) {
       const batch = validFiles.slice(i, i + batchSize);
       const blobs = await Promise.all(batch.map(async ([path, value]) => {
-        const safe = path.replace(/^\\/+/, '');
+      const safe = path.replace(/^\/+/, '');
         const blob = await gh(token, `/repos/${OWNER}/${REPO}/git/blobs`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -99,8 +99,8 @@ export async function POST(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: 'Android build input ' + buildId, tree: tree.sha, parents: [baseRef.object.sha] })
     });
-    await gh(token, `/repos/${OWNER}/${REPO}/git/refs/heads/${encodeURIComponent(branch)`, {
-      method: 'PATCH',
+    await gh(token, `/repos/${OWNER}/${REPO}/git/refs`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ref: 'refs/heads/' + branch, sha: commit.sha })
     });
