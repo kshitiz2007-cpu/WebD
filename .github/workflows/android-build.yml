@@ -52,7 +52,7 @@ jobs:
             gradle wrapper --gradle-version 9.6.0
           fi
           if [ -f gradle/wrapper/gradle-wrapper.properties ]; then
-            sed -i 's/gradle-[0-9.]*-bin.zip/gradle-9.6.0-bin.zip/' gradle/wrapper/gradle-wrapper.properties
+            sed -i 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-9.6.0-bin.zip#' gradle/wrapper/gradle-wrapper.properties
           fi
           chmod +x gradlew
           test -f gradle/wrapper/gradle-wrapper.jar || (echo "Gradle wrapper generation failed" && exit 1)
