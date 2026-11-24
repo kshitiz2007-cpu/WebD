@@ -40,10 +40,7 @@ def safe_path(root: pathlib.Path, relative: str) -> pathlib.Path:
 def health():
     return {"ok": True, "service": "webd-android-build-worker"}
 
-@app.post("/build")
-def build(req: BuildRequest, authorization: str | None = Header(default=None)):
-    if not TOKEN or authorization != f"Bearer {TOKEN}":
-        raise HTTPException(401, "Unauthorized")
+def _execute_build(req: BuildRequest):
     files = req.files
     if not isinstance(files, dict) or not files or len(files) > MAX_FILES:
         raise HTTPException(400, "Project file count is invalid")
