@@ -62,15 +62,13 @@ def build(req: BuildRequest, authorization: str | None = Header(default=None)):
         # Force Java and Kotlin compilation to the same JVM target (17).
         init_script = root / "webd-jvm-target.gradle"
         init_script.write_text("""allprojects {
-    tasks.withType(JavaCompile).configureEach {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-        kotlinOptions.jvmTarget = "17"
-    }
     tasks.configureEach {
-        if (name.toLowerCase().contains("kotlin") && hasProperty("kotlinOptions")) {
+        def taskName = name.toLowerCase()
+        if (taskName.contains("javac") || taskName.contains("java")) {
+            if (hasProperty("sourceCompatibility")) sourceCompatibility = "17"
+            if (hasProperty("targetCompatibility")) targetCompatibility = "17"
+        }
+        if (taskName.contains("kotlin") && hasProperty("kotlinOptions")) {
             kotlinOptions.jvmTarget = "17"
         }
     }
