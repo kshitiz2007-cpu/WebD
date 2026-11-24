@@ -18,7 +18,9 @@ async def validation_error_handler(request, exc):
 TOKEN = os.environ.get("ANDROID_BUILD_TOKEN", "")
 MAX_FILES = 1200
 MAX_SOURCE_BYTES = 8 * 1024 * 1024
-BUILD_TIMEOUT = int(os.environ.get("BUILD_TIMEOUT_SECONDS", "480"))\nJOBS = {}\nJOBS_LOCK = threading.Lock()
+BUILD_TIMEOUT = int(os.environ.get("BUILD_TIMEOUT_SECONDS", "480"))
+JOBS = {}
+JOBS_LOCK = threading.Lock()
 
 class BuildRequest(BaseModel):
     files: dict[str, str]
