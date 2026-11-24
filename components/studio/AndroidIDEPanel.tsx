@@ -335,7 +335,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
           'Manifest: ' + (files['app/src/main/AndroidManifest.xml'] ? 'present' : 'missing'),
           '',
           'BUILD LOGS:',
-          result.log || raw || '(No logs returned)',
+          result.log || startRaw || '(No logs returned)',
         ].filter(Boolean).join('\n');
         setLogMessage(report);
         setShowOutput(true);
