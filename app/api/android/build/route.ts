@@ -1,115 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server';
-import JSZip from 'jszip';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const API = 'https://api.github.com';
-const OWNER = 'kshitiz2007-cpu';
-const REPO = 'WebD';
-const WORKFLOW = 'android-build.yml';
+const workerUrl = () => (process.env.ANDROID_BUILD_SERVICE_URL || 'https://android-build-worker-production.up.railway.app').replace(/\/+$/, '');
+const workerToken = () => process.env.ANDROID_BUILD_SERVICE_TOKEN || process.env.ANDROID_BUILD_TOKEN || '';
 
-function config() { return { token: process.env.ANDROID_BUILD_TOKEN || process.env.GITHUB_ACTIONS_TOKEN }; }
-function ghHeaders(token: string) { return { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }; }
-async function gh(token: string, path: string, init?: RequestInit) {
-  const response = await fetch(API + path, { ...init, headers: { ...ghHeaders(token), ...(init?.headers || {}) }, cache: 'no-store', signal: AbortSignal.timeout(45000) });
-  const raw = await response.text(); let data: any;
-  try { data = raw ? JSON.parse(raw) : {}; } catch { data = { message: raw }; }
-  if (!response.ok) throw new Error(data.message || 'GitHub API error ' + response.status);
+async function workerFetch(path: string, init?: RequestInit) {
+  const token = workerToken();
+  if (!token) throw new Error('Android build worker token is not configured on WebD.');
+  const response = await fetch(workerUrl() + path, {
+    ...init,
+    headers: { Authorization: 'Bearer ' + token, ...(init?.headers || {}) },
+    cache: 'no-store',
+    signal: AbortSignal.timeout(300000),
+  });
+  const raw = await response.text();
+  let data: any;
+  try { data = raw ? JSON.parse(raw) : {}; } catch { data = { error: raw || 'Worker returned an invalid response.' }; }
+  if (!response.ok) throw new Error(data.detail || data.error || 'Android worker returned HTTP ' + response.status);
   return data;
 }
-function cleanId(id: string) { return id.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48); }
 
 export async function GET(request: NextRequest) {
-  const { token } = config();
-  if (!token) return NextResponse.json({ reachable: false, error: 'GitHub Actions token is not configured on the server (set GITHUB_ACTIONS_TOKEN or ANDROID_BUILD_TOKEN).' }, { status: 503 });
   const jobId = request.nextUrl.searchParams.get('jobId');
-  if (!jobId) return NextResponse.json({ reachable: true, provider: 'GitHub Actions' });
-  if (cleanId(jobId) !== jobId) return NextResponse.json({ status: 'failed', error: 'Invalid build ID.' }, { status: 400 });
-  const branch = 'android-build-' + jobId;
   try {
-    const runs = await gh(token, `/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW}/runs?branch=${encodeURIComponent(branch)}&event=workflow_dispatch&per_page=1`);
-    const run = runs.workflow_runs?.[0];
-    if (!run) return NextResponse.json({ status: 'queued', success: false, log: 'Waiting for GitHub Actions runner…' });
-    if (run.status !== 'completed') return NextResponse.json({ status: run.status === 'queued' ? 'queued' : 'running', success: false, log: 'GitHub Actions: ' + run.status + ' · ' + (run.html_url || '') });
-    if (run.conclusion !== 'success') {
-      let log = 'GitHub Actions build failed. Run: ' + run.html_url;
-      try { const jobs = await gh(token, `/repos/${OWNER}/${REPO}/actions/runs/${run.id}/jobs?per_page=20`); log += '\\n' + (jobs.jobs || []).map((j: any) => j.name + ': ' + j.conclusion + '\\n' + (j.steps || []).map((s: any) => s.name + ' — ' + s.conclusion).join('\\n')).join('\\n'); } catch {}
-      return NextResponse.json({ status: 'failed', success: false, error: 'GitHub Actions build failed.', log, runUrl: run.html_url });
+    if (!jobId) {
+      const health = await fetch(workerUrl() + '/health', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+      if (!health.ok) return NextResponse.json({ reachable: false, error: 'Android build worker health check failed.' }, { status: 502 });
+      return NextResponse.json({ reachable: true, provider: 'Dedicated Android Build Worker', ...(await health.json()) });
     }
-    const artifacts = await gh(token, `/repos/${OWNER}/${REPO}/actions/runs/${run.id}/artifacts?per_page=50`);
-    const artifact = (artifacts.artifacts || []).find((a: any) => !a.expired && a.name.startsWith('app-debug-'));
-    if (!artifact) return NextResponse.json({ status: 'failed', success: false, error: 'APK artifact not found.', log: run.html_url });
-    const zipResponse = await fetch(artifact.archive_download_url, { headers: ghHeaders(token), cache: 'no-store', signal: AbortSignal.timeout(20000) });
-    if (!zipResponse.ok) throw new Error('Artifact download failed: HTTP ' + zipResponse.status);
-    const zip = await JSZip.loadAsync(await zipResponse.arrayBuffer());
-    const apkEntry = Object.values(zip.files).find((f) => !f.dir && f.name.toLowerCase().endsWith('.apk'));
-    if (!apkEntry) return NextResponse.json({ status: 'failed', success: false, error: 'Artifact ZIP contains no APK.' });
-    const apk = await apkEntry.async('base64');
-    return NextResponse.json({ status: 'completed', success: true, apkBase64: apk, fileName: 'app-debug.apk', sizeBytes: Math.floor(apk.length * 3 / 4), log: 'Build succeeded on GitHub Actions runner. Run: ' + run.html_url });
-  } catch (error) { return NextResponse.json({ status: 'failed', success: false, error: error instanceof Error ? error.message : 'GitHub Actions status lookup failed.' }, { status: 502 }); }
+    if (!/^[a-f0-9]{32}$/.test(jobId)) return NextResponse.json({ status: 'failed', error: 'Invalid build ID.' }, { status: 400 });
+    return NextResponse.json(await workerFetch('/build/' + encodeURIComponent(jobId)));
+  } catch (error) {
+    return NextResponse.json({ reachable: false, status: 'failed', success: false, error: error instanceof Error ? error.message : 'Android build worker request failed.' }, { status: 502 });
+  }
 }
 
 export async function POST(request: NextRequest) {
-  const { token } = config();
-  if (!token) return NextResponse.json({ error: 'ANDROID_BUILD_TOKEN is not configured on the server.' }, { status: 503 });
-  let body: any;
-  try { body = await request.json(); } catch { return NextResponse.json({ error: 'Invalid JSON payload.' }, { status: 400 }); }
-  if (!body || typeof body !== 'object' || !body.files || typeof body.files !== 'object' || Array.isArray(body.files)) return NextResponse.json({ error: 'Expected a project files object.' }, { status: 400 });
-  const files = body.files as Record<string, unknown>;
-  if (!Object.keys(files).length || Object.keys(files).length > 1200 || Object.values(files).some(v => typeof v !== 'string')) return NextResponse.json({ error: 'Invalid files payload or too many files.' }, { status: 400 });
-  if (new TextEncoder().encode(JSON.stringify(body)).length > 8 * 1024 * 1024) return NextResponse.json({ error: 'Project exceeds 8 MB request limit.' }, { status: 413 });
-  const buildId = 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  const branch = 'android-build-' + buildId;
   try {
-    const repoInfo = await gh(token, `/repos/${OWNER}/${REPO}`);
-    const defaultBranch = repoInfo.default_branch || 'main';
-    const baseRef = await gh(token, `/repos/${OWNER}/${REPO}/git/ref/heads/${encodeURIComponent(defaultBranch)}`);
-    const treeEntries: Array<{path: string; mode: string; type: string; sha: string}> = [];
-    const skipPrefixes = ['.github/', '.git/', '.gradle/', '.idea/', '.vscode/', 'node_modules/', 'build/', 'app/build/', 'out/', 'dist/', 'target/', 'coverage/'];
-    const skipNames = new Set(['.ds_store', 'thumbs.db']);
-    const validFiles = Object.entries(files).filter(([path]) => {
-      const safe = path.replace(/^\/+/, '');
-      if (!safe || safe.split('/').includes('..') || safe.length > 240) throw new Error('Unsafe project path: ' + path);
-      const lower = safe.toLowerCase();
-      return !skipPrefixes.some(prefix => lower.startsWith(prefix) || lower.includes('/' + prefix)) && !skipNames.has(lower.split('/').pop() || '');
-    });
-    if (validFiles.length > 1200) throw new Error('Project has ' + validFiles.length + ' files after filtering; limit is 1200.');
-    // Upload a few blobs concurrently to reduce timeout risk without flooding GitHub.
-    const batchSize = 3;
-    for (let i = 0; i < validFiles.length; i += batchSize) {
-      const batch = validFiles.slice(i, i + batchSize);
-      const blobs = await Promise.all(batch.map(async ([path, value]) => {
-        const safe = path.replace(/^\/+/, '');
-        const blob = await gh(token, '/repos/' + OWNER + '/' + REPO + '/git/blobs', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: value as string, encoding: 'utf-8' })
-        });
-        return { path: safe, mode: '100644', type: 'blob', sha: blob.sha };
-      }));
-      treeEntries.push(...blobs);
-    }
-    if (!treeEntries.length) throw new Error('No valid project files to upload.');
-    const tree = await gh(token, `/repos/${OWNER}/${REPO}/git/trees`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ base_tree: baseRef.object.sha, tree: treeEntries })
-    });
-    const commit = await gh(token, `/repos/${OWNER}/${REPO}/git/commits`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Android build input ' + buildId, tree: tree.sha, parents: [baseRef.object.sha] })
-    });
-    await gh(token, `/repos/${OWNER}/${REPO}/git/refs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ref: 'refs/heads/' + branch, sha: commit.sha })
-    });
-    await gh(token, `/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: branch, inputs: { build_branch: branch, build_id: buildId } }) });
-    return NextResponse.json({ jobId: buildId, status: 'queued', provider: 'GitHub Actions' });
+    const body = await request.json();
+    if (!body || typeof body !== 'object' || !body.files || typeof body.files !== 'object' || Array.isArray(body.files)) return NextResponse.json({ error: 'Expected a project files object.' }, { status: 400 });
+    const files = body.files as Record<string, unknown>;
+    if (!Object.keys(files).length || Object.keys(files).length > 1200 || Object.values(files).some(v => typeof v !== 'string')) return NextResponse.json({ error: 'Invalid files payload or too many files.' }, { status: 400 });
+    const data = await workerFetch('/build', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files }) });
+    return NextResponse.json(data);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unable to start GitHub Actions build.';
-    const rateLimited = /secondary rate limit|rate limit exceeded|abuse detection/i.test(message);
-    return NextResponse.json({ success: false, error: rateLimited ? 'GitHub temporarily rate-limited project upload. Wait 5–10 minutes before retrying; uploads are now throttled to one file at a time.' : message }, { status: rateLimited ? 429 : 502 });
+    const message = error instanceof Error ? error.message : 'Unable to start Android build.';
+    return NextResponse.json({ success: false, error: message }, { status: 502 });
   }
 }
