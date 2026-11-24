@@ -106,5 +106,9 @@ export async function POST(request: NextRequest) {
     });
     await gh(token, `/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: branch, inputs: { build_branch: branch, build_id: buildId } }) });
     return NextResponse.json({ jobId: buildId, status: 'queued', provider: 'GitHub Actions' });
-  } catch (error) {\n    const message = error instanceof Error ? error.message : 'Unable to start GitHub Actions build.';\n    const rateLimited = /secondary rate limit|rate limit exceeded|abuse detection/i.test(message);\n    return NextResponse.json({ success: false, error: rateLimited ? 'GitHub temporarily rate-limited project upload. Wait 5–10 minutes before retrying; uploads are now throttled to one file at a time.' : message }, { status: rateLimited ? 429 : 502 });\n  }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to start GitHub Actions build.';
+    const rateLimited = /secondary rate limit|rate limit exceeded|abuse detection/i.test(message);
+    return NextResponse.json({ success: false, error: rateLimited ? 'GitHub temporarily rate-limited project upload. Wait 5–10 minutes before retrying; uploads are now throttled to one file at a time.' : message }, { status: rateLimited ? 429 : 502 });
+  }
 }
