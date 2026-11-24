@@ -279,6 +279,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
     setShowOutput(true);
     setBuiltApkBase64(null);
     setLogMessage('Checking GitHub Actions build connection…');
+    let buildStage = 'health check';
     try {
       const healthResponse = await fetch('/api/android/build', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(25000) });
       const healthRaw = await healthResponse.text();
@@ -288,8 +289,9 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
         setLogMessage(['GITHUB ACTIONS CONNECTION DIAGNOSTICS', 'Status: BUILD API UNREACHABLE', 'HTTP: ' + healthResponse.status, '', healthRaw || '(empty response)'].join('\n'));
         setShowOutput(true); setShowFullLog(true); return;
       }
-      setLogMessage('Worker online. Starting background Gradle build…');
-      const startResponse = await fetch('/api/android/build', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files }), signal: AbortSignal.timeout(30000) });
+      buildStage = 'project upload and workflow dispatch';
+      setLogMessage('Connection verified. Uploading project and starting build…');
+      const startResponse = await fetch('/api/android/build', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files }), signal: AbortSignal.timeout(120000 });
       const startRaw = await startResponse.text();
       let startData: any;
       try { startData = JSON.parse(startRaw); } catch { startData = { error: startRaw }; }
@@ -298,6 +300,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
         setShowOutput(true); setShowFullLog(true); return;
       }
       const jobId = startData.jobId;
+      buildStage = 'GitHub Actions status polling';
       const maxPolls = 300;
       let result: any = null;
       for (let poll = 0; poll < maxPolls; poll++) {
@@ -329,7 +332,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
       setLogMessage('Build successful! APK downloaded (' + Math.round((result.sizeBytes || bytes.length) / 1024) + ' KB).\n' + (result.log || 'Gradle build finished.'));
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: REQUEST FAILED', '', 'Error: ' + detail, '', 'Background build polling failed. Check the Railway API deployment and endpoint.'].join('\\n'));
+      setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: REQUEST FAILED', 'Failed stage: ' + buildStage, '', 'Error: ' + detail, '', 'Check the failing stage above; this is not necessarily a polling failure.'].join('\\n'));
       setShowOutput(true); setShowFullLog(true);
     } finally { setIsBuilding(false); }
   };
