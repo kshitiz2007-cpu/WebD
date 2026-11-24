@@ -289,21 +289,40 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
         return;
       }
       setLogMessage('Worker online. Sending project to Gradle build worker…');
-      const response = await fetch('/api/android/build', {
+      const startResponse = await fetch('/api/android/build', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ files }),
-        signal: AbortSignal.timeout(300000),
+        signal: AbortSignal.timeout(30000),
       });
-      const raw = await response.text();
-      let result: any;
-      try { result = JSON.parse(raw); }
-      catch { result = { success: false, error: raw || 'Build endpoint returned non-JSON response.', log: raw }; }
-      if (!response.ok || !result.success) {
+      const startRaw = await startResponse.text();
+      let startData: any;
+      try { startData = JSON.parse(startRaw); } catch { startData = { error: startRaw }; }
+      if (!startResponse.ok || !startData.jobId) throw new Error(startData.detail || startData.error || 'Build job could not start (HTTP ' + startResponse.status + ').');
+      setLogMessage('Gradle build started in background. Job: ' + startData.jobId + '\\nWaiting for build result…');
+      let result: any = null;
+      let responseStatus = 200;
+      const pollDeadline = Date.now() + 270000;
+      while (Date.now() < pollDeadline) {
+        await new Promise(resolve => setTimeout(resolve, 2500));
+        const statusResponse = await fetch('/api/android/build?jobId=' + encodeURIComponent(startData.jobId), { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+        const statusRaw = await statusResponse.text();
+        let statusData: any;
+        try { statusData = JSON.parse(statusRaw); } catch { statusData = { error: statusRaw }; }
+        if (!statusResponse.ok) throw new Error(statusData.detail || statusData.error || 'Build status check failed (HTTP ' + statusResponse.status + ').');
+        if (statusData.status === 'completed') {
+          result = statusData.result || { success: false, error: 'Job completed without a result.' };
+          responseStatus = result.success ? 200 : 422;
+          break;
+        }
+        setLogMessage('Gradle build running…\\nJob: ' + startData.jobId + '\\nStatus: ' + (statusData.status || 'pending') + '\\nPolling worker for result…');
+      }
+      if (!result) throw new Error('Build is still running after 4.5 minutes. Job ID: ' + startData.jobId + '. Retry is safe, but avoid starting another build until this one finishes.');
+      if (responseStatus !== 200 || !result.success) {
         const report = [
           'WEBD ANDROID BUILD REPORT',
           'Status: FAILED',
-          'HTTP: ' + response.status,
+          'HTTP: ' + responseStatus,
           '',
           'ERROR:',
           result.error || result.detail || 'Gradle build failed.',
