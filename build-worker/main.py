@@ -25,7 +25,7 @@ jobs_lock = threading.Lock()
 executor = ThreadPoolExecutor(max_workers=1)
 
 def safe_path(root: pathlib.Path, relative: str) -> pathlib.Path:
-    if not relative or len(relative) > 240 or relative.startswith("/") or "\\\\" in relative:
+    if not relative or len(relative) > 240 or relative.startswith("/") or "\\\" in relative:
         raise HTTPException(400, "Invalid file path")
     parts = pathlib.PurePosixPath(relative).parts
     if any(p in ("", ".", "..") for p in parts) or any(p.startswith(".git") for p in parts):
