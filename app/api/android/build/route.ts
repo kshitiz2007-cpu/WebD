@@ -9,7 +9,7 @@ const OWNER = 'kshitiz2007-cpu';
 const REPO = 'WebD';
 const WORKFLOW = 'android-build.yml';
 
-function config() { return { token: process.env.ANDROID_BUILD_TOKEN }; }
+function config() { return { token: process.env.ANDROID_BUILD_TOKEN || process.env.GITHUB_ACTIONS_TOKEN }; }
 function ghHeaders(token: string) { return { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }; }
 async function gh(token: string, path: string, init?: RequestInit) {
   const response = await fetch(API + path, { ...init, headers: { ...ghHeaders(token), ...(init?.headers || {}) }, cache: 'no-store', signal: AbortSignal.timeout(20000) });
@@ -22,7 +22,7 @@ function cleanId(id: string) { return id.replace(/[^a-zA-Z0-9_-]/g, '').slice(0,
 
 export async function GET(request: NextRequest) {
   const { token } = config();
-  if (!token) return NextResponse.json({ reachable: false, error: 'ANDROID_BUILD_TOKEN is not configured on the server.' }, { status: 503 });
+  if (!token) return NextResponse.json({ reachable: false, error: 'GitHub Actions token is not configured on the server (set GITHUB_ACTIONS_TOKEN or ANDROID_BUILD_TOKEN).' }, { status: 503 });
   const jobId = request.nextUrl.searchParams.get('jobId');
   if (!jobId) return NextResponse.json({ reachable: true, provider: 'GitHub Actions' });
   if (cleanId(jobId) !== jobId) return NextResponse.json({ status: 'failed', error: 'Invalid build ID.' }, { status: 400 });
