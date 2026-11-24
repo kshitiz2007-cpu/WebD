@@ -10,7 +10,7 @@ services:
       ANDROID_BUILD_TOKEN: ${ANDROID_BUILD_TOKEN:?Set ANDROID_BUILD_TOKEN in .env}
       BUILD_TIMEOUT_SECONDS: ${BUILD_TIMEOUT_SECONDS:-900}
     volumes:
-      - webd-build-cache:/root/.gradle
+      - webd-build-cache:/gradle-cache
     mem_limit: ${BUILDER_MEMORY_LIMIT:-6g}
     cpus: ${BUILDER_CPUS:-4}
     security_opt:
