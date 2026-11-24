@@ -56,12 +56,17 @@ def run_build(job_id: str, files: dict):
             (root / "gradle.properties").write_text("org.gradle.jvmargs=-Xmx256m -XX:MaxMetaspaceSize=192m -XX:ReservedCodeCacheSize=32m -Dfile.encoding=UTF-8 -XX:-UsePerfData -Dorg.gradle.internal.instrumentation.agent=false\norg.gradle.workers.max=1\norg.gradle.parallel=false\norg.gradle.caching=true\nandroid.useAndroidX=true\nandroid.enableJetifier=true\nkotlin.compiler.execution.strategy=in-process\nkotlin.daemon.enabled=false\n", encoding="utf-8")
             init_script = root / "webd-jvm-target.gradle"
             init_script.write_text("""allprojects {
-    tasks.withType(org.gradle.api.tasks.compile.JavaCompile).configureEach {
-        sourceCompatibility = "17"
-        targetCompatibility = "17"
-    }
-    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-        kotlinOptions.jvmTarget = "17"
+    tasks.configureEach { task ->
+        def taskClass = task.getClass().getName()
+        def taskName = task.getName().toLowerCase()
+        if (taskClass.contains("JavaCompile") || taskName.contains("javac")) {
+            task.sourceCompatibility = "17"
+            task.targetCompatibility = "17"
+        }
+        if (taskClass.contains("KotlinCompile") || taskName.contains("kotlin")) {
+            def kotlinOptions = task.hasProperty("kotlinOptions") ? task.property("kotlinOptions") : null
+            if (kotlinOptions != null) kotlinOptions.jvmTarget = "17"
+        }
     }
 }
 """, encoding="utf-8")
