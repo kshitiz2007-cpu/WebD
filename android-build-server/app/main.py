@@ -22,6 +22,7 @@ MAX_FILES = int(os.environ.get("MAX_PROJECT_FILES", "1200"))
 BUILD_TIMEOUT = int(os.environ.get("BUILD_TIMEOUT_SECONDS", "1200"))
 JOBS: dict[str, dict[str, Any]] = {}
 LOCK = threading.Lock()
+BUILD_SEMAPHORE = threading.Semaphore(1)
 WORK_ROOT = Path(os.environ.get("BUILD_WORK_ROOT", "/work/jobs"))
 WORK_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -44,13 +45,14 @@ def safe_path(root: Path, raw: str) -> Path:
     return target
 
 def run_build(job_id: str, files: dict[str, str]):
+    BUILD_SEMAPHORE.acquire()
     work = WORK_ROOT / job_id
     project = work / "project"
     work.mkdir(parents=True, exist_ok=True)
     project.mkdir(parents=True, exist_ok=True)
     def addlog(s: str):
         with LOCK:
-            JOBS[job_id]["log"] += s + "\\n"
+            JOBS[job_id]["log"] += s + "\n"
     try:
         for name, content in files.items():
             target = safe_path(project, name)
@@ -90,6 +92,7 @@ def run_build(job_id: str, files: dict[str, str]):
     finally:
         # Retain status/APK in memory; remove working tree to save disk.
         shutil.rmtree(work, ignore_errors=True)
+        BUILD_SEMAPHORE.release()
 
 @app.get("/health")
 def health():
