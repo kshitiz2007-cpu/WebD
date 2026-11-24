@@ -75,7 +75,7 @@ jobs:
           tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach { kotlinOptions.jvmTarget = "17" }
           '''
               if 'jvmTarget' not in text or 'options.release' not in text:
-                  p.write_text(text.rstrip() + '\\n' + block)
+                  p.write_text(text.rstrip() + chr(10) + block)
           PY
 
       - name: Build debug APK
