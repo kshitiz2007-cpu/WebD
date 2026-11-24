@@ -12,7 +12,7 @@ const WORKFLOW = 'android-build.yml';
 function config() { return { token: process.env.ANDROID_BUILD_TOKEN || process.env.GITHUB_ACTIONS_TOKEN }; }
 function ghHeaders(token: string) { return { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }; }
 async function gh(token: string, path: string, init?: RequestInit) {
-  const response = await fetch(API + path, { ...init, headers: { ...ghHeaders(token), ...(init?.headers || {}) }, cache: 'no-store', signal: AbortSignal.timeout(20000) });
+  const response = await fetch(API + path, { ...init, headers: { ...ghHeaders(token), ...(init?.headers || {}) }, cache: 'no-store', signal: AbortSignal.timeout(45000) });
   const raw = await response.text(); let data: any;
   try { data = raw ? JSON.parse(raw) : {}; } catch { data = { message: raw }; }
   if (!response.ok) throw new Error(data.message || 'GitHub API error ' + response.status);
@@ -66,23 +66,23 @@ export async function POST(request: NextRequest) {
     const defaultBranch = repoInfo.default_branch || 'main';
     const baseRef = await gh(token, `/repos/${OWNER}/${REPO}/git/ref/heads/${encodeURIComponent(defaultBranch)}`);
     const treeEntries: Array<{path: string; mode: string; type: string; sha: string}> = [];
+    const skipPrefixes = ['.github/', '.git/', '.gradle/', '.idea/', '.vscode/', 'node_modules/', 'build/', 'app/build/', 'out/', 'dist/', 'target/', 'coverage/'];
+    const skipNames = new Set(['.ds_store', 'thumbs.db']);
     const validFiles = Object.entries(files).filter(([path]) => {
       const safe = path.replace(/^\/+/, '');
-      if (!safe || safe.split('/').includes('..') || safe.startsWith('.git/') || safe.length > 240) throw new Error('Unsafe project path: ' + path);
-      // Imported projects do not need repository workflows or GitHub metadata.
-      return !safe.startsWith('.github/');
+      if (!safe || safe.split('/').includes('..') || safe.length > 240) throw new Error('Unsafe project path: ' + path);
+      const lower = safe.toLowerCase();
+      return !skipPrefixes.some(prefix => lower.startsWith(prefix) || lower.includes('/' + prefix)) && !skipNames.has(lower.split('/').pop() || '');
     });
-    // Upload blobs concurrently, then create one tree and one commit. This avoids
-    // the slow per-file Contents API commits that time out for large ZIP imports.
-    // Keep GitHub API traffic deliberately low to avoid secondary rate limits.
-    const batchSize = 1;
+    if (validFiles.length > 500) throw new Error('Project has ' + validFiles.length + ' files after filtering; limit is 500. Remove unused assets or split it.');
+    // Upload a few blobs concurrently to reduce timeout risk without flooding GitHub.
+    const batchSize = 3;
     for (let i = 0; i < validFiles.length; i += batchSize) {
       const batch = validFiles.slice(i, i + batchSize);
       const blobs = await Promise.all(batch.map(async ([path, value]) => {
-      const safe = path.replace(/^\/+/, '');
-        const blob = await gh(token, `/repos/${OWNER}/${REPO}/git/blobs`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const safe = path.replace(/^\/+/, '');
+        const blob = await gh(token, '/repos/' + OWNER + '/' + REPO + '/git/blobs', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content: value as string, encoding: 'utf-8' })
         });
         return { path: safe, mode: '100644', type: 'blob', sha: blob.sha };
