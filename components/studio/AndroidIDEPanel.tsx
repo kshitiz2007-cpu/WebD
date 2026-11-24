@@ -278,14 +278,14 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
     setIsBuilding(true);
     setShowOutput(true);
     setBuiltApkBase64(null);
-    setLogMessage('Checking Android build worker connection…');
+    setLogMessage('Checking GitHub Actions build connection…');
     try {
-      const healthResponse = await fetch('/api/android/build', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(12000) });
+      const healthResponse = await fetch('/api/android/build', { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(25000) });
       const healthRaw = await healthResponse.text();
       let health: any;
       try { health = JSON.parse(healthRaw); } catch { health = { error: healthRaw }; }
       if (!healthResponse.ok || !health?.reachable) {
-        setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: WORKER UNREACHABLE', 'HTTP: ' + healthResponse.status, '', healthRaw || '(empty response)'].join('\n'));
+        setLogMessage(['GITHUB ACTIONS CONNECTION DIAGNOSTICS', 'Status: BUILD API UNREACHABLE', 'HTTP: ' + healthResponse.status, '', healthRaw || '(empty response)'].join('\n'));
         setShowOutput(true); setShowFullLog(true); return;
       }
       setLogMessage('Worker online. Starting background Gradle build…');
@@ -329,7 +329,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
       setLogMessage('Build successful! APK downloaded (' + Math.round((result.sizeBytes || bytes.length) / 1024) + ' KB).\n' + (result.log || 'Gradle build finished.'));
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: REQUEST FAILED', '', 'Error: ' + detail, '', 'Background build polling failed. Check worker health and status endpoint.'].join('\\n'));
+      setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: REQUEST FAILED', '', 'Error: ' + detail, '', 'Background build polling failed. Check the Railway API deployment and endpoint.'].join('\\n'));
       setShowOutput(true); setShowFullLog(true);
     } finally { setIsBuilding(false); }
   };
