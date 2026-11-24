@@ -81,7 +81,9 @@ def _execute_build(req: BuildRequest):
         try:
             proc = subprocess.run([gradle, "--no-daemon", "--max-workers=1", "--init-script", str(init_script), "--stacktrace", "assembleDebug"], cwd=root, capture_output=True, text=True, timeout=BUILD_TIMEOUT, env={"PATH": os.environ.get("PATH", ""), "ANDROID_HOME": os.environ.get("ANDROID_HOME", "/opt/android-sdk"), "ANDROID_SDK_ROOT": os.environ.get("ANDROID_SDK_ROOT", "/opt/android-sdk"), "JAVA_HOME": os.environ.get("JAVA_HOME", ""), "HOME": str(root), "GRADLE_USER_HOME": str(gradle_home), "GRADLE_OPTS": "-Xmx256m -XX:MaxMetaspaceSize=192m -XX:ReservedCodeCacheSize=32m -Dfile.encoding=UTF-8", "LANG": "C.UTF-8"})
         except subprocess.TimeoutExpired as ex:
-            raise HTTPException(408, f"Build timed out after {BUILD_TIMEOUT}s.\n{(ex.stdout or b'').decode(errors='ignore')[-100000:]}")
+            timeout_log = ex.stdout or ex.stderr or ""
+            if isinstance(timeout_log, bytes): timeout_log = timeout_log.decode(errors="ignore")
+            raise HTTPException(408, f"Build timed out after {BUILD_TIMEOUT}s.\\n{timeout_log[-100000:]}")
 
         log = ((proc.stdout or "") + "\n" + (proc.stderr or ""))[-100000:]
         if proc.returncode != 0:
