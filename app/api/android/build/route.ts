@@ -74,7 +74,8 @@ export async function POST(request: NextRequest) {
     });
     // Upload blobs concurrently, then create one tree and one commit. This avoids
     // the slow per-file Contents API commits that time out for large ZIP imports.
-    // Keep GitHub API traffic deliberately low to avoid secondary rate limits.\n    const batchSize = 1;
+    // Keep GitHub API traffic deliberately low to avoid secondary rate limits.
+    const batchSize = 1;
     for (let i = 0; i < validFiles.length; i += batchSize) {
       const batch = validFiles.slice(i, i + batchSize);
       const blobs = await Promise.all(batch.map(async ([path, value]) => {
