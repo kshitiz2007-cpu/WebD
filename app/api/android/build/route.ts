@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       if (!safe || safe.split('/').includes('..') || safe.startsWith('.git/') || safe.length > 240) throw new Error('Unsafe project path: ' + path);
       await gh(token, `/repos/${OWNER}/${REPO}/contents/${safe.split('/').map(encodeURIComponent).join('/')}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'Android build input ' + buildId, content: Buffer.from(value as string, 'utf8').toString('base64'), branch }) });
     }
-    await gh(token, `/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: defaultBranch, inputs: { build_branch: branch, build_id: buildId } }) });
+    await gh(token, `/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: branch, inputs: { build_branch: branch, build_id: buildId } }) });
     return NextResponse.json({ jobId: buildId, status: 'queued', provider: 'GitHub Actions' });
   } catch (error) { return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Unable to start GitHub Actions build.' }, { status: 502 }); }
 }
