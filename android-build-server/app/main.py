@@ -66,15 +66,16 @@ def run_build(job_id: str, files: dict[str, str]):
             JOBS[job_id]["status"] = "running"
         cmd = ["./gradlew", "--no-daemon", "--stacktrace", "--console=plain", "assembleDebug"]
         proc = subprocess.Popen(cmd, cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env={**os.environ, "GRADLE_OPTS": os.environ.get("GRADLE_OPTS", "-Xmx3g -XX:MaxMetaspaceSize=1g")})
-        start = time.time()
-        output = []
-        for line in proc.stdout or []:
-            output.append(line)
-            addlog(line.rstrip())
-            if time.time() - start > BUILD_TIMEOUT:
-                proc.kill()
-                raise TimeoutError(f"Gradle build exceeded {BUILD_TIMEOUT} seconds.")
-        code = proc.wait(timeout=30)
+        try:
+            stdout, _ = proc.communicate(timeout=BUILD_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, _ = proc.communicate()
+            raise TimeoutError(f"Gradle build exceeded {BUILD_TIMEOUT} seconds.")
+        output = stdout.splitlines(keepends=True)
+        with LOCK:
+            JOBS[job_id]["log"] += stdout[-250000:]
+        code = proc.returncode
         if code != 0:
             raise RuntimeError("Gradle exited with code " + str(code))
         apk = next((p for p in project.glob("**/build/outputs/apk/debug/*.apk") if p.is_file()), None)
