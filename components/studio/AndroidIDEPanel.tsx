@@ -167,8 +167,8 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
   const filteredBuildLog = useMemo(() => buildLogSearch ? logMessage.split(/\r?\n/).filter((line) => line.toLowerCase().includes(buildLogSearch.toLowerCase())).join('\n') : logMessage, [logMessage, buildLogSearch]);
   const diagnosticLocations = useMemo(() => {
     const found: Array<{ path: string; line: number }> = [];
-    for (const line of logMessage.split(/\\r?\\n/)) {
-      const match = line.match(/([\\w./-]+\\.(?:kt|kts|xml|java)):(\\d+)/);
+    for (const line of logMessage.split(/\r?\n/)) {
+      const match = line.match(/([\w./-]+\.(?:kt|kts|xml|java)):(\d+)/);
       if (match && files[match[1]]) found.push({ path: match[1], line: Number(match[2]) });
     }
     return found;
@@ -294,7 +294,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
       let startData: any;
       try { startData = JSON.parse(startRaw); } catch { startData = { error: startRaw }; }
       if (!startResponse.ok || !startData.jobId) {
-        setLogMessage(['ANDROID BUILD START FAILED', 'HTTP: ' + startResponse.status, startData.error || startData.detail || startRaw].join('\\n'));
+        setLogMessage(['ANDROID BUILD START FAILED', 'HTTP: ' + startResponse.status, startData.error || startData.detail || startRaw].join('\n'));
         setShowOutput(true); setShowFullLog(true); return;
       }
       const jobId = startData.jobId;
@@ -310,11 +310,11 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
         setLogMessage(['ANDROID BUILD LIVE LOG', 'Status: ' + (result.status || 'running').toUpperCase(), 'Job: ' + jobId, 'Elapsed: ' + Math.round((poll + 1) * 2) + 's', '', 'GRADLE OUTPUT:', result.log || 'Gradle is starting; waiting for first output…'].join('\n'));
       }
       if (!result || (result.status !== 'completed' && result.status !== 'failed')) {
-        setLogMessage('Build is taking longer than the UI wait limit. Job ID: ' + jobId + '\\nThe worker continues running; please check again shortly.');
+        setLogMessage('Build is taking longer than the UI wait limit. Job ID: ' + jobId + '\nThe worker continues running; please check again shortly.');
         setShowOutput(true); setShowFullLog(true); return;
       }
       if (result.status === 'failed' || !result.success) {
-        setLogMessage(['WEBD ANDROID BUILD REPORT', 'Status: FAILED', 'Job: ' + jobId, '', 'ERROR:', result.error || 'Gradle build failed', '', 'BUILD LOGS:', result.log || '(No logs returned)'].join('\\n'));
+        setLogMessage(['WEBD ANDROID BUILD REPORT', 'Status: FAILED', 'Job: ' + jobId, '', 'ERROR:', result.error || 'Gradle build failed', '', 'BUILD LOGS:', result.log || '(No logs returned)'].join('\n'));
         setShowOutput(true); setShowFullLog(true); return;
       }
       setBuiltApkBase64(result.apkBase64);
@@ -326,7 +326,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
       const link = document.createElement('a');
       link.href = url; link.download = result.fileName || 'app-debug.apk';
       document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-      setLogMessage('Build successful! APK downloaded (' + Math.round((result.sizeBytes || bytes.length) / 1024) + ' KB).\\n' + (result.log || 'Gradle build finished.'));
+      setLogMessage('Build successful! APK downloaded (' + Math.round((result.sizeBytes || bytes.length) / 1024) + ' KB).\n' + (result.log || 'Gradle build finished.'));
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: REQUEST FAILED', '', 'Error: ' + detail, '', 'Background build polling failed. Check worker health and status endpoint.'].join('\\n'));
