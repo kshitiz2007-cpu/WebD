@@ -300,7 +300,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
         setShowOutput(true); setShowFullLog(true); return;
       }
       const jobId = startData.jobId;
-      buildStage = 'GitHub Actions status polling';
+      buildStage = 'Android worker status polling';
       const maxPolls = 300;
       let result: any = null;
       for (let poll = 0; poll < maxPolls; poll++) {
