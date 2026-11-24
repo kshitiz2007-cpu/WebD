@@ -65,15 +65,45 @@ export async function POST(request: NextRequest) {
     const repoInfo = await gh(token, `/repos/${OWNER}/${REPO}`);
     const defaultBranch = repoInfo.default_branch || 'main';
     const baseRef = await gh(token, `/repos/${OWNER}/${REPO}/git/ref/heads/${encodeURIComponent(defaultBranch)}`);
-    await gh(token, `/repos/${OWNER}/${REPO}/git/refs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: 'refs/heads/' + branch, sha: baseRef.object.sha }) });
-    for (const [path, value] of Object.entries(files)) {
-      const safe = path.replace(/^\/+/, '');
-      // GitHub rejects workflow-file writes with PATs lacking the workflow scope.
-      // Imported app projects do not need their source repo workflows to build here.
-      if (safe.startsWith('.github/workflows/') || safe.startsWith('.github/')) continue;
+    const treeEntries: Array<{path: string; mode: string; type: string; sha: string}> = [];
+    const validFiles = Object.entries(files).filter(([path]) => {
+      const safe = path.replace(/^\\/+/, '');
       if (!safe || safe.split('/').includes('..') || safe.startsWith('.git/') || safe.length > 240) throw new Error('Unsafe project path: ' + path);
-      await gh(token, `/repos/${OWNER}/${REPO}/contents/${safe.split('/').map(encodeURIComponent).join('/')}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'Android build input ' + buildId, content: Buffer.from(value as string, 'utf8').toString('base64'), branch }) });
+      // Imported projects do not need repository workflows or GitHub metadata.
+      return !safe.startsWith('.github/');
+    });
+    // Upload blobs concurrently, then create one tree and one commit. This avoids
+    // the slow per-file Contents API commits that time out for large ZIP imports.
+    const batchSize = 8;
+    for (let i = 0; i < validFiles.length; i += batchSize) {
+      const batch = validFiles.slice(i, i + batchSize);
+      const blobs = await Promise.all(batch.map(async ([path, value]) => {
+        const safe = path.replace(/^\\/+/, '');
+        const blob = await gh(token, `/repos/${OWNER}/${REPO}/git/blobs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: value as string, encoding: 'utf-8' })
+        });
+        return { path: safe, mode: '100644', type: 'blob', sha: blob.sha };
+      }));
+      treeEntries.push(...blobs);
     }
+    if (!treeEntries.length) throw new Error('No valid project files to upload.');
+    const tree = await gh(token, `/repos/${OWNER}/${REPO}/git/trees`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base_tree: baseRef.object.sha, tree: treeEntries })
+    });
+    const commit = await gh(token, `/repos/${OWNER}/${REPO}/git/commits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Android build input ' + buildId, tree: tree.sha, parents: [baseRef.object.sha] })
+    });
+    await gh(token, `/repos/${OWNER}/${REPO}/git/refs/heads/${encodeURIComponent(branch)`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sha: commit.sha, force: true })
+    });
     await gh(token, `/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: branch, inputs: { build_branch: branch, build_id: buildId } }) });
     return NextResponse.json({ jobId: buildId, status: 'queued', provider: 'GitHub Actions' });
   } catch (error) { return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Unable to start GitHub Actions build.' }, { status: 502 }); }
