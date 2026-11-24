@@ -4,7 +4,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 30;
 
 function config() {
-  const serviceUrl = process.env.ANDROID_BUILD_SERVICE_URL?.replace(/\\/$/, '');
+  const serviceUrl = process.env.ANDROID_BUILD_SERVICE_URL?.replace(/\/$/, '');
   const token = process.env.ANDROID_BUILD_SERVICE_TOKEN;
   return { serviceUrl, token };
 }
