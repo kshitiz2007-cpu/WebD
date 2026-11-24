@@ -5,7 +5,11 @@ on:
     inputs:
       build_id:
         description: "Build job ID"
-        required: false
+        required: true
+        type: string
+      build_branch:
+        description: "Temporary branch containing submitted Android project"
+        required: true
         type: string
 
 permissions:
@@ -20,9 +24,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout build project
+      - name: Checkout submitted Android project
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.inputs.build_branch }}
           path: android-project
 
       - name: Set up Java 17
