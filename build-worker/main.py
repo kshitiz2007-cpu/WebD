@@ -58,7 +58,7 @@ def build(req: BuildRequest, authorization: str | None = Header(default=None)):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
         # Constrain Gradle memory and parallelism for small Railway containers.
-        (root / "gradle.properties").write_text("org.gradle.jvmargs=-Xmx192m -XX:MaxMetaspaceSize=256m -XX:ReservedCodeCacheSize=48m -Dfile.encoding=UTF-8 -XX:-UsePerfData -Dorg.gradle.internal.instrumentation.agent=false\n" + "org.gradle.workers.max=1\n" + "org.gradle.parallel=false\n" + "org.gradle.caching=true\n" + "android.useAndroidX=true\n" + "android.enableJetifier=true\nkotlin.compiler.execution.strategy=in-process\nkotlin.daemon.enabled=false\n", encoding="utf-8")
+        (root / "gradle.properties").write_text("org.gradle.jvmargs=-Xmx512m -XX:MaxMetaspaceSize=256m -XX:ReservedCodeCacheSize=48m -Dfile.encoding=UTF-8 -XX:-UsePerfData -Dorg.gradle.internal.instrumentation.agent=false\n" + "org.gradle.workers.max=1\n" + "org.gradle.parallel=false\n" + "org.gradle.caching=true\n" + "android.useAndroidX=true\n" + "android.enableJetifier=true\nkotlin.compiler.execution.strategy=in-process\nkotlin.daemon.enabled=false\n", encoding="utf-8")
         # Force Java and Kotlin compilation to the same JVM target (17).
         init_script = root / "webd-jvm-target.gradle"
         init_script.write_text("""allprojects {
@@ -79,7 +79,7 @@ def build(req: BuildRequest, authorization: str | None = Header(default=None)):
         if not gradle:
             raise HTTPException(500, "Gradle is not installed in build worker")
         try:
-            proc = subprocess.run([gradle, "--no-daemon", "--max-workers=1", "--init-script", str(init_script), "--stacktrace", "assembleDebug"], cwd=root, capture_output=True, text=True, timeout=BUILD_TIMEOUT, env={"PATH": os.environ.get("PATH", ""), "ANDROID_HOME": os.environ.get("ANDROID_HOME", "/opt/android-sdk"), "ANDROID_SDK_ROOT": os.environ.get("ANDROID_SDK_ROOT", "/opt/android-sdk"), "JAVA_HOME": os.environ.get("JAVA_HOME", ""), "HOME": str(root), "GRADLE_USER_HOME": str(gradle_home), "LANG": "C.UTF-8"})
+            proc = subprocess.run([gradle, "--no-daemon", "--max-workers=1", "--init-script", str(init_script), "--stacktrace", "assembleDebug"], cwd=root, capture_output=True, text=True, timeout=BUILD_TIMEOUT, env={"PATH": os.environ.get("PATH", ""), "ANDROID_HOME": os.environ.get("ANDROID_HOME", "/opt/android-sdk"), "ANDROID_SDK_ROOT": os.environ.get("ANDROID_SDK_ROOT", "/opt/android-sdk"), "JAVA_HOME": os.environ.get("JAVA_HOME", ""), "HOME": str(root), "GRADLE_USER_HOME": str(gradle_home), "GRADLE_OPTS": "-Xmx512m -XX:MaxMetaspaceSize=256m -XX:ReservedCodeCacheSize=48m -Dfile.encoding=UTF-8", "LANG": "C.UTF-8"})
         except subprocess.TimeoutExpired as ex:
             raise HTTPException(408, f"Build timed out after {BUILD_TIMEOUT}s.\n{(ex.stdout or b'').decode(errors='ignore')[-100000:]}")
 
