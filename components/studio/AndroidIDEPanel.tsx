@@ -307,7 +307,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
         try { result = JSON.parse(statusRaw); } catch { result = { status: 'failed', error: statusRaw }; }
         if (!statusResponse.ok) throw new Error(result.error || result.detail || 'Build status request failed (HTTP ' + statusResponse.status + ')');
         if (result.status === 'completed' || result.status === 'failed') break;
-        setLogMessage(['ANDROID BUILD LIVE LOG', 'Status: ' + (result.status || 'running').toUpperCase(), 'Job: ' + jobId, 'Elapsed: ' + Math.round((poll + 1) * 2) + 's', '', 'GRADLE OUTPUT:', result.log || 'Gradle is starting; waiting for first output…'].join('\\n'));
+        setLogMessage(['ANDROID BUILD LIVE LOG', 'Status: ' + (result.status || 'running').toUpperCase(), 'Job: ' + jobId, 'Elapsed: ' + Math.round((poll + 1) * 2) + 's', '', 'GRADLE OUTPUT:', result.log || 'Gradle is starting; waiting for first output…'].join('\n'));
       }
       if (!result || (result.status !== 'completed' && result.status !== 'failed')) {
         setLogMessage('Build is taking longer than the UI wait limit. Job ID: ' + jobId + '\\nThe worker continues running; please check again shortly.');
