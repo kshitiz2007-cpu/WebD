@@ -6,7 +6,7 @@ RUN curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-1
 USER builder
 RUN yes | sdkmanager --licenses >/dev/null 2>&1 || true && sdkmanager "platform-tools" "platforms;android-34" "platforms;android-35" "build-tools;34.0.0" "build-tools;35.0.0"
 USER root
-RUN curl -fsSL https://services.gradle.org/distributions/gradle-8.9-bin.zip -o /tmp/gradle.zip && unzip -q /tmp/gradle.zip -d /opt && rm /tmp/gradle.zip && ln -s /opt/gradle-8.9/bin/gradle /usr/local/bin/gradle && chown -R builder:builder /opt/android-sdk /gradle-cache /app && chmod -R u+rwX /opt/android-sdk
+RUN curl -fsSL https://services.gradle.org/distributions/gradle-9.6.0-bin.zip -o /tmp/gradle.zip && unzip -q /tmp/gradle.zip -d /opt && rm /tmp/gradle.zip && ln -s /opt/gradle-9.6.0/bin/gradle /usr/local/bin/gradle && chown -R builder:builder /opt/android-sdk /gradle-cache /app && chmod -R u+rwX /opt/android-sdk
 RUN pip install --no-cache-dir fastapi uvicorn
 WORKDIR /app
 COPY main.py /app/main.py
