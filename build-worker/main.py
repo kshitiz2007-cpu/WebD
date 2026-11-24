@@ -53,7 +53,7 @@ def run_build(job_id: str, files: dict):
                 target = safe_path(root, rel)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(content, encoding="utf-8")
-            (root / "gradle.properties").write_text("org.gradle.jvmargs=-Xmx384m -XX:MaxMetaspaceSize=384m -XX:ReservedCodeCacheSize=48m -Dfile.encoding=UTF-8 -XX:-UsePerfData -Dorg.gradle.internal.instrumentation.agent=false\norg.gradle.workers.max=1\norg.gradle.parallel=false\norg.gradle.caching=true\norg.gradle.vfs.watch=false\nandroid.useAndroidX=true\nandroid.enableJetifier=true\nkotlin.compiler.execution.strategy=in-process\nkotlin.daemon.enabled=false\n", encoding="utf-8")
+            (root / "gradle.properties").write_text("org.gradle.jvmargs=-Xmx768m -XX:MaxMetaspaceSize=768m -XX:ReservedCodeCacheSize=96m -Dfile.encoding=UTF-8 -XX:-UsePerfData -Dorg.gradle.internal.instrumentation.agent=false\norg.gradle.workers.max=1\norg.gradle.parallel=false\norg.gradle.caching=true\norg.gradle.vfs.watch=false\nandroid.useAndroidX=true\nandroid.enableJetifier=true\nkotlin.compiler.execution.strategy=in-process\nkotlin.daemon.enabled=false\n", encoding="utf-8")
             init_script = root / "webd-jvm-target.gradle"
             init_script.write_text("""gradle.projectsEvaluated {
     allprojects {
@@ -79,7 +79,7 @@ def run_build(job_id: str, files: dict):
             if not gradle:
                 raise RuntimeError("Gradle is not installed in build worker")
             command = [gradle, "--no-daemon", "--max-workers=1", "--no-watch-fs", "--console=plain", "--info", "--init-script", str(init_script), "--stacktrace", "assembleDebug"]
-            env = {"PATH": os.environ.get("PATH", ""), "ANDROID_HOME": os.environ.get("ANDROID_HOME", "/opt/android-sdk"), "ANDROID_SDK_ROOT": os.environ.get("ANDROID_SDK_ROOT", "/opt/android-sdk"), "JAVA_HOME": os.environ.get("JAVA_HOME", ""), "HOME": str(root), "GRADLE_USER_HOME": str(gradle_home), "GRADLE_OPTS": "-Xmx384m -XX:MaxMetaspaceSize=384m -XX:ReservedCodeCacheSize=48m -Dfile.encoding=UTF-8", "LANG": "C.UTF-8"}
+            env = {"PATH": os.environ.get("PATH", ""), "ANDROID_HOME": os.environ.get("ANDROID_HOME", "/opt/android-sdk"), "ANDROID_SDK_ROOT": os.environ.get("ANDROID_SDK_ROOT", "/opt/android-sdk"), "JAVA_HOME": os.environ.get("JAVA_HOME", ""), "HOME": str(root), "GRADLE_USER_HOME": str(gradle_home), "GRADLE_OPTS": "-Xmx768m -XX:MaxMetaspaceSize=768m -XX:ReservedCodeCacheSize=96m -Dfile.encoding=UTF-8", "LANG": "C.UTF-8"}
             proc = subprocess.Popen(command, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=env)
             log_lines = []
             started = time.time()
