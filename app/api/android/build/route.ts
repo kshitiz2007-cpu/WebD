@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
   try {
     const repoInfo = await gh(token, `/repos/${OWNER}/${REPO}`);
     const defaultBranch = repoInfo.default_branch || 'main';
-    const baseRef = await gh(token, `/repos/${OWNER}/${REPO}/git/ref/heads/${encodeURIComponent(defaultBranch)`);
+    const baseRef = await gh(token, `/repos/${OWNER}/${REPO}/git/ref/heads/${encodeURIComponent(defaultBranch)}`);
     await gh(token, `/repos/${OWNER}/${REPO}/git/refs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: 'refs/heads/' + branch, sha: baseRef.object.sha }) });
     for (const [path, value] of Object.entries(files)) {
       const safe = path.replace(/^\\/+/, '');
