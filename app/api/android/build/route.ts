@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     const baseRef = await gh(token, `/repos/${OWNER}/${REPO}/git/ref/heads/${encodeURIComponent(defaultBranch)}`);
     await gh(token, `/repos/${OWNER}/${REPO}/git/refs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: 'refs/heads/' + branch, sha: baseRef.object.sha }) });
     for (const [path, value] of Object.entries(files)) {
-      const safe = path.replace(/^\\/+/, '');
+      const safe = path.replace(/^\/+/, '');
       // GitHub rejects workflow-file writes with PATs lacking the workflow scope.
       // Imported app projects do not need their source repo workflows to build here.
       if (safe.startsWith('.github/workflows/') || safe.startsWith('.github/')) continue;
