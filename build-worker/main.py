@@ -64,8 +64,8 @@ def run_build(job_id: str, files: dict):
             task.targetCompatibility = "17"
         }
         if (taskClass.contains("KotlinCompile") || taskName.contains("kotlin")) {
-            def kotlinOptions = task.hasProperty("kotlinOptions") ? task.property("kotlinOptions") : null
-            if (kotlinOptions != null) kotlinOptions.jvmTarget = "17"
+            try { task.kotlinOptions.jvmTarget = "17" } catch (Throwable ignored) {}
+            try { task.compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } catch (Throwable ignored) {}
         }
     }
 }
