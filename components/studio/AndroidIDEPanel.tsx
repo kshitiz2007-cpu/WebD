@@ -291,7 +291,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
       }
       buildStage = 'project upload and workflow dispatch';
       setLogMessage('Connection verified. Uploading project and starting build…');
-      const startResponse = await fetch('/api/android/build', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files }), signal: AbortSignal.timeout(120000 });
+      const startResponse = await fetch('/api/android/build', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files }), signal: AbortSignal.timeout(120000) });
       const startRaw = await startResponse.text();
       let startData: any;
       try { startData = JSON.parse(startRaw); } catch { startData = { error: startRaw }; }
@@ -332,7 +332,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
       setLogMessage('Build successful! APK downloaded (' + Math.round((result.sizeBytes || bytes.length) / 1024) + ' KB).\n' + (result.log || 'Gradle build finished.'));
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: REQUEST FAILED', 'Failed stage: ' + buildStage, '', 'Error: ' + detail, '', 'Check the failing stage above; this is not necessarily a polling failure.'].join('\\n'));
+      setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: REQUEST FAILED', 'Failed stage: ' + buildStage, '', 'Error: ' + detail, '', 'Check the failing stage above; this is not necessarily a polling failure.'].join('\n'));
       setShowOutput(true); setShowFullLog(true);
     } finally { setIsBuilding(false); }
   };
