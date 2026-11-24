@@ -285,7 +285,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
       let health: any;
       try { health = JSON.parse(healthRaw); } catch { health = { error: healthRaw }; }
       if (!healthResponse.ok || !health?.reachable) {
-        setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: WORKER UNREACHABLE', 'HTTP: ' + healthResponse.status, '', healthRaw || '(empty response)'].join('\\n'));
+        setLogMessage(['ANDROID BUILD CONNECTION DIAGNOSTICS', 'Status: WORKER UNREACHABLE', 'HTTP: ' + healthResponse.status, '', healthRaw || '(empty response)'].join('\n'));
         setShowOutput(true); setShowFullLog(true); return;
       }
       setLogMessage('Worker online. Starting background Gradle build…');
