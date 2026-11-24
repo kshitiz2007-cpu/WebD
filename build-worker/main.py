@@ -82,19 +82,19 @@ def run_build(job_id: str, files: dict):
                     line = proc.stdout.readline()
                     if line:
                         log_lines.append(line.rstrip())
-                        log = "\\n".join(log_lines)[-100000:]
+                        log = "\n".join(log_lines)[-100000:]
                         set_job(log=log, lastLine=line.rstrip(), elapsedSeconds=int(time.time() - started))
                 if time.time() - started > BUILD_TIMEOUT:
                     proc.kill()
                     proc.wait()
-                    log = "\\n".join(log_lines)[-100000:]
+                    log = "\n".join(log_lines)[-100000:]
                     set_job(status="failed", success=False, error=f"Build timed out after {BUILD_TIMEOUT}s", log=log, finishedAt=time.time())
                     return
             if proc.stdout:
                 remaining = proc.stdout.read()
                 if remaining:
                     log_lines.extend(remaining.splitlines())
-            log = "\\n".join(log_lines)[-100000:]
+            log = "\n".join(log_lines)[-100000:]
             if proc.returncode != 0:
                 set_job(status="failed", success=False, error="Gradle build failed", log=log, finishedAt=time.time())
                 return
