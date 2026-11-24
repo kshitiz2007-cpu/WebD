@@ -2,7 +2,7 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
-import os, tempfile, pathlib, subprocess, base64, shutil, re, threading, uuid, time
+import os, tempfile, pathlib, subprocess, base64, shutil, re, threading, uuid, time, select
 from concurrent.futures import ThreadPoolExecutor
 
 app = FastAPI(title="WebD Android Build Worker")
@@ -16,7 +16,7 @@ async def validation_error_handler(request, exc):
 TOKEN = os.environ.get("ANDROID_BUILD_TOKEN", "")
 MAX_FILES = 1200
 MAX_SOURCE_BYTES = 8 * 1024 * 1024
-BUILD_TIMEOUT = int(os.environ.get("BUILD_TIMEOUT_SECONDS", "480"))
+BUILD_TIMEOUT = int(os.environ.get("BUILD_TIMEOUT_SECONDS", "600"))
 class BuildRequest(BaseModel):
     files: dict[str, str]
 
@@ -71,8 +71,30 @@ def run_build(job_id: str, files: dict):
             gradle = shutil.which("gradle")
             if not gradle:
                 raise RuntimeError("Gradle is not installed in build worker")
-            proc = subprocess.run([gradle, "--no-daemon", "--max-workers=1", "--init-script", str(init_script), "--stacktrace", "assembleDebug"], cwd=root, capture_output=True, text=True, timeout=BUILD_TIMEOUT, env={"PATH": os.environ.get("PATH", ""), "ANDROID_HOME": os.environ.get("ANDROID_HOME", "/opt/android-sdk"), "ANDROID_SDK_ROOT": os.environ.get("ANDROID_SDK_ROOT", "/opt/android-sdk"), "JAVA_HOME": os.environ.get("JAVA_HOME", ""), "HOME": str(root), "GRADLE_USER_HOME": str(gradle_home), "GRADLE_OPTS": "-Xmx256m -XX:MaxMetaspaceSize=192m -XX:ReservedCodeCacheSize=32m -Dfile.encoding=UTF-8", "LANG": "C.UTF-8"})
-            log = ((proc.stdout or "") + "\n" + (proc.stderr or ""))[-100000:]
+            command = [gradle, "--no-daemon", "--max-workers=1", "--console=plain", "--info", "--init-script", str(init_script), "--stacktrace", "assembleDebug"]
+            env = {"PATH": os.environ.get("PATH", ""), "ANDROID_HOME": os.environ.get("ANDROID_HOME", "/opt/android-sdk"), "ANDROID_SDK_ROOT": os.environ.get("ANDROID_SDK_ROOT", "/opt/android-sdk"), "JAVA_HOME": os.environ.get("JAVA_HOME", ""), "HOME": str(root), "GRADLE_USER_HOME": str(gradle_home), "GRADLE_OPTS": "-Xmx384m -XX:MaxMetaspaceSize=256m -XX:ReservedCodeCacheSize=32m -Dfile.encoding=UTF-8", "LANG": "C.UTF-8"}
+            proc = subprocess.Popen(command, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=env)
+            log_lines = []
+            started = time.time()
+            while proc.poll() is None:
+                ready, _, _ = select.select([proc.stdout], [], [], 1.0)
+                if ready:
+                    line = proc.stdout.readline()
+                    if line:
+                        log_lines.append(line.rstrip())
+                        log = "\\n".join(log_lines)[-100000:]
+                        set_job(log=log, lastLine=line.rstrip(), elapsedSeconds=int(time.time() - started))
+                if time.time() - started > BUILD_TIMEOUT:
+                    proc.kill()
+                    proc.wait()
+                    log = "\\n".join(log_lines)[-100000:]
+                    set_job(status="failed", success=False, error=f"Build timed out after {BUILD_TIMEOUT}s", log=log, finishedAt=time.time())
+                    return
+            if proc.stdout:
+                remaining = proc.stdout.read()
+                if remaining:
+                    log_lines.extend(remaining.splitlines())
+            log = "\\n".join(log_lines)[-100000:]
             if proc.returncode != 0:
                 set_job(status="failed", success=False, error="Gradle build failed", log=log, finishedAt=time.time())
                 return
