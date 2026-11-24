@@ -302,7 +302,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
       setLogMessage('Gradle build started in background. Job: ' + startData.jobId + '\\nWaiting for build result…');
       let result: any = null;
       let responseStatus = 200;
-      const pollDeadline = Date.now() + 270000;
+      const pollDeadline = Date.now() + 450000;
       while (Date.now() < pollDeadline) {
         await new Promise(resolve => setTimeout(resolve, 2500));
         const statusResponse = await fetch('/api/android/build?jobId=' + encodeURIComponent(startData.jobId), { cache: 'no-store', signal: AbortSignal.timeout(15000) });
@@ -317,7 +317,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
         }
         setLogMessage('Gradle build running…\\nJob: ' + startData.jobId + '\\nStatus: ' + (statusData.status || 'pending') + '\\nPolling worker for result…');
       }
-      if (!result) throw new Error('Build is still running after 4.5 minutes. Job ID: ' + startData.jobId + '. Retry is safe, but avoid starting another build until this one finishes.');
+      if (!result) throw new Error('Build is still running after 7.5 minutes. Job ID: ' + startData.jobId + '. Retry is safe, but avoid starting another build until this one finishes.');
       if (responseStatus !== 200 || !result.success) {
         const report = [
           'WEBD ANDROID BUILD REPORT',
