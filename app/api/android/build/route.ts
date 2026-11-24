@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import JSZip from 'jszip';
 
 export const runtime = 'nodejs';
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const API = 'https://api.github.com';
 const OWNER = 'kshitiz2007-cpu';
