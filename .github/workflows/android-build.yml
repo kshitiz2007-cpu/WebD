@@ -54,6 +54,30 @@ jobs:
           chmod +x gradlew
           test -f gradle/wrapper/gradle-wrapper.jar || (echo "Gradle wrapper generation failed" && exit 1)
 
+      - name: Align Java and Kotlin JVM targets to 17
+        working-directory: android-project
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for p in Path('.').glob('**/build.gradle*'):
+              if 'build' in p.parts:
+                  continue
+              text = p.read_text()
+              if p.name.endswith('.kts'):
+                  block = '''
+          tasks.withType<JavaCompile>().configureEach { options.release.set(17) }
+          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach { kotlinOptions.jvmTarget = "17" }
+          '''
+              else:
+                  block = '''
+          tasks.withType(JavaCompile).configureEach { options.release = 17 }
+          tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach { kotlinOptions.jvmTarget = "17" }
+          '''
+              if 'jvmTarget' not in text or 'options.release' not in text:
+                  p.write_text(text.rstrip() + '\\n' + block)
+          PY
+
       - name: Build debug APK
         working-directory: android-project
         env:
