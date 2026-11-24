@@ -34,7 +34,8 @@ def safe_path(root: pathlib.Path, relative: str) -> pathlib.Path:
     if normalized.startswith("/") or re.match(r"^[A-Za-z]:", normalized):
         raise HTTPException(400, "Absolute paths are not allowed")
     parts = [p for p in normalized.split("/") if p not in ("", ".")]
-    if not parts or any(p == ".." or p.startswith(".git") for p in parts):
+    # Permit ordinary hidden metadata files (e.g. .github/FUNDING.yml), but block Git internals and traversal.
+    if not parts or any(p == ".." for p in parts) or any(p.lower() == ".git" or p.lower().startswith(".git/") for p in parts):
         raise HTTPException(400, "Unsafe path: " + relative[:120])
     resolved = root.joinpath(*parts).resolve()
     if root.resolve() not in resolved.parents and resolved != root.resolve():
