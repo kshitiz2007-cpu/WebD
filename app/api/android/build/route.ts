@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
     await gh(token, `/repos/${OWNER}/${REPO}/git/refs/heads/${encodeURIComponent(branch)`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sha: commit.sha, force: true })
+      body: JSON.stringify({ ref: 'refs/heads/' + branch, sha: commit.sha })
     });
     await gh(token, `/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: branch, inputs: { build_branch: branch, build_id: buildId } }) });
     return NextResponse.json({ jobId: buildId, status: 'queued', provider: 'GitHub Actions' });
