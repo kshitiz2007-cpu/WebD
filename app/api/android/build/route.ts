@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     });
     // Upload blobs concurrently, then create one tree and one commit. This avoids
     // the slow per-file Contents API commits that time out for large ZIP imports.
-    const batchSize = 8;
+    // Keep GitHub API traffic deliberately low to avoid secondary rate limits.\n    const batchSize = 1;
     for (let i = 0; i < validFiles.length; i += batchSize) {
       const batch = validFiles.slice(i, i + batchSize);
       const blobs = await Promise.all(batch.map(async ([path, value]) => {
@@ -106,5 +106,5 @@ export async function POST(request: NextRequest) {
     });
     await gh(token, `/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: branch, inputs: { build_branch: branch, build_id: buildId } }) });
     return NextResponse.json({ jobId: buildId, status: 'queued', provider: 'GitHub Actions' });
-  } catch (error) { return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Unable to start GitHub Actions build.' }, { status: 502 }); }
+  } catch (error) {\n    const message = error instanceof Error ? error.message : 'Unable to start GitHub Actions build.';\n    const rateLimited = /secondary rate limit|rate limit exceeded|abuse detection/i.test(message);\n    return NextResponse.json({ success: false, error: rateLimited ? 'GitHub temporarily rate-limited project upload. Wait 5–10 minutes before retrying; uploads are now throttled to one file at a time.' : message }, { status: rateLimited ? 429 : 502 });\n  }
 }
