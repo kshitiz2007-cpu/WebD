@@ -13,7 +13,7 @@ COPY main.py /app/main.py
 RUN chown builder:builder /app/main.py
 USER builder
 ENV ANDROID_BUILD_TOKEN=""
-ENV BUILD_TIMEOUT_SECONDS=240
+ENV BUILD_TIMEOUT_SECONDS=900
 ENV GRADLE_USER_HOME=/gradle-cache
 EXPOSE 8080
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
