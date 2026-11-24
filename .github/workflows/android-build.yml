@@ -60,21 +60,38 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          for p in Path('.').glob('**/build.gradle*'):
-              if 'build' in p.parts:
+          candidates = [Path('app/build.gradle'), Path('app/build.gradle.kts')]
+          for p in candidates:
+              if not p.exists():
                   continue
               text = p.read_text()
-              if p.name.endswith('.kts'):
+              if p.suffix == '.kts':
                   block = '''
-          tasks.withType<JavaCompile>().configureEach { options.release.set(17) }
-          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach { kotlinOptions.jvmTarget = "17" }
+          android {
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          }
+          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+              kotlinOptions.jvmTarget = "17"
+          }
           '''
               else:
                   block = '''
-          tasks.withType(JavaCompile).configureEach { options.release = 17 }
-          tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach { kotlinOptions.jvmTarget = "17" }
+          android {
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+              kotlinOptions.jvmTarget = "17"
+          }
           '''
-              if 'jvmTarget' not in text or 'options.release' not in text:
+              text = text.replace('options.release.set(17)', '')
+              text = text.replace('options.release = 17', '')
+              if 'sourceCompatibility' not in text:
                   p.write_text(text.rstrip() + chr(10) + block)
           PY
 
