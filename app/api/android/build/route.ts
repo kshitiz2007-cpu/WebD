@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       const lower = safe.toLowerCase();
       return !skipPrefixes.some(prefix => lower.startsWith(prefix) || lower.includes('/' + prefix)) && !skipNames.has(lower.split('/').pop() || '');
     });
-    if (validFiles.length > 500) throw new Error('Project has ' + validFiles.length + ' files after filtering; limit is 500. Remove unused assets or split it.');
+    if (validFiles.length > 1200) throw new Error('Project has ' + validFiles.length + ' files after filtering; limit is 1200.');
     // Upload a few blobs concurrently to reduce timeout risk without flooding GitHub.
     const batchSize = 3;
     for (let i = 0; i < validFiles.length; i += batchSize) {
