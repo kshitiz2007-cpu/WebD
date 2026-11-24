@@ -25,14 +25,20 @@ jobs_lock = threading.Lock()
 executor = ThreadPoolExecutor(max_workers=1)
 
 def safe_path(root: pathlib.Path, relative: str) -> pathlib.Path:
-    if not relative or len(relative) > 240 or relative.startswith("/") or "\\" in relative:
+    # Normalize paths sent by browser IDEs (some emit ./ prefixes or Windows separators).
+    if not isinstance(relative, str) or not relative or len(relative) > 240 or "\\x00" in relative:
         raise HTTPException(400, "Invalid file path")
-    parts = pathlib.PurePosixPath(relative).parts
-    if any(p in ("", ".", "..") for p in parts) or any(p.startswith(".git") for p in parts):
-        raise HTTPException(400, "Unsafe path")
+    normalized = relative.replace("\\\\", "/").strip()
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    if normalized.startswith("/") or re.match(r"^[A-Za-z]:", normalized):
+        raise HTTPException(400, "Absolute paths are not allowed")
+    parts = [p for p in normalized.split("/") if p not in ("", ".")]
+    if not parts or any(p == ".." or p.startswith(".git") for p in parts):
+        raise HTTPException(400, "Unsafe path: " + relative[:120])
     resolved = root.joinpath(*parts).resolve()
     if root.resolve() not in resolved.parents and resolved != root.resolve():
-        raise HTTPException(400, "Path escapes build directory")
+        raise HTTPException(400, "Path escapes build directory: " + relative[:120])
     return resolved
 
 @app.get("/health")
