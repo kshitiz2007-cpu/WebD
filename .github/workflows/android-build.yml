@@ -42,8 +42,17 @@ jobs:
       - name: Validate Android project
         working-directory: android-project
         run: |
-          test -f gradlew || (echo "Missing gradlew wrapper" && exit 1)
           test -f settings.gradle || test -f settings.gradle.kts || (echo "Missing settings.gradle" && exit 1)
+          test -f build.gradle || test -f build.gradle.kts || (echo "Missing root build.gradle" && exit 1)
+
+      - name: Generate Gradle wrapper if missing
+        working-directory: android-project
+        run: |
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.9
+          fi
+          chmod +x gradlew
+          test -f gradle/wrapper/gradle-wrapper.jar || (echo "Gradle wrapper generation failed" && exit 1)
 
       - name: Build debug APK
         working-directory: android-project
