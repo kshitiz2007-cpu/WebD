@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const workerUrl = () => (process.env.ANDROID_BUILD_SERVICE_URL || 'https://android-build-worker-production.up.railway.app').replace(/\/+$/, '');
+const workerUrl = () => (process.env.ANDROID_BUILD_SERVICE_URL || '').replace(/\/+$/, '');
 const workerToken = () => process.env.ANDROID_BUILD_SERVICE_TOKEN || process.env.ANDROID_BUILD_TOKEN || '';
 
 async function workerFetch(path: string, init?: RequestInit) {
