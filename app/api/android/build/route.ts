@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     const baseRef = await gh(token, `/repos/${OWNER}/${REPO}/git/ref/heads/${encodeURIComponent(defaultBranch)}`);
     await gh(token, `/repos/${OWNER}/${REPO}/git/refs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: 'refs/heads/' + branch, sha: baseRef.object.sha }) });
     for (const [path, value] of Object.entries(files)) {
-      const safe = path.replace(/^\\/+/, '');
+      const safe = path.replace(/^\/+/, '');
       if (!safe || safe.split('/').includes('..') || safe.startsWith('.git/') || safe.length > 240) throw new Error('Unsafe project path: ' + path);
       await gh(token, `/repos/${OWNER}/${REPO}/contents/${safe.split('/').map(encodeURIComponent).join('/')}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'Android build input ' + buildId, content: Buffer.from(value as string, 'utf8').toString('base64'), branch }) });
     }
