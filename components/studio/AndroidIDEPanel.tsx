@@ -276,6 +276,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
   const handleBuildApk = async () => {
     if (isBuilding) return;
     setIsBuilding(true);
+    setShowOutput(true);
     setBuiltApkBase64(null);
     setLogMessage('Checking Android build worker connection…');
     try {
@@ -297,7 +298,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
         setShowOutput(true); setShowFullLog(true); return;
       }
       const jobId = startData.jobId;
-      const maxPolls = 240;
+      const maxPolls = 300;
       let result: any = null;
       for (let poll = 0; poll < maxPolls; poll++) {
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -306,7 +307,7 @@ export default function AndroidIDEPanel({ onExitAndroid }: { onExitAndroid?: () 
         try { result = JSON.parse(statusRaw); } catch { result = { status: 'failed', error: statusRaw }; }
         if (!statusResponse.ok) throw new Error(result.error || result.detail || 'Build status request failed (HTTP ' + statusResponse.status + ')');
         if (result.status === 'completed' || result.status === 'failed') break;
-        setLogMessage('Gradle build ' + (result.status || 'running') + '…\\nJob: ' + jobId + '\\nElapsed: ' + Math.round((poll + 1) * 2) + 's');
+        setLogMessage(['ANDROID BUILD LIVE LOG', 'Status: ' + (result.status || 'running').toUpperCase(), 'Job: ' + jobId, 'Elapsed: ' + Math.round((poll + 1) * 2) + 's', '', 'GRADLE OUTPUT:', result.log || 'Gradle is starting; waiting for first output…'].join('\\n'));
       }
       if (!result || (result.status !== 'completed' && result.status !== 'failed')) {
         setLogMessage('Build is taking longer than the UI wait limit. Job ID: ' + jobId + '\\nThe worker continues running; please check again shortly.');
