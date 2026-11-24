@@ -60,7 +60,7 @@ def run_build(job_id: str, files: dict):
                 target = safe_path(root, rel)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(content, encoding="utf-8")
-            (root / "gradle.properties").write_text("org.gradle.jvmargs=-Xmx512m -XX:MaxMetaspaceSize=384m -XX:ReservedCodeCacheSize=48m -Xss512k -XX:+UseSerialGC -Dfile.encoding=UTF-8 -XX:-UsePerfData -Dorg.gradle.internal.instrumentation.agent=false\norg.gradle.workers.max=1\norg.gradle.parallel=false\norg.gradle.configureondemand=true\norg.gradle.caching=true\norg.gradle.configuration-cache=false\norg.gradle.kotlin.dsl.precompiled.script.reuse=false\norg.gradle.vfs.watch=false\nandroid.useAndroidX=true\nandroid.enableJetifier=true\nkotlin.compiler.execution.strategy=in-process\nkotlin.daemon.enabled=false\n", encoding="utf-8")
+            (root / "gradle.properties").write_text("org.gradle.jvmargs=-Xmx320m -XX:MaxMetaspaceSize=192m -XX:ReservedCodeCacheSize=32m -Xss512k -XX:+UseSerialGC -Dfile.encoding=UTF-8 -XX:-UsePerfData -Dorg.gradle.internal.instrumentation.agent=false\norg.gradle.workers.max=1\norg.gradle.parallel=false\norg.gradle.daemon=false\norg.gradle.instrumentation.agent=false\norg.gradle.configureondemand=true\norg.gradle.caching=true\norg.gradle.configuration-cache=false\norg.gradle.kotlin.dsl.precompiled.script.reuse=false\norg.gradle.vfs.watch=false\nandroid.useAndroidX=true\nandroid.enableJetifier=true\nkotlin.compiler.execution.strategy=in-process\nkotlin.daemon.enabled=false\n", encoding="utf-8")
             init_script = root / "webd-jvm-target.gradle"
             init_script.write_text("""gradle.projectsEvaluated {
     allprojects {
