@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Clapperboard,
   Layers,
@@ -52,9 +52,9 @@ export default function AnimationStudioPanel({
 
   const [lastSyncKey, setLastSyncKey] = useState<string>(selectedSyncKey);
   const [motionTargetKey, setMotionTargetKey] = useState(selectedSyncKey);
-  type MotionFrame = { id: string; at: number; x: number; y: number; scale: number; rotate: number };
+  type MotionFrame = { id: string; at: number; x: number; y: number; scale: number; rotate: number; opacity: number; blur: number };
   const [keyframes, setKeyframes] = useState<MotionFrame[]>([]);
-  const [frame, setFrame] = useState<MotionFrame>({id:'draft',at:100,x:0,y:0,scale:1,rotate:0});
+  const [frame, setFrame] = useState<MotionFrame>({id:'draft',at:100,x:0,y:0,scale:1,rotate:0,opacity:1,blur:0});
   const [timelineDuration, setTimelineDuration] = useState(1.2);
   const [timelineRepeat, setTimelineRepeat] = useState('1');
   const [heroMotionBundle, setHeroMotionBundle] = useState(false);
@@ -63,6 +63,9 @@ export default function AnimationStudioPanel({
   const [bezier, setBezier] = useState({x1:0.42,y1:0,x2:0.58,y2:1});
   const [scrollLinked, setScrollLinked] = useState(false);
   const [dragFrameId, setDragFrameId] = useState<string | null>(null);
+  const [playhead, setPlayhead] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [tracks, setTracks] = useState({position:true,scale:true,rotation:true,opacity:false,blur:false});
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const easingOptions: Record<string, string> = { smooth: 'cubic-bezier(.22,1,.36,1)', ease: 'cubic-bezier(.25,.1,.25,1)', linear: 'linear', snappy: 'cubic-bezier(.16,1,.3,1)', custom: `cubic-bezier(${bezier.x1},${bezier.y1},${bezier.x2},${bezier.y2})` };
   const springOptions: Record<string,string> = { gentle: 'cubic-bezier(.22,1,.36,1)', bouncy: 'cubic-bezier(.34,1.56,.64,1)', stiff: 'cubic-bezier(.16,1,.3,1)' };
@@ -71,12 +74,12 @@ export default function AnimationStudioPanel({
   const loadHeroPreset = () => {
     setHeroMotionBundle(true);
     setKeyframes([
-      { id: 'hero-0', at: 0, x: 0, y: 35, scale: 0.94, rotate: 0 },
-      { id: 'hero-25', at: 25, x: 0, y: 15, scale: 0.97, rotate: 0 },
-      { id: 'hero-50', at: 50, x: 0, y: 4, scale: 0.99, rotate: 0 },
-      { id: 'hero-100', at: 100, x: 0, y: 0, scale: 1, rotate: 0 },
+      { id: 'hero-0', at: 0, x: 0, y: 35, scale: 0.94, rotate: 0, opacity: 0, blur: 5 },
+      { id: 'hero-25', at: 25, x: 0, y: 15, scale: 0.97, rotate: 0, opacity: 0.5, blur: 2 },
+      { id: 'hero-50', at: 50, x: 0, y: 4, scale: 0.99, rotate: 0, opacity: 0.9, blur: 0 },
+      { id: 'hero-100', at: 100, x: 0, y: 0, scale: 1, rotate: 0, opacity: 1, blur: 0 },
     ]);
-    setFrame({ id: 'hero-100', at: 100, x: 0, y: 0, scale: 1, rotate: 0 });
+    setFrame({ id: 'hero-100', at: 100, x: 0, y: 0, scale: 1, rotate: 0, opacity: 1, blur: 0 });
     setTimelineDuration(1.4);
     setTimelineRepeat('1');
     setDraft(prev => ({ ...prev, reveal: 'none', hover: 'none', loop: 'none', duration: 0.9, delay: 0, easing: 'smooth', staggerChildren: false, once: true }));
@@ -84,7 +87,7 @@ export default function AnimationStudioPanel({
   const timelineCss = () => {
     if (keyframes.length < 2) return null;
     const name = `webd-custom-motion-${(selected?.studioId || 'target').replace(/[^a-zA-Z0-9_-]/g,'')}`;
-    const stops = keyframes.slice().sort((a,b)=>a.at-b.at).map(k=>`  ${k.at}% { transform: translate(${k.x}px, ${k.y}px) scale(${k.scale}) rotate(${k.rotate}deg); }`).join('\n');
+    const stops = keyframes.slice().sort((a,b)=>a.at-b.at).map(k=>`  ${k.at}% { ${tracks.position ? `translate: ${k.x}px ${k.y}px;` : ''} ${tracks.scale ? `scale: ${k.scale};` : ''} ${tracks.rotation ? `rotate: ${k.rotate}deg;` : ''} ${tracks.opacity ? `opacity: ${k.opacity};` : ''} ${tracks.blur ? `filter: blur(${k.blur}px);` : ''} }`).join('\n');
     const repeat = timelineRepeat==='infinite'?'infinite':timelineRepeat;
     const activeEase = timelineEasing === 'spring' ? springOptions[springPreset] : (easingOptions[timelineEasing] || easingOptions.smooth);
     const parentAnimation = `${name} ${timelineDuration}s ${activeEase} ${repeat} forwards`;
@@ -104,6 +107,26 @@ export default function AnimationStudioPanel({
     const reducedMotion = heroMotionBundle || scrollLinked ? `@media (prefers-reduced-motion: reduce) { .${name}, .${name} h1, .${name} h2, .${name} h3, .${name} p, .${name} a, .${name} button { animation: none !important; opacity: 1 !important; transform: none !important; filter: none !important; } }` : '';
     return {name,css:`@keyframes ${name} {\n${stops}\n}\n${bundleCss}\n${reducedMotion}`};
   };
+  const interpolateFrame = (percent:number) => {
+    const sorted=keyframes.slice().sort((a,b)=>a.at-b.at);
+    if(!sorted.length) return null;
+    const right=sorted.find(k=>k.at>=percent)||sorted[sorted.length-1];
+    const left=sorted.slice().reverse().find(k=>k.at<=percent)||sorted[0];
+    const t=Math.max(0,Math.min(1,(percent-left.at)/Math.max(1,right.at-left.at)));
+    return {x:left.x+(right.x-left.x)*t,y:left.y+(right.y-left.y)*t,scale:left.scale+(right.scale-left.scale)*t,rotate:left.rotate+(right.rotate-left.rotate)*t,opacity:left.opacity+(right.opacity-left.opacity)*t,blur:left.blur+(right.blur-left.blur)*t};
+  };
+  const scrubPreview = (percent:number) => {
+    const value=interpolateFrame(percent); setPlayhead(percent);
+    if(!selected||!value)return;
+    const el=document.querySelector(`[data-studio-id="${CSS.escape(selected.studioId)}`) as HTMLElement|null;
+    if(!el)return;
+    if(tracks.position) el.style.translate=`${value.x}px ${value.y}px`;
+    if(tracks.scale) el.style.scale=String(value.scale);
+    if(tracks.rotation) el.style.rotate=`${value.rotate}deg`;
+    if(tracks.opacity) el.style.opacity=String(value.opacity);
+    if(tracks.blur) el.style.filter=`blur(${value.blur}px)`;
+  };
+  useEffect(()=>{if(!isPlaying)return;const timer=window.setInterval(()=>{setPlayhead(p=>{const next=Math.min(100,p+1.6);scrubPreview(next);if(next>=100)setIsPlaying(false);return next;});},30);return()=>window.clearInterval(timer);},[isPlaying,keyframes,selected,tracks]);
   const previewTimeline = () => {
     const result=timelineCss(); if(!result||!selected)return;
     let style=document.getElementById('webd-motion-timeline-preview') as HTMLStyleElement|null;
