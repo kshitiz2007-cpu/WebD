@@ -796,7 +796,7 @@ export default function StudioWorkspace() {
           const withoutOld = oldStart >= 0 && oldEnd > oldStart
             ? baseCss.slice(0, oldStart) + baseCss.slice(oldEnd + customEnd.length)
             : baseCss;
-          const customBlock = config.customCss ? `\\n\\n${customStart}\\n${config.customCss}\\n${customEnd}\\n` : '';
+          const customBlock = config.customCss ? `\n\n${customStart}\n${config.customCss}\n${customEnd}\n` : ''; 
           nextFiles[cssPath] = withoutOld + customBlock;
         }
       }
