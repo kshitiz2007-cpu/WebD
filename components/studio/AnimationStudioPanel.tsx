@@ -58,6 +58,18 @@ export default function AnimationStudioPanel({
   const [timelineDuration, setTimelineDuration] = useState(1.2);
   const [timelineRepeat, setTimelineRepeat] = useState('1');
   const addFrame = () => setKeyframes(current => [...current.filter(k=>k.at!==frame.at),{...frame,id:`frame-${frame.at}-${Date.now()}`}].sort((a,b)=>a.at-b.at));
+  const loadHeroPreset = () => {
+    setKeyframes([
+      { id: 'hero-0', at: 0, x: 0, y: 35, scale: 0.94, rotate: 0 },
+      { id: 'hero-25', at: 25, x: 0, y: 15, scale: 0.97, rotate: 0 },
+      { id: 'hero-50', at: 50, x: 0, y: 4, scale: 0.99, rotate: 0 },
+      { id: 'hero-100', at: 100, x: 0, y: 0, scale: 1, rotate: 0 },
+    ]);
+    setFrame({ id: 'hero-100', at: 100, x: 0, y: 0, scale: 1, rotate: 0 });
+    setTimelineDuration(1.4);
+    setTimelineRepeat('1');
+    setDraft(prev => ({ ...prev, reveal: 'none', hover: 'none', loop: 'none', duration: 0.9, delay: 0, easing: 'smooth', staggerChildren: false, once: true }));
+  };
   const timelineCss = () => {
     if (keyframes.length < 2) return null;
     const name = `webd-custom-motion-${(selected?.studioId || 'target').replace(/[^a-zA-Z0-9_-]/g,'')}`;
@@ -86,12 +98,6 @@ export default function AnimationStudioPanel({
       ? parseAnimationConfigFromElement(selected.className, selected.inlineStyles)
       : { ...DEFAULT_ANIMATION_CONFIG }
   );
-
-  if (selectedSyncKey !== motionTargetKey) {
-    setMotionTargetKey(selectedSyncKey);
-    setKeyframes([]);
-    setFrame({ id: 'draft', at: 100, x: 0, y: 0, scale: 1, rotate: 0 });
-  }
 
   if (selectedSyncKey !== motionTargetKey) {
     setMotionTargetKey(selectedSyncKey);
@@ -204,6 +210,7 @@ export default function AnimationStudioPanel({
             <div><h3 className="text-xs font-semibold text-slate-900">Keyframe Timeline</h3><p className="text-[10px] text-slate-500">Framer-style transform animation</p></div>
             <span className="rounded bg-white px-2 py-1 font-mono text-[10px] text-indigo-700">{keyframes.length} frames</span>
           </div>
+          <button type="button" disabled={!selected} onClick={loadHeroPreset} className="w-full rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-left text-[11px] font-semibold text-indigo-700 disabled:opacity-40">Load Hero Poster preset <span className="font-normal text-indigo-500">· cinematic 1.4s</span></button>
           <div className="grid grid-cols-2 gap-2">
             <label className="text-[10px] font-medium text-slate-600">X · {frame.x}px<input type="range" min={-240} max={240} value={frame.x} onChange={e=>setFrame(v=>({...v,x:Number(e.target.value)}))} className="w-full accent-indigo-600"/></label>
             <label className="text-[10px] font-medium text-slate-600">Y · {frame.y}px<input type="range" min={-240} max={240} value={frame.y} onChange={e=>setFrame(v=>({...v,y:Number(e.target.value)}))} className="w-full accent-indigo-600"/></label>
