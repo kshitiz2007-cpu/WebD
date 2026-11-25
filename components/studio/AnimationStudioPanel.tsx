@@ -51,6 +51,28 @@ export default function AnimationStudioPanel({
     : 'none';
 
   const [lastSyncKey, setLastSyncKey] = useState<string>(selectedSyncKey);
+  type MotionFrame = { id: string; at: number; x: number; y: number; scale: number; rotate: number };
+  const [keyframes, setKeyframes] = useState<MotionFrame[]>([]);
+  const [frame, setFrame] = useState<MotionFrame>({id:'draft',at:100,x:0,y:0,scale:1,rotate:0});
+  const [timelineDuration, setTimelineDuration] = useState(1.2);
+  const [timelineRepeat, setTimelineRepeat] = useState('1');
+  const addFrame = () => setKeyframes(current => [...current.filter(k=>k.at!==frame.at),{...frame,id:`frame-${frame.at}-${Date.now()}`}].sort((a,b)=>a.at-b.at));
+  const timelineCss = () => {
+    if (keyframes.length < 2) return null;
+    const name = `webd-custom-motion-${(selected?.studioId || 'target').replace(/[^a-zA-Z0-9_-]/g,'')}`;
+    const stops = keyframes.slice().sort((a,b)=>a.at-b.at).map(k=>`  ${k.at}% { transform: translate(${k.x}px, ${k.y}px) scale(${k.scale}) rotate(${k.rotate}deg); }`).join('\\n');
+    const repeat = timelineRepeat==='infinite'?'infinite':timelineRepeat;
+    return {name,css:`@keyframes ${name} {\\n${stops}\\n}\\n.${name} { animation: ${name} ${timelineDuration}s cubic-bezier(0.22, 1, 0.36, 1) ${repeat} forwards; }`};
+  };
+  const previewTimeline = () => {
+    const result=timelineCss(); if(!result||!selected)return;
+    let style=document.getElementById('webd-motion-timeline-preview') as HTMLStyleElement|null;
+    if(!style){style=document.createElement('style');style.id='webd-motion-timeline-preview';document.head.appendChild(style);}
+    style.textContent=result.css;
+    const el=document.querySelector(`[data-studio-id="${CSS.escape(selected.studioId)}"]`) as HTMLElement|null;
+    if(el){el.classList.remove(result.name);void el.offsetWidth;el.classList.add(result.name);}
+  };
+  const applyTimeline = () => { const result=timelineCss(); if(result&&selected) onApplyAnimation({...draft,customCss:result.css,customClass:result.name} as ElementAnimationConfig); };
   const [draft, setDraft] = useState<ElementAnimationConfig>(() =>
     selected
       ? parseAnimationConfigFromElement(selected.className, selected.inlineStyles)
@@ -154,6 +176,34 @@ export default function AnimationStudioPanel({
               Click any card, heading, image, or button on the canvas to attach scroll-reveal or hover animations.
             </p>
           )}
+        </section>
+
+
+        <section className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="flex items-center justify-between">
+            <div><h3 className="text-xs font-semibold text-slate-900">Keyframe Timeline</h3><p className="text-[10px] text-slate-500">Framer-style transform animation</p></div>
+            <span className="rounded bg-white px-2 py-1 font-mono text-[10px] text-indigo-700">{keyframes.length} frames</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-[10px] font-medium text-slate-600">X · {frame.x}px<input type="range" min={-240} max={240} value={frame.x} onChange={e=>setFrame(v=>({...v,x:Number(e.target.value)}))} className="w-full accent-indigo-600"/></label>
+            <label className="text-[10px] font-medium text-slate-600">Y · {frame.y}px<input type="range" min={-240} max={240} value={frame.y} onChange={e=>setFrame(v=>({...v,y:Number(e.target.value)}))} className="w-full accent-indigo-600"/></label>
+            <label className="text-[10px] font-medium text-slate-600">Scale · {frame.scale.toFixed(2)}×<input type="range" min={0.25} max={2} step={0.05} value={frame.scale} onChange={e=>setFrame(v=>({...v,scale:Number(e.target.value)}))} className="w-full accent-indigo-600"/></label>
+            <label className="text-[10px] font-medium text-slate-600">Rotate · {frame.rotate}°<input type="range" min={-180} max={180} value={frame.rotate} onChange={e=>setFrame(v=>({...v,rotate:Number(e.target.value)}))} className="w-full accent-indigo-600"/></label>
+          </div>
+          <div className="flex items-end gap-2">
+            <label className="flex-1 text-[10px] font-semibold text-slate-600">Position<select value={frame.at} onChange={e=>setFrame(v=>({...v,at:Number(e.target.value)}))} className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"><option value={0}>Start · 0%</option><option value={25}>25%</option><option value={50}>Middle · 50%</option><option value={75}>75%</option><option value={100}>End · 100%</option></select></label>
+            <button type="button" disabled={!selected} onClick={addFrame} className="h-8 rounded-md bg-indigo-600 px-3 text-[11px] font-semibold text-white disabled:opacity-40">Add frame</button>
+          </div>
+          <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-2">
+            <div className="flex items-center justify-between"><span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Timeline</span><button type="button" onClick={()=>setKeyframes([])} disabled={!keyframes.length} className="text-[10px] font-semibold text-rose-600 disabled:opacity-40">Clear</button></div>
+            <div className="relative h-9 rounded bg-slate-100"><div className="absolute inset-x-2 top-1/2 h-px bg-slate-300"/>{[0,25,50,75,100].map(p=><span key={p} className="absolute top-0 h-full border-l border-slate-300" style={{left:`calc(8px + (100% - 16px) * ${p/100})`}}/>)}{keyframes.map(k=><button key={k.id} type="button" title={`${k.at}%`} onClick={()=>setFrame(k)} className="absolute top-1/2 z-10 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-sm border-2 border-white bg-indigo-600 shadow" style={{left:`calc(8px + (100% - 16px) * ${k.at/100})`}}/>)}</div>
+            {keyframes.length===0?<p className="text-[10px] text-slate-400">Add at least two keyframes to create a sequence.</p>:<div className="flex flex-wrap gap-1">{keyframes.slice().sort((a,b)=>a.at-b.at).map(k=><button key={k.id} type="button" onClick={()=>setFrame(k)} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-mono text-slate-600">{k.at}% · {k.x},{k.y}</button>)}</div>}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-[10px] font-semibold text-slate-600">Duration (s)<input type="number" min={0.1} max={20} step={0.1} value={timelineDuration} onChange={e=>setTimelineDuration(Math.max(0.1,Math.min(20,Number(e.target.value)||1)))} className="mt-1 h-8 w-full rounded-md border border-slate-200 px-2 text-xs"/></label>
+            <label className="text-[10px] font-semibold text-slate-600">Repeat<select value={timelineRepeat} onChange={e=>setTimelineRepeat(e.target.value)} className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"><option value="1">Once</option><option value="2">2 times</option><option value="3">3 times</option><option value="infinite">Loop</option></select></label>
+          </div>
+          <div className="flex gap-2"><button type="button" disabled={!selected||keyframes.length<2} onClick={previewTimeline} className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-semibold text-white disabled:opacity-40"><Play className="h-3 w-3"/>Preview</button><button type="button" disabled={!selected||keyframes.length<2} onClick={applyTimeline} className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] font-semibold text-indigo-700 disabled:opacity-40">Apply CSS</button></div>
         </section>
 
         {/* 1. Scroll-Reveal Presets */}
