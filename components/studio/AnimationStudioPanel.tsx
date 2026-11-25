@@ -60,9 +60,9 @@ export default function AnimationStudioPanel({
   const timelineCss = () => {
     if (keyframes.length < 2) return null;
     const name = `webd-custom-motion-${(selected?.studioId || 'target').replace(/[^a-zA-Z0-9_-]/g,'')}`;
-    const stops = keyframes.slice().sort((a,b)=>a.at-b.at).map(k=>`  ${k.at}% { transform: translate(${k.x}px, ${k.y}px) scale(${k.scale}) rotate(${k.rotate}deg); }`).join('\\n');
+    const stops = keyframes.slice().sort((a,b)=>a.at-b.at).map(k=>`  ${k.at}% { transform: translate(${k.x}px, ${k.y}px) scale(${k.scale}) rotate(${k.rotate}deg); }`).join('\n');
     const repeat = timelineRepeat==='infinite'?'infinite':timelineRepeat;
-    return {name,css:`@keyframes ${name} {\\n${stops}\\n}\\n.${name} { animation: ${name} ${timelineDuration}s cubic-bezier(0.22, 1, 0.36, 1) ${repeat} forwards; }`};
+    return {name,css:`@keyframes ${name} {\n${stops}\n}\n.${name} { animation: ${name} ${timelineDuration}s cubic-bezier(0.22, 1, 0.36, 1) ${repeat} forwards; }`};
   };
   const previewTimeline = () => {
     const result=timelineCss(); if(!result||!selected)return;
