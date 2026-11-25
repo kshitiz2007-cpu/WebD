@@ -89,8 +89,9 @@ export default function AnimationStudioPanel({
 .${name} a, .${name} button { animation: ${name}-action .65s cubic-bezier(.22,1,.36,1) .6s both; transition: transform .2s ease, box-shadow .2s ease; }
 .${name} a:hover, .${name} button:hover { transform: translateY(-2px) scale(1.025); box-shadow: 0 10px 28px rgba(20, 50, 100, .18); }
 .${name} a:nth-of-type(2), .${name} button:nth-of-type(2) { animation-delay: .76s; }
-` : `.${name} { animation: ${parentAnimation}; }`;
-    return {name,css:`@keyframes ${name} {\n${stops}\n}\n${bundleCss}`};
+` : `.${name} { animation: ${parentAnimation; }`;
+    const reducedMotion = heroMotionBundle ? `@media (prefers-reduced-motion: reduce) { .${name}, .${name} h1, .${name} h2, .${name} h3, .${name} p, .${name} a, .${name} button { animation: none !important; opacity: 1 !important; transform: none !important; filter: none !important; } }` : '';
+    return {name,css:`@keyframes ${name} {\n${stops}\n}\n${bundleCss}\n${reducedMotion}`};
   };
   const previewTimeline = () => {
     const result=timelineCss(); if(!result||!selected)return;
@@ -117,6 +118,7 @@ export default function AnimationStudioPanel({
   if (selectedSyncKey !== motionTargetKey) {
     setMotionTargetKey(selectedSyncKey);
     setKeyframes([]);
+    setHeroMotionBundle(false);
     setFrame({ id: 'draft', at: 100, x: 0, y: 0, scale: 1, rotate: 0 });
   }
 
