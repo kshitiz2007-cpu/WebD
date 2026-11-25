@@ -41,6 +41,8 @@ export interface ElementAnimationConfig {
   staggerChildren: boolean;
   staggerStepMs: number; // 40..250
   once: boolean;
+  customCss?: string;
+  customClass?: string;
 }
 
 export const DEFAULT_ANIMATION_CONFIG: ElementAnimationConfig = {
@@ -160,6 +162,7 @@ export function buildAnimationClassesAndStyles(
   }
 
   const combined = [baseClasses, ...addedClasses].filter(Boolean).join(' ').trim();
+  if (config.customClass && config.customCss) addedClasses.push(config.customClass);
   const hasAnimation = addedClasses.length > 0;
 
   return { className: combined, styles, hasAnimation };
