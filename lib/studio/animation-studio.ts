@@ -161,6 +161,7 @@ export function buildAnimationClassesAndStyles(
     styles['--webd-loop-duration'] = null;
   }
   if (config.customClass && config.customCss) addedClasses.push(config.customClass);
+  else if (!config.customCss) { /* keep generated motion styles free of stale custom classes */ }
 
   const combined = [baseClasses, ...addedClasses].filter(Boolean).join(' ').trim();
   if (config.customClass && config.customCss) addedClasses.push(config.customClass);
