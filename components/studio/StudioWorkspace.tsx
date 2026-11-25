@@ -802,7 +802,7 @@ export default function StudioWorkspace() {
       }
       setPendingSelectStudioId(selected.studioId);
       commitFilesMutation(nextFiles, selected.filePath);
-      if (hasAnimation) {
+      if (hasAnimation || config.customCss) {
         window.setTimeout(() => {
           iframeRef.current?.contentWindow?.postMessage(
             { type: 'studio:replay-animations' },
