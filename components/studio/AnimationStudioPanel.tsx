@@ -93,6 +93,12 @@ export default function AnimationStudioPanel({
     setFrame({ id: 'draft', at: 100, x: 0, y: 0, scale: 1, rotate: 0 });
   }
 
+  if (selectedSyncKey !== motionTargetKey) {
+    setMotionTargetKey(selectedSyncKey);
+    setKeyframes([]);
+    setFrame({ id: 'draft', at: 100, x: 0, y: 0, scale: 1, rotate: 0 });
+  }
+
   if (selectedSyncKey !== lastSyncKey) {
     setLastSyncKey(selectedSyncKey);
     setDraft(
