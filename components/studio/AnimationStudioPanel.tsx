@@ -60,10 +60,11 @@ export default function AnimationStudioPanel({
   const [heroMotionBundle, setHeroMotionBundle] = useState(false);
   const [timelineEasing, setTimelineEasing] = useState('smooth');
   const [springPreset, setSpringPreset] = useState('gentle');
+  const [bezier, setBezier] = useState({x1:0.42,y1:0,x2:0.58,y2:1});
   const [scrollLinked, setScrollLinked] = useState(false);
   const [dragFrameId, setDragFrameId] = useState<string | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
-  const easingOptions: Record<string, string> = { smooth: 'cubic-bezier(.22,1,.36,1)', ease: 'cubic-bezier(.25,.1,.25,1)', linear: 'linear', snappy: 'cubic-bezier(.16,1,.3,1)' };
+  const easingOptions: Record<string, string> = { smooth: 'cubic-bezier(.22,1,.36,1)', ease: 'cubic-bezier(.25,.1,.25,1)', linear: 'linear', snappy: 'cubic-bezier(.16,1,.3,1)', custom: `cubic-bezier(${bezier.x1},${bezier.y1},${bezier.x2},${bezier.y2})` };
   const springOptions: Record<string,string> = { gentle: 'cubic-bezier(.22,1,.36,1)', bouncy: 'cubic-bezier(.34,1.56,.64,1)', stiff: 'cubic-bezier(.16,1,.3,1)' };
   const moveFrame = (event: React.PointerEvent<HTMLDivElement>) => { if (!dragFrameId || !timelineRef.current) return; const rect = timelineRef.current.getBoundingClientRect(); const at = Math.max(0, Math.min(100, Math.round(((event.clientX - rect.left) / rect.width) * 100))); setKeyframes(current => current.map(k => k.id === dragFrameId ? { ...k, at } : k).sort((a,b)=>a.at-b.at)); setFrame(current => current.id === dragFrameId ? { ...current, at } : current); };
   const addFrame = () => setKeyframes(current => [...current.filter(k=>k.at!==frame.at),{...frame,id:`frame-${frame.at}-${Date.now()}`}].sort((a,b)=>a.at-b.at));
@@ -254,8 +255,9 @@ export default function AnimationStudioPanel({
             {keyframes.length===0?<p className="text-[10px] text-slate-400">Add at least two keyframes to create a sequence.</p>:<div className="flex flex-wrap gap-1">{keyframes.slice().sort((a,b)=>a.at-b.at).map(k=><button key={k.id} type="button" onClick={()=>setFrame(k)} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-mono text-slate-600">{k.at}% · {k.x},{k.y}</button>)}</div>}
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <label className="text-[10px] font-semibold text-slate-600">Easing<select value={timelineEasing} onChange={e=>setTimelineEasing(e.target.value)} className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"><option value="smooth">Smooth Out</option><option value="ease">Ease</option><option value="snappy">Snappy UI</option><option value="linear">Linear</option><option value="spring">Spring presets</option></select></label>
+            <label className="text-[10px] font-semibold text-slate-600">Easing<select value={timelineEasing} onChange={e=>setTimelineEasing(e.target.value)} className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"><option value="smooth">Smooth Out</option><option value="ease">Ease</option><option value="snappy">Snappy UI</option><option value="linear">Linear</option><option value="spring">Spring presets</option><option value="custom">Bezier editor</option></select></label>
             {timelineEasing === "spring" && <label className="text-[10px] font-semibold text-slate-600">Spring<select value={springPreset} onChange={e=>setSpringPreset(e.target.value)} className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"><option value="gentle">Gentle</option><option value="bouncy">Bouncy</option><option value="stiff">Stiff</option></select></label>}
+            {timelineEasing === "custom" && <div className="col-span-2 grid grid-cols-2 gap-2 rounded border border-slate-200 bg-white p-2">{(["x1","y1","x2","y2"] as const).map((point)=><label key={point} className="text-[10px] text-slate-600">{point.toUpperCase()} · {bezier[point].toFixed(2)}<input type="range" min={0} max={1} step={0.01} value={bezier[point]} onChange={e=>setBezier(v=>({...v,[point]:Number(e.target.value)}))} className="w-full accent-indigo-600"/></label>)}</div>}
           </div>
           <label className="flex items-center gap-2 rounded border border-slate-200 bg-white px-2 py-2 text-[10px] font-medium text-slate-600"><input type="checkbox" checked={scrollLinked} onChange={e=>setScrollLinked(e.target.checked)} className="accent-indigo-600"/> Scroll-linked motion (progress follows page scroll)</label>
           <div className="grid grid-cols-2 gap-2">
