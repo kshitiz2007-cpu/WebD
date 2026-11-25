@@ -72,7 +72,14 @@ export default function AnimationStudioPanel({
     const el=document.querySelector(`[data-studio-id="${CSS.escape(selected.studioId)}"]`) as HTMLElement|null;
     if(el){el.classList.remove(result.name);void el.offsetWidth;el.classList.add(result.name);}
   };
-  const applyTimeline = () => { const result=timelineCss(); if(result&&selected) onApplyAnimation({...draft,customCss:result.css,customClass:result.name} as ElementAnimationConfig); };
+  const applyTimeline = () => {
+    const result = timelineCss();
+    if (!result || !selected) return;
+    const styleId = 'webd-motion-timeline-preview';
+    const previewStyle = document.getElementById(styleId);
+    if (previewStyle) previewStyle.remove();
+    onApplyAnimation({ ...draft, reveal: 'none', hover: 'none', loop: 'none', duration: timelineDuration, easing: 'smooth', customCss: result.css, customClass: result.name } as ElementAnimationConfig);
+  };
   const [draft, setDraft] = useState<ElementAnimationConfig>(() =>
     selected
       ? parseAnimationConfigFromElement(selected.className, selected.inlineStyles)
