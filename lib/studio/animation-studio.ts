@@ -103,7 +103,7 @@ export const EASING_CURVES: Record<AnimationEasing, { label: string; css: string
 export const WEBD_MOTION_CSS_START = '/* WEBD_MOTION_STYLES_START */';
 export const WEBD_MOTION_CSS_END = '/* WEBD_MOTION_STYLES_END */';
 
-const ANIM_CLASS_REGEX = /^(?:webd-reveal|webd-reveal-[a-z-]+|webd-reveal-repeat|webd-hover-[a-z-]+|webd-loop-[a-z-]+|webd-stagger-children|webd-in-view)$/;
+const ANIM_CLASS_REGEX = /^(?:webd-reveal|webd-reveal-[a-z-]+|webd-reveal-repeat|webd-hover-[a-z-]+|webd-loop-[a-z-]+|webd-stagger-children|webd-in-view|webd-custom-motion-[a-zA-Z0-9_-]+)$/;
 
 export function stripAnimationClasses(className: string): string {
   return className
@@ -161,10 +161,8 @@ export function buildAnimationClassesAndStyles(
     styles['--webd-loop-duration'] = null;
   }
   if (config.customClass && config.customCss) addedClasses.push(config.customClass);
-  else if (!config.customCss) { /* keep generated motion styles free of stale custom classes */ }
 
   const combined = [baseClasses, ...addedClasses].filter(Boolean).join(' ').trim();
-  if (config.customClass && config.customCss) addedClasses.push(config.customClass);
   const hasAnimation = addedClasses.length > 0;
 
   return { className: combined, styles, hasAnimation };
