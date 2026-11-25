@@ -93,13 +93,13 @@ export default function AnimationStudioPanel({
 @keyframes ${name}-heading { from { opacity: 0; transform: translateY(24px); filter: blur(5px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
 @keyframes ${name}-copy { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes ${name}-action { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
-.${name} { background-position: center; background-repeat: no-repeat; animation: ${parentAnimation}, ${name}-bg-zoom ${Math.max(6, timelineDuration * 5)}s ease-out 1 forwards; }
+.${name} { background-position: center; background-repeat: no-repeat; animation: ${parentAnimation}, ${name}-bg-zoom ${Math.max(6, timelineDuration * 5)}s ease-out 1 forwards; ${scrollAnimation} }
 .${name} h1, .${name} h2, .${name} h3 { animation: ${name}-heading .85s cubic-bezier(.22,1,.36,1) .22s both; }
 .${name} p { animation: ${name}-copy .7s cubic-bezier(.22,1,.36,1) .42s both; }
 .${name} a, .${name} button { animation: ${name}-action .65s cubic-bezier(.22,1,.36,1) .6s both; transition: transform .2s ease, box-shadow .2s ease; }
 .${name} a:hover, .${name} button:hover { transform: translateY(-2px) scale(1.025); box-shadow: 0 10px 28px rgba(20, 50, 100, .18); }
 .${name} a:nth-of-type(2), .${name} button:nth-of-type(2) { animation-delay: .76s; }
-` : `.${name} { animation: ${parentAnimation}; }`;
+` : `.${name} { animation: ${parentAnimation}; ${scrollAnimation} }`;
     const reducedMotion = heroMotionBundle ? `@media (prefers-reduced-motion: reduce) { .${name}, .${name} h1, .${name} h2, .${name} h3, .${name} p, .${name} a, .${name} button { animation: none !important; opacity: 1 !important; transform: none !important; filter: none !important; } }` : '';
     return {name,css:`@keyframes ${name} {\n${stops}\n}\n${bundleCss}\n${reducedMotion}`};
   };
@@ -253,6 +253,11 @@ export default function AnimationStudioPanel({
             <div className="relative h-9 rounded bg-slate-100"><div className="absolute inset-x-2 top-1/2 h-px bg-slate-300"/>{[0,25,50,75,100].map(p=><span key={p} className="absolute top-0 h-full border-l border-slate-300" style={{left:`calc(8px + (100% - 16px) * ${p/100})`}}/>)}{keyframes.map(k=><button key={k.id} type="button" title={`${k.at}%`} onClick={()=>setFrame(k)} className="absolute top-1/2 z-10 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-sm border-2 border-white bg-indigo-600 shadow" style={{left:`calc(8px + (100% - 16px) * ${k.at/100})`}}/>)}</div>
             {keyframes.length===0?<p className="text-[10px] text-slate-400">Add at least two keyframes to create a sequence.</p>:<div className="flex flex-wrap gap-1">{keyframes.slice().sort((a,b)=>a.at-b.at).map(k=><button key={k.id} type="button" onClick={()=>setFrame(k)} className="rounded border border-slate-200 px-2 py-1 text-[9px] font-mono text-slate-600">{k.at}% · {k.x},{k.y}</button>)}</div>}
           </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-[10px] font-semibold text-slate-600">Easing<select value={timelineEasing} onChange={e=>setTimelineEasing(e.target.value)} className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"><option value="smooth">Smooth Out</option><option value="ease">Ease</option><option value="snappy">Snappy UI</option><option value="linear">Linear</option><option value="spring">Spring presets</option></select></label>
+            {timelineEasing === "spring" && <label className="text-[10px] font-semibold text-slate-600">Spring<select value={springPreset} onChange={e=>setSpringPreset(e.target.value)} className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"><option value="gentle">Gentle</option><option value="bouncy">Bouncy</option><option value="stiff">Stiff</option></select></label>}
+          </div>
+          <label className="flex items-center gap-2 rounded border border-slate-200 bg-white px-2 py-2 text-[10px] font-medium text-slate-600"><input type="checkbox" checked={scrollLinked} onChange={e=>setScrollLinked(e.target.checked)} className="accent-indigo-600"/> Scroll-linked motion (progress follows page scroll)</label>
           <div className="grid grid-cols-2 gap-2">
             <label className="text-[10px] font-semibold text-slate-600">Duration (s)<input type="number" min={0.1} max={20} step={0.1} value={timelineDuration} onChange={e=>setTimelineDuration(Math.max(0.1,Math.min(20,Number(e.target.value)||1)))} className="mt-1 h-8 w-full rounded-md border border-slate-200 px-2 text-xs"/></label>
             <label className="text-[10px] font-semibold text-slate-600">Repeat<select value={timelineRepeat} onChange={e=>setTimelineRepeat(e.target.value)} className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"><option value="1">Once</option><option value="2">2 times</option><option value="3">3 times</option><option value="infinite">Loop</option></select></label>
