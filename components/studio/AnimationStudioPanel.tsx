@@ -118,7 +118,7 @@ export default function AnimationStudioPanel({
   const scrubPreview = (percent:number) => {
     const value=interpolateFrame(percent); setPlayhead(percent);
     if(!selected||!value)return;
-    const el=document.querySelector(`[data-studio-id="${CSS.escape(selected.studioId)}`) as HTMLElement|null;
+    const el=document.querySelector(`[data-studio-id="${CSS.escape(selected.studioId)}"]`) as HTMLElement|null;
     if(!el)return;
     if(tracks.position) el.style.translate=`${value.x}px ${value.y}px`;
     if(tracks.scale) el.style.scale=String(value.scale);
