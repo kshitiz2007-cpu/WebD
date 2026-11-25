@@ -160,6 +160,7 @@ export function buildAnimationClassesAndStyles(
   } else {
     styles['--webd-loop-duration'] = null;
   }
+  if (config.customClass && config.customCss) addedClasses.push(config.customClass);
 
   const combined = [baseClasses, ...addedClasses].filter(Boolean).join(' ').trim();
   if (config.customClass && config.customCss) addedClasses.push(config.customClass);
