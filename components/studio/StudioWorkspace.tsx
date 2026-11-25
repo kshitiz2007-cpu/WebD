@@ -783,12 +783,21 @@ export default function StudioWorkspace() {
         ...project.files,
         [selected.filePath]: updatedSource,
       };
-      if (hasAnimation) {
+      if (hasAnimation || config.customCss) {
         const cssPath =
           project.globalCssPaths.find((p) => Boolean(project.files[p])) ||
           Object.keys(project.files).find((p) => /\.css$/i.test(p));
         if (cssPath) {
-          nextFiles[cssPath] = mergeMotionCssIntoGlobalCss(project.files[cssPath] || '');
+          const baseCss = mergeMotionCssIntoGlobalCss(project.files[cssPath] || '');
+          const customStart = '/* WEBD_CUSTOM_KEYFRAMES_START */';
+          const customEnd = '/* WEBD_CUSTOM_KEYFRAMES_END */';
+          const oldStart = baseCss.indexOf(customStart);
+          const oldEnd = baseCss.indexOf(customEnd);
+          const withoutOld = oldStart >= 0 && oldEnd > oldStart
+            ? baseCss.slice(0, oldStart) + baseCss.slice(oldEnd + customEnd.length)
+            : baseCss;
+          const customBlock = config.customCss ? `\\n\\n${customStart}\\n${config.customCss}\\n${customEnd}\\n` : '';
+          nextFiles[cssPath] = withoutOld + customBlock;
         }
       }
       setPendingSelectStudioId(selected.studioId);
