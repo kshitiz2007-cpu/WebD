@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Clapperboard,
   Layers,
@@ -58,6 +58,14 @@ export default function AnimationStudioPanel({
   const [timelineDuration, setTimelineDuration] = useState(1.2);
   const [timelineRepeat, setTimelineRepeat] = useState('1');
   const [heroMotionBundle, setHeroMotionBundle] = useState(false);
+  const [timelineEasing, setTimelineEasing] = useState('smooth');
+  const [springPreset, setSpringPreset] = useState('gentle');
+  const [scrollLinked, setScrollLinked] = useState(false);
+  const [dragFrameId, setDragFrameId] = useState<string | null>(null);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+  const easingOptions: Record<string, string> = { smooth: 'cubic-bezier(.22,1,.36,1)', ease: 'cubic-bezier(.25,.1,.25,1)', linear: 'linear', snappy: 'cubic-bezier(.16,1,.3,1)' };
+  const springOptions: Record<string,string> = { gentle: 'cubic-bezier(.22,1,.36,1)', bouncy: 'cubic-bezier(.34,1.56,.64,1)', stiff: 'cubic-bezier(.16,1,.3,1)' };
+  const moveFrame = (event: React.PointerEvent<HTMLDivElement>) => { if (!dragFrameId || !timelineRef.current) return; const rect = timelineRef.current.getBoundingClientRect(); const at = Math.max(0, Math.min(100, Math.round(((event.clientX - rect.left) / rect.width) * 100))); setKeyframes(current => current.map(k => k.id === dragFrameId ? { ...k, at } : k).sort((a,b)=>a.at-b.at)); setFrame(current => current.id === dragFrameId ? { ...current, at } : current); };
   const addFrame = () => setKeyframes(current => [...current.filter(k=>k.at!==frame.at),{...frame,id:`frame-${frame.at}-${Date.now()}`}].sort((a,b)=>a.at-b.at));
   const loadHeroPreset = () => {
     setHeroMotionBundle(true);
@@ -77,7 +85,9 @@ export default function AnimationStudioPanel({
     const name = `webd-custom-motion-${(selected?.studioId || 'target').replace(/[^a-zA-Z0-9_-]/g,'')}`;
     const stops = keyframes.slice().sort((a,b)=>a.at-b.at).map(k=>`  ${k.at}% { transform: translate(${k.x}px, ${k.y}px) scale(${k.scale}) rotate(${k.rotate}deg); }`).join('\n');
     const repeat = timelineRepeat==='infinite'?'infinite':timelineRepeat;
-    const parentAnimation = `${name} ${timelineDuration}s cubic-bezier(0.22, 1, 0.36, 1) ${repeat} forwards`;
+    const activeEase = timelineEasing === 'spring' ? springOptions[springPreset] : (easingOptions[timelineEasing] || easingOptions.smooth);
+    const parentAnimation = `${name} ${timelineDuration}s ${activeEase} ${repeat} forwards`;
+    const scrollAnimation = scrollLinked ? 'animation-timeline: scroll(root block); animation-range: entry 0% exit 100%; animation-duration: auto; animation-iteration-count: 1; animation-fill-mode: both;' : '';
     const bundleCss = heroMotionBundle ? `
 @keyframes ${name}-bg-zoom { from { background-size: 100% 100%; } to { background-size: 112% 112%; } }
 @keyframes ${name}-heading { from { opacity: 0; transform: translateY(24px); filter: blur(5px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
