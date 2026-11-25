@@ -51,6 +51,7 @@ export default function AnimationStudioPanel({
     : 'none';
 
   const [lastSyncKey, setLastSyncKey] = useState<string>(selectedSyncKey);
+  const [motionTargetKey, setMotionTargetKey] = useState(selectedSyncKey);
   type MotionFrame = { id: string; at: number; x: number; y: number; scale: number; rotate: number };
   const [keyframes, setKeyframes] = useState<MotionFrame[]>([]);
   const [frame, setFrame] = useState<MotionFrame>({id:'draft',at:100,x:0,y:0,scale:1,rotate:0});
@@ -85,6 +86,12 @@ export default function AnimationStudioPanel({
       ? parseAnimationConfigFromElement(selected.className, selected.inlineStyles)
       : { ...DEFAULT_ANIMATION_CONFIG }
   );
+
+  if (selectedSyncKey !== motionTargetKey) {
+    setMotionTargetKey(selectedSyncKey);
+    setKeyframes([]);
+    setFrame({ id: 'draft', at: 100, x: 0, y: 0, scale: 1, rotate: 0 });
+  }
 
   if (selectedSyncKey !== lastSyncKey) {
     setLastSyncKey(selectedSyncKey);
