@@ -57,8 +57,10 @@ export default function AnimationStudioPanel({
   const [frame, setFrame] = useState<MotionFrame>({id:'draft',at:100,x:0,y:0,scale:1,rotate:0});
   const [timelineDuration, setTimelineDuration] = useState(1.2);
   const [timelineRepeat, setTimelineRepeat] = useState('1');
+  const [heroMotionBundle, setHeroMotionBundle] = useState(false);
   const addFrame = () => setKeyframes(current => [...current.filter(k=>k.at!==frame.at),{...frame,id:`frame-${frame.at}-${Date.now()}`}].sort((a,b)=>a.at-b.at));
   const loadHeroPreset = () => {
+    setHeroMotionBundle(true);
     setKeyframes([
       { id: 'hero-0', at: 0, x: 0, y: 35, scale: 0.94, rotate: 0 },
       { id: 'hero-25', at: 25, x: 0, y: 15, scale: 0.97, rotate: 0 },
@@ -75,7 +77,20 @@ export default function AnimationStudioPanel({
     const name = `webd-custom-motion-${(selected?.studioId || 'target').replace(/[^a-zA-Z0-9_-]/g,'')}`;
     const stops = keyframes.slice().sort((a,b)=>a.at-b.at).map(k=>`  ${k.at}% { transform: translate(${k.x}px, ${k.y}px) scale(${k.scale}) rotate(${k.rotate}deg); }`).join('\n');
     const repeat = timelineRepeat==='infinite'?'infinite':timelineRepeat;
-    return {name,css:`@keyframes ${name} {\n${stops}\n}\n.${name} { animation: ${name} ${timelineDuration}s cubic-bezier(0.22, 1, 0.36, 1) ${repeat} forwards; }`};
+    const parentAnimation = `${name} ${timelineDuration}s cubic-bezier(0.22, 1, 0.36, 1) ${repeat} forwards`;
+    const bundleCss = heroMotionBundle ? `
+@keyframes ${name}-bg-zoom { from { background-size: 100% 100%; } to { background-size: 112% 112%; } }
+@keyframes ${name}-heading { from { opacity: 0; transform: translateY(24px); filter: blur(5px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
+@keyframes ${name}-copy { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ${name}-action { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.${name} { background-position: center; background-repeat: no-repeat; animation: ${parentAnimation}, ${name}-bg-zoom ${Math.max(6, timelineDuration * 5)}s ease-out 1 forwards; }
+.${name} h1, .${name} h2, .${name} h3 { animation: ${name}-heading .85s cubic-bezier(.22,1,.36,1) .22s both; }
+.${name} p { animation: ${name}-copy .7s cubic-bezier(.22,1,.36,1) .42s both; }
+.${name} a, .${name} button { animation: ${name}-action .65s cubic-bezier(.22,1,.36,1) .6s both; transition: transform .2s ease, box-shadow .2s ease; }
+.${name} a:hover, .${name} button:hover { transform: translateY(-2px) scale(1.025); box-shadow: 0 10px 28px rgba(20, 50, 100, .18); }
+.${name} a:nth-of-type(2), .${name} button:nth-of-type(2) { animation-delay: .76s; }
+` : `.${name} { animation: ${parentAnimation}; }`;
+    return {name,css:`@keyframes ${name} {\n${stops}\n}\n${bundleCss}`};
   };
   const previewTimeline = () => {
     const result=timelineCss(); if(!result||!selected)return;
@@ -210,7 +225,7 @@ export default function AnimationStudioPanel({
             <div><h3 className="text-xs font-semibold text-slate-900">Keyframe Timeline</h3><p className="text-[10px] text-slate-500">Framer-style transform animation</p></div>
             <span className="rounded bg-white px-2 py-1 font-mono text-[10px] text-indigo-700">{keyframes.length} frames</span>
           </div>
-          <button type="button" disabled={!selected} onClick={loadHeroPreset} className="w-full rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-left text-[11px] font-semibold text-indigo-700 disabled:opacity-40">Load Hero Poster preset <span className="font-normal text-indigo-500">· cinematic 1.4s</span></button>
+          <button type="button" disabled={!selected} onClick={loadHeroPreset} className="w-full rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-left text-[11px] font-semibold text-indigo-700 disabled:opacity-40">Load Hero Motion Bundle <span className="font-normal text-indigo-500">· background + heading + copy + CTA</span></button>
           <div className="grid grid-cols-2 gap-2">
             <label className="text-[10px] font-medium text-slate-600">X · {frame.x}px<input type="range" min={-240} max={240} value={frame.x} onChange={e=>setFrame(v=>({...v,x:Number(e.target.value)}))} className="w-full accent-indigo-600"/></label>
             <label className="text-[10px] font-medium text-slate-600">Y · {frame.y}px<input type="range" min={-240} max={240} value={frame.y} onChange={e=>setFrame(v=>({...v,y:Number(e.target.value)}))} className="w-full accent-indigo-600"/></label>
