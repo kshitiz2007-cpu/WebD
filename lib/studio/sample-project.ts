@@ -1,6 +1,62 @@
 import { VirtualProject } from './types';
 import { scanProjectStructure } from './project-scanner';
 
+export const BLANK_NEXTJS_FILES: Record<string, string> = {
+  'package.json': JSON.stringify(
+    {
+      name: 'blank-nextjs-app',
+      version: '0.1.0',
+      private: true,
+      dependencies: {
+        next: '^15.4.0',
+        react: '^19.0.0',
+        'react-dom': '^19.0.0',
+        'lucide-react': '^0.500.0',
+      },
+    },
+    null,
+    2
+  ),
+  'app/globals.css': `@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+}
+
+html, body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #ffffff;
+  color: #111827;
+}
+`,
+  'app/layout.tsx': `import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Blank Project',
+  description: 'A clean project canvas',
+};
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}
+`,
+  'app/page.tsx': `export default function HomePage() {
+  return (
+    <main className="min-h-screen">
+    </main>
+  );
+}
+`,
+};
+
 export const STARTER_NEXTJS_FILES: Record<string, string> = {
   'package.json': JSON.stringify(
     {
