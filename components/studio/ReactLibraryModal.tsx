@@ -130,7 +130,7 @@ function ReactLibraryModalInner({
   onImportLibrary,
   onRemoveDependency,
 }: ReactLibraryModalProps) {
-  const [activeTab, setActiveTab] = useState<'ui' | 'project' | 'packages'>('ui');
+  const [activeTab, setActiveTab] = useState<'ui' | 'project' | 'packages' | 'live'>('ui');
   const [targetFile, setTargetFile] = useState(
     selectedTarget?.filePath && files[selectedTarget.filePath]
       ? selectedTarget.filePath
