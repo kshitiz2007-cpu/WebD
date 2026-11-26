@@ -596,7 +596,7 @@ export default function StudioWorkspace() {
         throw new Error('Enter a valid folder path.');
       }
       const markerPath = normalizeProjectFilePath(folder + '/.gitkeep');
-      if (project.files[markerPath]) throw new Error('That folder already exists.');
+      if (Object.prototype.hasOwnProperty.call(project.files, markerPath)) throw new Error('That folder already exists.');
       commitFilesMutation({ ...project.files, [markerPath]: '' }, markerPath, `Created folder ${folder}`);
       return { ok: true };
     } catch (error) {
