@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, File, FileCode2, FilePlus2, Folder, FolderPlus, Pencil, RefreshCw, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, File, FileCode2, FilePlus2, Folder, FolderOpen, FolderPlus, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { getProjectFileTree } from '@/lib/studio/file-manager';
 
 interface Props {
