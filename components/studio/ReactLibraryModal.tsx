@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDownToLine,
   ArrowUpToLine,
@@ -11,6 +11,8 @@ import {
   CornerDownRight,
   Package,
   PackagePlus,
+  ExternalLink,
+  Loader2,
   Pencil,
   Plus,
   Replace,
@@ -170,9 +172,34 @@ function ReactLibraryModalInner({
   const [importMode, setImportMode] = useState<'named' | 'default' | 'namespace'>('named');
   const [identifiersText, setIdentifiersText] = useState('');
   const [pkgSearch, setPkgSearch] = useState('');
+  const [liveSearch, setLiveSearch] = useState('react ui component');
+  const [livePackages, setLivePackages] = useState<Array<{name:string;description:string;version:string;downloads:number;homepage:string;keywords:string[]}>>([]);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const [liveError, setLiveError] = useState('');
 
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const query = liveSearch.trim();
+    if (!query) { setLivePackages([]); return; }
+    let cancelled = false;
+    setLiveLoading(true);
+    setLiveError('');
+    fetch(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(query + ' keywords:react')}&size=24`)
+      .then((response) => { if (!response.ok) throw new Error(`npm registry search failed (${response.status})`); return response.json(); })
+      .then((data) => {
+        if (cancelled) return;
+        const objects = Array.isArray(data.objects) ? data.objects : [];
+        setLivePackages(objects.map((entry: any) => {
+          const p = entry.package || {};
+          return { name: String(p.name || ''), description: String(p.description || ''), version: String(p.version || 'latest'), downloads: Number(entry.score?.detail?.popularity || 0), homepage: String(p.links?.homepage || p.links?.repository || `https://www.npmjs.com/package/${p.name}`), keywords: Array.isArray(p.keywords) ? p.keywords : [] };
+        }).filter((p: {name:string}) => p.name));
+      })
+      .catch((error) => { if (!cancelled) setLiveError(error instanceof Error ? error.message : 'Search unavailable.'); })
+      .finally(() => { if (!cancelled) setLiveLoading(false); });
+    return () => { cancelled = true; };
+  }, [liveSearch]);
 
   const sourceFiles = useMemo(
     () => Object.keys(files).filter((p) => /\.(tsx|jsx|ts|js)$/i.test(p)).sort(),
@@ -649,6 +676,7 @@ function ReactLibraryModalInner({
               { id: 'ui' as const, label: `UI Blocks (${REACT_UI_LIBRARY_ITEMS.length})`, icon: Sparkles },
               { id: 'project' as const, label: `Your Components (${projectComponents.length})`, icon: Box },
               { id: 'packages' as const, label: `npm (${depEntries.length})`, icon: PackagePlus },
+              { id: 'live' as const, label: 'Live Browser', icon: Search },
             ].map((t) => {
               const Icon = t.icon;
               const active = activeTab === t.id;
@@ -1150,6 +1178,43 @@ function ReactLibraryModalInner({
                   </>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Live npm React component browser */}
+        {activeTab === 'live' && (
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5 studio-scroll">
+            <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50/60 p-3">
+              <h3 className="text-sm font-semibold text-slate-900">Live React Component Browser</h3>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">Search npm's live registry for React UI packages. Pick a package to continue through WebD's installer and add it to your reusable components.</p>
+              <div className="mt-3 flex gap-2">
+                <input value={liveSearch} onChange={(e) => setLiveSearch(e.target.value)} placeholder="Search React components, animation, charts..." className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-800 outline-none focus:border-sky-500" />
+                <button type="button" onClick={() => setLiveSearch((q) => q.trim())} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-sky-600 px-3 text-xs font-semibold text-white hover:bg-sky-700"><Search className="h-3.5 w-3.5" />Search</button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {['react animation','react carousel','react charts','react dashboard','react buttons','react backgrounds'].map((q) => <button key={q} type="button" onClick={() => setLiveSearch(q)} className="rounded-full border border-sky-200 bg-white px-2.5 py-1 text-[10px] font-medium text-sky-700 hover:bg-sky-100">{q}</button>)}
+              </div>
+            </div>
+            {liveLoading && <div className="flex items-center gap-2 py-6 text-xs text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Searching live npm registry…</div>}
+            {liveError && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{liveError}</div>}
+            {!liveLoading && !liveError && livePackages.length === 0 && <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-500">No results. Try another search.</div>}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {livePackages.map((pkg) => {
+                const suggestedName = pkg.name.split('/').pop()?.replace(/^react-/, '').replace(/[^a-zA-Z0-9]/g, '') || 'ReactComponent';
+                const componentName = suggestedName.charAt(0).toUpperCase() + suggestedName.slice(1);
+                return <article key={pkg.name} className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-3">
+                  <div>
+                    <div className="flex items-start justify-between gap-2"><h4 className="break-all font-mono text-xs font-semibold text-slate-900">{pkg.name}</h4><span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">v{pkg.version}</span></div>
+                    <p className="mt-1 line-clamp-3 text-[11px] leading-relaxed text-slate-500">{pkg.description || 'React ecosystem package'}</p>
+                    <div className="mt-2 flex flex-wrap gap-1">{pkg.keywords.slice(0,4).map((k) => <span key={k} className="rounded bg-slate-50 px-1.5 py-0.5 text-[9px] text-slate-500">{k}</span>)}</div>
+                  </div>
+                  <div className="mt-3 flex gap-1.5">
+                    <button type="button" onClick={() => { setNpmCommand(`npm install ${pkg.name}`); setNpmComponentName(componentName); setNpmExportName(''); setActiveTab('packages'); setErrorMsg(null); setStatusNotice(null); }} className="inline-flex h-8 flex-1 items-center justify-center gap-1 rounded-md bg-indigo-600 px-2 text-[11px] font-semibold text-white hover:bg-indigo-700"><PackagePlus className="h-3.5 w-3.5" />Install / Setup</button>
+                    <a href={`https://www.npmjs.com/package/${encodeURIComponent(pkg.name)}`} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-slate-200 px-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"><ExternalLink className="h-3.5 w-3.5" />npm</a>
+                  </div>
+                </article>;
+              })}
             </div>
           </div>
         )}
