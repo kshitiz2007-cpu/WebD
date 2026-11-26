@@ -111,6 +111,23 @@ function getElementSlotLabel(code: string, el: ParsedElement): string {
   return `#${el.index} <${el.tagName}> "${clipped}"`;
 }
 
+
+function buildNpmLivePreviewDoc(packageName: string, componentGuess: string) {
+  const safePackage = packageName.replace(/[^@a-zA-Z0-9._/-]/g, '');
+  const safeGuess = componentGuess.replace(/[^a-zA-Z0-9_$]/g, '') || 'Component';
+  return `<!doctype html><html><head><meta charset="utf-8"><style>body{font:14px system-ui;margin:0;padding:16px;color:#111827}#root{min-height:160px;display:grid;place-items:center}.error{color:#b91c1c;white-space:pre-wrap}</style></head><body><div id="root">Loading live component…</div><script type="module">
+const root=document.getElementById('root');
+try {
+ const React=await import('https://esm.sh/react@18.3.1');
+ const ReactDOM=await import('https://esm.sh/react-dom@18.3.1/client');
+ const mod=await import('https://esm.sh/${safePackage}?external=react,react-dom');
+ const C=mod['${safeGuess}']||mod.default||Object.values(mod).find(v=>typeof v==='function'&&v.$typeof===undefined);
+ if(!C) throw new Error('No renderable default or ${safeGuess} export found.');
+ ReactDOM.createRoot(root).render(React.createElement(C,{}));
+} catch(e){root.innerHTML='<div class="error">Live preview could not render this package.<br>'+String(e?.message||e)+'</div>'}
+</script></body></html>`;
+}
+
 export default function ReactLibraryModal(props: ReactLibraryModalProps) {
   if (!props.isOpen) return null;
   return <ReactLibraryModalInner {...props} />;
@@ -1199,7 +1216,7 @@ function ReactLibraryModalInner({
                 {['react animation','react carousel','react charts','react dashboard','react buttons','react backgrounds'].map((q) => <button key={q} type="button" onClick={() => setLiveSearch(q)} className="rounded-full border border-sky-200 bg-white px-2.5 py-1 text-[10px] font-medium text-sky-700 hover:bg-sky-100">{q}</button>)}
               </div>
             </div>
-            {livePreview && <section className="mb-4 rounded-xl border border-indigo-200 bg-indigo-50/50 p-3"><div className="flex items-center justify-between gap-2"><div><h4 className="text-xs font-bold text-slate-900">{livePreview.name}</h4><p className="text-[10px] text-slate-500">v{livePreview.version} · Preview from npm metadata</p></div><button type="button" onClick={()=>setLivePreview(null)} className="rounded border px-2 py-1 text-[10px]">Close</button></div>{livePreview.homepage && <a href={livePreview.homepage} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[10px] text-indigo-700 underline">Open package demo/homepage <ExternalLink className="h-3 w-3"/></a>}<pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-white p-2 text-[10px] leading-relaxed text-slate-700">{livePreview.readme.slice(0,8000)}</pre></section>}
+            {livePreview && <section className="mb-4 overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50/50 p-3"><div className="flex items-center justify-between gap-2"><div><h4 className="text-xs font-bold text-slate-900">{livePreview.name}</h4><p className="text-[10px] text-slate-500">v{livePreview.version} · Isolated live preview</p></div><button type="button" onClick={()=>setLivePreview(null)} className="rounded border px-2 py-1 text-[10px]">Close</button></div><iframe title={`Live preview of ${livePreview.name}`} sandbox="allow-scripts" srcDoc={buildNpmLivePreviewDoc(livePreview.name, livePreview.name.split('/').pop()?.replace(/^react-/,'').replace(/[^a-zA-Z0-9_$]/g,'') || 'Component')} className="mt-2 h-56 w-full rounded-lg border border-slate-200 bg-white" />{livePreview.homepage && <a href={livePreview.homepage} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[10px] text-indigo-700 underline">Open package demo/homepage <ExternalLink className="h-3 w-3"/></a>}<p className="mt-2 text-[10px] text-slate-500">Preview runs in a sandboxed iframe; some packages require specific props or may not be browser-renderable.</p></section>}
             {liveLoading && <div className="flex items-center gap-2 py-6 text-xs text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Searching live npm registry…</div>}
             {liveError && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{liveError}</div>}
             {!liveLoading && !liveError && livePackages.length === 0 && <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-500">No results. Try another search.</div>}
