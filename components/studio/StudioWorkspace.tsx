@@ -1163,6 +1163,25 @@ export default function StudioWorkspace() {
     setCodeDrawerFile(filePath);
   }, []);
 
+  // Keep the file opener, editor, and preview target in sync.
+  const handleOpenProjectFile = useCallback((filePath: string) => {
+    const routePage = project.pages.find((page) => page.filePath === filePath);
+    if (routePage) {
+      handleSelectPage(routePage.route);
+      setCodeDrawerFile(filePath);
+      setIsCodeDrawerOpen(true);
+      return;
+    }
+    const component = projectComponents.find((item) => item.filePath === filePath);
+    if (component) {
+      handleSelectComponent(filePath);
+      setIsCodeDrawerOpen(true);
+      return;
+    }
+    setCodeDrawerFile(filePath);
+    setIsCodeDrawerOpen(true);
+  }, [project.pages, projectComponents, handleSelectPage, handleSelectComponent]);
+
   const handleExitComponentIsolation = useCallback(() => {
     setIsolatedComponentPath(null);
     setSelected(null);
@@ -3378,7 +3397,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
               files={project.files}
               originalFiles={project.originalFiles}
               activeFilePath={codeDrawerFile}
-              onSelectFile={(path) => { setCodeDrawerFile(path); setIsCodeDrawerOpen(true); if (isCompactViewport) setIsProjectFilesOpen(false); }}
+              onSelectFile={(path) => { handleOpenProjectFile(path); if (isCompactViewport) setIsProjectFilesOpen(false); }}
               onCreateFile={handleCreateSourceFile}
               onCreateFolder={handleCreateSourceFolder}
               onRenamePath={handleRenameSourcePath}
@@ -3675,7 +3694,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
             files={project.files}
             originalFiles={project.originalFiles}
             activeFilePath={codeDrawerFile}
-            onSelectFile={setCodeDrawerFile}
+            onSelectFile={handleOpenProjectFile}
             onUpdateFile={handleUpdateFileContent}
             onRevertFile={handleRevertFile}
             onOpenProjectFiles={() => setIsProjectFilesOpen(true)}
