@@ -619,6 +619,14 @@ export default function StudioWorkspace() {
     }
   }, [project.files, codeDrawerFile, commitFilesMutation]);
 
+  const showToastFeedback = useCallback((message: string) => {
+    setActionToast(message);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => {
+      setActionToast(null);
+    }, 2400);
+  }, []);
+
   const handleDeleteSourcePath = useCallback((path: string, isFolder: boolean) => {
     try {
       const targets = isFolder ? Object.keys(project.files).filter((item) => item.startsWith(path.replace(/\/+$/g, '') + '/')) : [path];
@@ -709,14 +717,6 @@ export default function StudioWorkspace() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleUndo, handleRedo]);
-
-  const showToastFeedback = useCallback((message: string) => {
-    setActionToast(message);
-    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => {
-      setActionToast(null);
-    }, 2400);
-  }, []);
 
   useEffect(() => {
     return () => {
