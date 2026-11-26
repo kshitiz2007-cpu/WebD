@@ -1217,7 +1217,7 @@ function ReactLibraryModalInner({
                     <button type="button" disabled={liveInstallLoading===pkg.name} onClick={async () => {
                       setLiveInstallLoading(pkg.name); setErrorMsg(null); setStatusNotice(null);
                       try {
-                        const metaRes = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}`);
+                        const metaRes = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}}`);
                         if (!metaRes.ok) throw new Error(`Package metadata unavailable (${metaRes.status})`);
                         const meta = await metaRes.json();
                         const rawDeps = {...(meta.dependencies || {}), ...(meta.peerDependencies || {})};
