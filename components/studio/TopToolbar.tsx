@@ -52,6 +52,7 @@ interface TopToolbarProps {
   onToggleCodeDrawer: () => void;
   onOpenImportModal: () => void;
   onNewBlankProject: () => void;
+  onAddPage: () => void;
   onOpenMediaLibrary: () => void;
   onOpenTypographyEffects: () => void;
   onOpenLayoutBuilder: () => void;
@@ -107,6 +108,7 @@ export default function TopToolbar({
   onToggleCodeDrawer,
   onOpenImportModal,
   onNewBlankProject,
+  onAddPage,
   onOpenMediaLibrary,
   onOpenTypographyEffects,
   onOpenLayoutBuilder,
@@ -225,6 +227,16 @@ export default function TopToolbar({
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            onClick={onAddPage}
+            title="Create a new blank route/page"
+            aria-label="Create new page"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 sm:h-8 sm:w-auto sm:gap-1.5 sm:px-2.5"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline text-xs font-semibold">Add Page</span>
+          </button>
         </div>
 
         {/* Center Zone: Mode + Viewport + Undo/Redo + Quick Command Palette */}
