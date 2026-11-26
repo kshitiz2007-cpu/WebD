@@ -41,8 +41,8 @@ export default function ProjectFilesPanel({
   const renderNodes = (nodes: ReturnType<typeof getProjectFileTree>, depth = 0): React.ReactNode =>
     nodes.map((node) => {
       const isOpen = expanded[node.path] ?? depth < 1;
-      const matches = !query || node.path.toLowerCase().includes(query.toLowerCase());
-      if (!matches && node.kind === 'file') return null;
+      const matches = !query || node.path.toLowerCase().includes(query.toLowerCase()) || (node.kind === 'folder' && node.children.some((child) => child.path.toLowerCase().includes(query.toLowerCase())));
+      if (!matches) return null;
       const changed = node.kind === 'file' && files[node.path] !== originalFiles[node.path];
       return (
         <React.Fragment key={node.path}>
