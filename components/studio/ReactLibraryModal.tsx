@@ -1234,7 +1234,7 @@ function ReactLibraryModalInner({
                     <button type="button" disabled={liveInstallLoading===pkg.name} onClick={async () => {
                       setLiveInstallLoading(pkg.name); setErrorMsg(null); setStatusNotice(null);
                       try {
-                        const metaRes = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}}`);
+                        const metaRes = await fetch('https://registry.npmjs.org/'+encodeURIComponent(pkg.name)+'/'+encodeURIComponent(pkg.version)));
                         if (!metaRes.ok) throw new Error(`Package metadata unavailable (${metaRes.status})`);
                         const meta = await metaRes.json();
                         const rawDeps = {...(meta.dependencies || {}), ...(meta.peerDependencies || {})};
@@ -1251,7 +1251,7 @@ function ReactLibraryModalInner({
                     }} className="inline-flex h-8 flex-1 items-center justify-center gap-1 rounded-md bg-indigo-600 px-2 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"><PackagePlus className="h-3.5 w-3.5" />{liveInstallLoading===pkg.name?'Installing…':'One-click Install'}</button>
                     <button type="button" onClick={async () => {
                       setLivePreviewLoading(true); setLivePreview(null);
-                      try { const res=await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)`}); if(!res.ok) throw new Error('Metadata unavailable'); const data=await res.json(); setLivePreview({name:pkg.name,version:pkg.version,readme:String(data.readme||pkg.description||'No README preview available.'),homepage:String(data.homepage||pkg.homepage||'')}); }
+                      try { const res=await fetch('https://registry.npmjs.org/'+encodeURIComponent(pkg.name)+'/'+encodeURIComponent(pkg.version))}); if(!res.ok) throw new Error('Metadata unavailable'); const data=await res.json(); setLivePreview({name:pkg.name,version:pkg.version,readme:String(data.readme||pkg.description||'No README preview available.'),homepage:String(data.homepage||pkg.homepage||'')}); }
                       catch(e){setLivePreview({name:pkg.name,version:pkg.version,readme:e instanceof Error?e.message:'Preview unavailable',homepage:pkg.homepage});}
                       setLivePreviewLoading(false);
                     }} className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-slate-200 px-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">{livePreviewLoading?'Loading…':'Preview'}</button>
