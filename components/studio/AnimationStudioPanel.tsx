@@ -267,7 +267,7 @@ export default function AnimationStudioPanel({
             <label className="text-[10px] font-medium text-slate-600">Y · {frame.y}px<input type="range" min={-240} max={240} value={frame.y} onChange={e=>setFrame(v=>({...v,y:Number(e.target.value)}))} className="w-full accent-indigo-600"/></label>
             <label className="text-[10px] font-medium text-slate-600">Scale · {frame.scale.toFixed(2)}×<input type="range" min={0.25} max={2} step={0.05} value={frame.scale} onChange={e=>setFrame(v=>({...v,scale:Number(e.target.value)}))} className="w-full accent-indigo-600"/></label>
             <label className="text-[10px] font-medium text-slate-600">Rotate · {frame.rotate}°<input type="range" min={-180} max={180} value={frame.rotate} onChange={e=>setFrame(v=>({...v,rotate:Number(e.target.value)}))} className="w-full accent-indigo-600"/></label>
-             <label className="text-[10px] font-medium text-slate-600">Opacity · {frame.opacity.toFixed(2)}<input type="range" min={0} max={1} step={0.05} value={frame.opacity} onChange={e=>setFrame(v=>({...v,opacity:Number(e.target.value})))} className="w-full accent-indigo-600"/></label>
+            <label className="text-[10px] font-medium text-slate-600">Opacity · {frame.opacity.toFixed(2)}<input type="range" min={0} max={1} step={0.05} value={frame.opacity} onChange={(e) => setFrame((v) => ({ ...v, opacity: Number(e.target.value) }))} className="w-full accent-indigo-600" /></label>
              <label className="text-[10px] font-medium text-slate-600">Blur · {frame.blur}px<input type="range" min={0} max={20} value={frame.blur} onChange={e=>setFrame(v=>({...v,blur:Number(e.target.value})))} className="w-full accent-indigo-600"/></label>
           </div>
           <div className="flex items-end gap-2">
