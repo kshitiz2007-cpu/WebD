@@ -591,8 +591,8 @@ export default function StudioWorkspace() {
 
   const handleCreateSourceFolder = useCallback((rawPath: string) => {
     try {
-      const folder = rawPath.trim().replace(/\\\\/g, '/').replace(/^\\/+|\\/+$/g, '');
-      if (!folder || folder.split('/').some((part) => !part || part === '.' || part === '..') || /[<>:"|?*\\u0000-\\u001f]/.test(folder)) {
+      const folder = rawPath.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+      if (!folder || folder.split('/').some((part) => !part || part === '.' || part === '..') || /[<>:"|?*\u0000-\u001f]/.test(folder)) {
         throw new Error('Enter a valid folder path.');
       }
       const markerPath = normalizeProjectFilePath(folder + '/.gitkeep');
