@@ -176,6 +176,9 @@ function ReactLibraryModalInner({
   const [livePackages, setLivePackages] = useState<Array<{name:string;description:string;version:string;downloads:number;homepage:string;keywords:string[]}>>([]);
   const [liveLoading, setLiveLoading] = useState(false);
   const [liveError, setLiveError] = useState('');
+  const [livePreview, setLivePreview] = useState<{name:string;version:string;readme:string;homepage:string}|null>(null);
+  const [livePreviewLoading, setLivePreviewLoading] = useState(false);
+  const [liveInstallLoading, setLiveInstallLoading] = useState<string|null>(null);
 
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -1196,6 +1199,7 @@ function ReactLibraryModalInner({
                 {['react animation','react carousel','react charts','react dashboard','react buttons','react backgrounds'].map((q) => <button key={q} type="button" onClick={() => setLiveSearch(q)} className="rounded-full border border-sky-200 bg-white px-2.5 py-1 text-[10px] font-medium text-sky-700 hover:bg-sky-100">{q}</button>)}
               </div>
             </div>
+            {livePreview && <section className="mb-4 rounded-xl border border-indigo-200 bg-indigo-50/50 p-3"><div className="flex items-center justify-between gap-2"><div><h4 className="text-xs font-bold text-slate-900">{livePreview.name}</h4><p className="text-[10px] text-slate-500">v{livePreview.version} · Preview from npm metadata</p></div><button type="button" onClick={()=>setLivePreview(null)} className="rounded border px-2 py-1 text-[10px]">Close</button></div>{livePreview.homepage && <a href={livePreview.homepage} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[10px] text-indigo-700 underline">Open package demo/homepage <ExternalLink className="h-3 w-3"/></a>}<pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-white p-2 text-[10px] leading-relaxed text-slate-700">{livePreview.readme.slice(0,8000)}</pre></section>}
             {liveLoading && <div className="flex items-center gap-2 py-6 text-xs text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Searching live npm registry…</div>}
             {liveError && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{liveError}</div>}
             {!liveLoading && !liveError && livePackages.length === 0 && <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-500">No results. Try another search.</div>}
@@ -1210,7 +1214,30 @@ function ReactLibraryModalInner({
                     <div className="mt-2 flex flex-wrap gap-1">{pkg.keywords.slice(0,4).map((k) => <span key={k} className="rounded bg-slate-50 px-1.5 py-0.5 text-[9px] text-slate-500">{k}</span>)}</div>
                   </div>
                   <div className="mt-3 flex gap-1.5">
-                    <button type="button" onClick={() => { setNpmCommand(`npm install ${pkg.name}`); setNpmComponentName(componentName); setNpmExportName(''); setActiveTab('packages'); setErrorMsg(null); setStatusNotice(null); }} className="inline-flex h-8 flex-1 items-center justify-center gap-1 rounded-md bg-indigo-600 px-2 text-[11px] font-semibold text-white hover:bg-indigo-700"><PackagePlus className="h-3.5 w-3.5" />Install / Setup</button>
+                    <button type="button" disabled={liveInstallLoading===pkg.name} onClick={async () => {
+                      setLiveInstallLoading(pkg.name); setErrorMsg(null); setStatusNotice(null);
+                      try {
+                        const metaRes = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}`);
+                        if (!metaRes.ok) throw new Error(`Package metadata unavailable (${metaRes.status})`);
+                        const meta = await metaRes.json();
+                        const rawDeps = {...(meta.dependencies || {}), ...(meta.peerDependencies || {})};
+                        const resolvedDeps = Object.entries(rawDeps).filter(([name]) => name !== 'react' && name !== 'react-dom' && name !== 'next').map(([packageName, version]) => ({packageName,version:String(version)}));
+                        const guess = pkg.name.split('/').pop()?.replace(/^react-/, '').replace(/[^a-zA-Z0-9]/g, '') || 'ReactComponent';
+                        const componentName = guess.charAt(0).toUpperCase()+guess.slice(1);
+                        const exportsMap = meta.exports && typeof meta.exports === 'object' ? meta.exports : {};
+                        const exportGuess = Object.keys(exportsMap).find((key) => key !== '.' && key.startsWith('./') && !key.includes('css'))?.replace('./','') || 'default';
+                        const res = onImportLibrary({packageName:pkg.name,version:pkg.version,importMode:exportGuess==='default'?'default':'named',identifiers:[exportGuess==='default'?componentName+'Primitive':exportGuess],targetFilePath:resolvedTargetFile,componentLibraryName:componentName,componentExportName:exportGuess,dependencyPackages:resolvedDeps});
+                        if(!res.ok) throw new Error(res.error || 'Import failed');
+                        setStatusNotice(`Installed ${pkg.name} with ${resolvedDeps.length} resolved dependencies`);
+                        setLiveInstallLoading(null);
+                      } catch(e) { setErrorMsg(e instanceof Error ? e.message : 'One-click installation failed'); setLiveInstallLoading(null); }
+                    }} className="inline-flex h-8 flex-1 items-center justify-center gap-1 rounded-md bg-indigo-600 px-2 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"><PackagePlus className="h-3.5 w-3.5" />{liveInstallLoading===pkg.name?'Installing…':'One-click Install'}</button>
+                    <button type="button" onClick={async () => {
+                      setLivePreviewLoading(true); setLivePreview(null);
+                      try { const res=await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)`}); if(!res.ok) throw new Error('Metadata unavailable'); const data=await res.json(); setLivePreview({name:pkg.name,version:pkg.version,readme:String(data.readme||pkg.description||'No README preview available.'),homepage:String(data.homepage||pkg.homepage||'')}); }
+                      catch(e){setLivePreview({name:pkg.name,version:pkg.version,readme:e instanceof Error?e.message:'Preview unavailable',homepage:pkg.homepage});}
+                      setLivePreviewLoading(false);
+                    }} className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-slate-200 px-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">{livePreviewLoading?'Loading…':'Preview'}</button>
                     <a href={`https://www.npmjs.com/package/${encodeURIComponent(pkg.name)}`} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-slate-200 px-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"><ExternalLink className="h-3.5 w-3.5" />npm</a>
                   </div>
                 </article>;
