@@ -2966,6 +2966,14 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         iconKey: 'export',
       },
       {
+        id: 'tool:new-blank-project',
+        label: 'New Blank Project',
+        description: 'Reset workspace to a clean Next.js project canvas',
+        category: 'tools',
+        keywords: ['new', 'blank', 'empty', 'project', 'starter', 'scratch'],
+        iconKey: 'import',
+      },
+      {
         id: 'tool:import-project',
         label: 'Import ZIP or GitHub Repository',
         description: 'Load an existing Next.js, React, or HTML project into studio',
@@ -3257,6 +3265,9 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
           break;
         case 'tool:export-production':
           handleOpenExportModal();
+          break;
+        case 'tool:new-blank-project':
+          handleNewBlankProject();
           break;
         case 'tool:import-project':
           setIsImportOpen(true);
