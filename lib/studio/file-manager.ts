@@ -13,6 +13,7 @@ export function normalizeProjectFilePath(input: string): string {
     throw new Error('The path contains characters that are not supported.');
   }
   const fileName = segments[segments.length - 1];
+  if (fileName === '.gitkeep') return segments.join('/');
   const extension = fileName.includes('.') ? fileName.split('.').pop()!.toLowerCase() : '';
   if (!SUPPORTED_SOURCE_FILE_EXTENSIONS.has(extension)) {
     throw new Error('Supported files: TSX, TS, JSX, JS, CSS, JSON, MD, MDX, HTML, SVG, TXT, YAML.');
