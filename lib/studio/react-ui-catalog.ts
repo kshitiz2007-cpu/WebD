@@ -1413,6 +1413,26 @@ export default function UiBarChartCard({
   </div>
 </div>`,
   },
+
+  {
+    id: 'ui-bottom-navbar',
+    componentName: 'UiBottomNavbar',
+    title: 'Responsive Bottom Navbar',
+    category: 'Navigation',
+    description: 'Mobile-first bottom navigation with accessible active state and four destinations.',
+    tags: ['bottom navbar', 'mobile', 'navigation', 'tab bar'],
+    packages: [],
+    defaultProps: { brand: 'Workspace' },
+    componentSource: `'use client';
+import React, { useState } from 'react';
+export default function UiBottomNavbar({ brand = 'Workspace' }: { brand?: string }) {
+  const [active, setActive] = useState('Home');
+  const items = [{label:'Home',icon:'⌂'},{label:'Projects',icon:'▦'},{label:'Activity',icon:'◷'},{label:'Profile',icon:'◉'}];
+  return <nav aria-label={brand + ' navigation'} className="fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-xl items-center justify-around border-t border-slate-200 bg-white/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-lg backdrop-blur">{items.map(item => <button key={item.label} type="button" aria-current={active===item.label?'page':undefined} onClick={()=>setActive(item.label)} className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl px-2 py-1 text-[10px] font-medium ${active===item.label?'text-indigo-600':'text-slate-500 hover:text-slate-900'}`}><span aria-hidden="true" className="text-xl leading-5">{item.icon}</span><span>{item.label}</span></button>)}</nav>;
+}`,
+    inlineJsx: `<nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-xl items-center justify-around border-t border-slate-200 bg-white/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-lg backdrop-blur">{[['⌂','Home'],['▦','Projects'],['◷','Activity'],['◉','Profile']].map(([icon,label],index)=><a key={label} href="#" className={`flex flex-1 flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-medium ${index===0?'text-indigo-600':'text-slate-500'}`}><span aria-hidden="true" className="text-xl">{icon}</span><span>{label}</span></a>)}</nav>`,
+  },
+
   ...EXTRA_REACT_UI_LIBRARY_ITEMS,
 ];
 
