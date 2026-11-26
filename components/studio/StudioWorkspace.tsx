@@ -142,7 +142,7 @@ import {
   saveDraftToStorage,
   subscribeDraftStorage,
 } from '@/lib/studio/draft-storage';
-import { createProjectFromFiles, STARTER_NEXTJS_FILES } from '@/lib/studio/sample-project';
+import { createProjectFromFiles, BLANK_NEXTJS_FILES, STARTER_NEXTJS_FILES } from '@/lib/studio/sample-project';
 import { scanProjectStructure } from '@/lib/studio/project-scanner';
 import { createProjectFile, deleteProjectFile, normalizeProjectFilePath, renameProjectFile, renameProjectFolder } from '@/lib/studio/file-manager';
 import { createPageFile, type PageTemplatePreset } from '@/lib/studio/page-generator';
@@ -1189,6 +1189,27 @@ export default function StudioWorkspace() {
     setPseudoState('default');
     setCodeDrawerFile(activePage.filePath);
   }, [activePage.filePath]);
+
+  const handleNewBlankProject = useCallback(() => {
+    if (!window.confirm('Start a new blank project? This replaces the current project in the workspace. Save a draft first if you want to keep it.')) return;
+    const blankProject = createProjectFromFiles(BLANK_NEXTJS_FILES, 'Blank Next.js Project', 'blank-nextjs-app');
+    setProject(blankProject);
+    setHistoryPast([]);
+    setHistoryFuture([]);
+    setHistoryTimeline([{ id: 'cp-blank-initial', label: 'Blank Project', timestamp: 'Start', files: BLANK_NEXTJS_FILES }]);
+    setHistoryIndex(0);
+    setActiveRoute('/');
+    setCodeDrawerFile('app/page.tsx');
+    setIsCodeDrawerOpen(false);
+    setIsProjectFilesOpen(false);
+    setIsolatedComponentPath(null);
+    setSelected(null);
+    setMultiSelected([]);
+    setLockedIds([]);
+    setHiddenIds([]);
+    setPseudoState('default');
+    setInteractionMode('design');
+  }, []);
 
   const handleCreatePage = useCallback(
     (title: string, slug: string, template: PageTemplatePreset, customTemplateCode?: string, customTemplateCss?: string): { ok: boolean; error?: string } => {
@@ -3324,6 +3345,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
   return (
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-slate-50 text-slate-900">
       <TopToolbar
+        onNewBlankProject={handleNewBlankProject}
         projectName={project.name}
         pages={project.pages}
         activeRoute={activePage.route}
