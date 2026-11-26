@@ -1248,6 +1248,18 @@ export default function StudioWorkspace() {
     [project.framework, project.files, project.pages, commitFilesMutation]
   );
 
+  const handleAddBlankPage = useCallback(() => {
+    let pageNumber = 2;
+    let slug = `page-${String(pageNumber).padStart(2, '0')}`;
+    while (project.pages.some((page) => page.route === `/${slug}`)) {
+      pageNumber += 1;
+      slug = `page-${String(pageNumber).padStart(2, '0')}`;
+    }
+    const result = handleCreatePage(`Page ${String(pageNumber).padStart(2, '0')}`, slug, 'blank');
+    if (result.ok) showToastFeedback(`Created / ${slug} — new blank page`);
+    else showToastFeedback(result.error || 'Could not create page');
+  }, [project.pages, handleCreatePage, showToastFeedback]);
+
   const handleDeletePage = useCallback((route: string): boolean => {
     const page = project.pages.find((item) => item.route === route);
     if (!page || page.route === '/' || project.pages.length <= 1) return false;
@@ -3357,6 +3369,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-slate-50 text-slate-900">
       <TopToolbar
         onNewBlankProject={handleNewBlankProject}
+        onAddPage={handleAddBlankPage}
         projectName={project.name}
         pages={project.pages}
         activeRoute={activePage.route}
