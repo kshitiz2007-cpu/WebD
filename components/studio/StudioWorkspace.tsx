@@ -621,9 +621,9 @@ export default function StudioWorkspace() {
 
   const handleDeleteSourcePath = useCallback((path: string, isFolder: boolean) => {
     try {
-      const targets = isFolder ? Object.keys(project.files).filter((item) => item.startsWith(path.replace(/\\/+$/g, '') + '/')) : [path];
+      const targets = isFolder ? Object.keys(project.files).filter((item) => item.startsWith(path.replace(/\/+$/g, '') + '/')) : [path];
       if (targets.length === 0) return false;
-      if (!isFolder && /(^|\\/)page\\.(tsx|jsx|ts|js)$/i.test(path)) {
+      if (!isFolder && /page\.(tsx|jsx|ts|js)$/i.test(path)) {
         const protectedRoot = path === 'app/page.tsx' || path === 'src/app/page.tsx' || path === 'pages/index.tsx' || path === 'src/pages/index.tsx';
         if (protectedRoot) {
           window.alert('The root route is protected. Use the Pages tab to manage route pages.');
