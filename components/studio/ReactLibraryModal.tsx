@@ -115,17 +115,31 @@ function getElementSlotLabel(code: string, el: ParsedElement): string {
 function buildNpmLivePreviewDoc(packageName: string, componentGuess: string) {
   const safePackage = packageName.replace(/[^@a-zA-Z0-9._/-]/g, '');
   const safeGuess = componentGuess.replace(/[^a-zA-Z0-9_$]/g, '') || 'Component';
-  return `<!doctype html><html><head><meta charset="utf-8"><style>body{font:14px system-ui;margin:0;padding:16px;color:#111827}#root{min-height:160px;display:grid;place-items:center}.error{color:#b91c1c;white-space:pre-wrap}</style></head><body><div id="root">Loading live component…</div><script type="module">
-const root=document.getElementById('root');
-try {
- const React=await import('https://esm.sh/react@18.3.1');
- const ReactDOM=await import('https://esm.sh/react-dom@18.3.1/client');
- const mod=await import('https://esm.sh/${safePackage}?external=react,react-dom');
- const C=mod['${safeGuess}']||mod.default||Object.values(mod).find(v=>typeof v==='function'&&v.$typeof===undefined);
- if(!C) throw new Error('No renderable default or ${safeGuess} export found.');
- ReactDOM.createRoot(root).render(React.createElement(C,{}));
-} catch(e){root.innerHTML='<div class="error">Live preview could not render this package.<br>'+String(e?.message||e)+'</div>'}
-</script></body></html>`;
+  const reactUrl = 'https://esm.sh/react@18.3.1';
+  const jsxUrl = 'https://esm.sh/react@18.3.1/jsx-runtime';
+  const jsxDevUrl = 'https://esm.sh/react@18.3.1/jsx-dev-runtime';
+  const reactDomUrl = 'https://esm.sh/react-dom@18.3.1/client';
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+  body{font:14px system-ui;margin:0;padding:16px;color:#111827;background:#fff}
+  #root{min-height:160px;display:grid;place-items:center}
+  .error{color:#b91c1c;white-space:pre-wrap;overflow-wrap:anywhere}
+  .hint{color:#64748b;font-size:12px;margin-top:8px}
+  </style>
+  <script type="importmap">{"imports":{"react":"${reactUrl}","react-dom":"https://esm.sh/react-dom@18.3.1","react-dom/client":"${reactDomUrl}","react/jsx-runtime":"${jsxUrl}","react/jsx-dev-runtime":"${jsxDevUrl}"}}</script>
+  </head><body><div id="root">Loading live component…</div><script type="module">
+  const root=document.getElementById('root');
+  try {
+    const React=await import('react');
+    const ReactDOM=await import('react-dom/client');
+    const mod=await import('https://esm.sh/${safePackage}?bundle&external=react,react-dom');
+    const guess='${safeGuess}';
+    const C=mod[guess]||mod.default||Object.values(mod).find(v=>typeof v==='function');
+    if(!C) throw new Error('No component export found. Package exports: '+Object.keys(mod).join(', '));
+    ReactDOM.createRoot(root).render(React.createElement(C,{}));
+  } catch(e) {
+    root.innerHTML='<div class="error">Live preview could not render this package.<br>'+String(e?.message||e)+'<p class="hint">This package may require specific props, styles, browser APIs, or may not support browser rendering.</p></div>';
+  }
+  </script></body></html>`;
 }
 
 export default function ReactLibraryModal(props: ReactLibraryModalProps) {
