@@ -50,7 +50,7 @@ export default function ProjectFilesPanel({
             {node.kind === 'folder' ? (
               <button type="button" onClick={() => setExpanded((prev) => ({ ...prev, [node.path]: !isOpen }))} className="flex min-w-0 flex-1 items-center gap-1.5 px-1.5 py-1.5 text-left">
                 {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                <Folder size={14} className="shrink-0 text-amber-300" />
+                {isOpen ? <FolderOpen size={14} className="shrink-0 text-amber-300" /> : <Folder size={14} className="shrink-0 text-amber-300" />}
                 <span className="truncate">{node.name}</span>
               </button>
             ) : (
