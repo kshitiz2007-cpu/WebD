@@ -3678,6 +3678,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
             onSelectFile={setCodeDrawerFile}
             onUpdateFile={handleUpdateFileContent}
             onRevertFile={handleRevertFile}
+            onOpenProjectFiles={() => setIsProjectFilesOpen(true)}
           />
         </div>
 
