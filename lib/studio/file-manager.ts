@@ -31,6 +31,7 @@ export function getProjectFileTree(files: Record<string, string>) {
   type Node = { name: string; path: string; kind: 'folder' | 'file'; children: Node[] };
   const root: Node = { name: '', path: '', kind: 'folder', children: [] };
   for (const path of Object.keys(files).sort((a, b) => a.localeCompare(b))) {
+    if (path.split('/').pop() === '.gitkeep') continue;
     const parts = path.split('/');
     let current = root;
     parts.forEach((part, index) => {
