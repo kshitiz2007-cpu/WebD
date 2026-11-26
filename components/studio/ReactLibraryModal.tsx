@@ -173,53 +173,31 @@ function ReactLibraryModalInner({
 
   const [myLibrary, setMyLibrary] = useState<ReactUiLibraryEntry[]>([]);
   const [libraryReady, setLibraryReady] = useState(false);
-
   React.useEffect(() => {
     try {
-      const saved = window.localStorage.getItem('webd:component-library:v1');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) setMyLibrary(parsed.filter((item) => item && typeof item.id === 'string' && typeof item.componentSource === 'string'));
+      const raw = window.localStorage.getItem('webd:component-library:v1');
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (Array.isArray(saved)) setMyLibrary(saved.filter((item) => item && typeof item.id === 'string' && typeof item.componentSource === 'string'));
       }
-    } catch {
-      // A malformed library should not prevent the editor from opening.
-    }
+    } catch { /* Ignore invalid saved component data. */ }
     setLibraryReady(true);
   }, []);
-
   const persistMyLibrary = (next: ReactUiLibraryEntry[]) => {
     setMyLibrary(next);
-    try {
-      window.localStorage.setItem('webd:component-library:v1', JSON.stringify(next));
-    } catch {
-      setErrorMsg('Could not save to My Library. Browser storage may be full or disabled.');
-    }
+    try { window.localStorage.setItem('webd:component-library:v1', JSON.stringify(next)); }
+    catch { setErrorMsg('Could not save My Library. Browser storage may be full or disabled.'); }
   };
-
   const saveCurrentToLibrary = () => {
     const item = { ...activeUiEntry, id: `saved-${activeUiEntry.id}` };
     persistMyLibrary([item, ...myLibrary.filter((saved) => saved.id !== item.id)]);
     setStatusNotice(`${item.title} saved to My Library on this browser.`);
   };
-
   const applySavedComponent = (item: ReactUiLibraryEntry) => {
-    setErrorMsg(null);
-    const result = onApplyUiComponent({
-      targetFilePath: resolvedTargetFile,
-      targetElementIndex: resolvedElementIndex,
-      entry: item,
-      action: 'insert',
-      position: 'after',
-      integrationMode: 'component',
-      customProps: item.defaultProps,
-    });
-    if (!result.ok) {
-      setErrorMsg(result.error || 'Could not insert saved component.');
-      return;
-    }
-    setStatusNotice(`Inserted <${item.componentName} /> into ${resolvedTargetFile}`);
+    const result = onApplyUiComponent({ targetFilePath: resolvedTargetFile, targetElementIndex: resolvedElementIndex, entry: item, action: 'insert', position: 'after', integrationMode: 'component', customProps: item.defaultProps });
+    if (!result.ok) setErrorMsg(result.error || 'Could not insert saved component.');
+    else setStatusNotice(`Inserted <${item.componentName} /> into ${resolvedTargetFile}`);
   };
-
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -730,28 +708,23 @@ function ReactLibraryModalInner({
           <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5 studio-scroll space-y-3">
             <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-3">
               <h3 className="text-xs font-semibold text-indigo-950">My Library</h3>
-              <p className="mt-1 text-[11px] leading-relaxed text-indigo-800">Save built-in blocks here and reuse them in any WebD project opened in this browser. Source and default props are stored locally.</p>
-              {activeTab === 'saved' && <button type="button" onClick={saveCurrentToLibrary} className="mt-2 rounded-lg bg-indigo-600 px-3 py-2 text-[11px] font-semibold text-white">Save selected UI block to My Library</button>}
+              <p className="mt-1 text-[11px] leading-relaxed text-indigo-800">Save built-in UI blocks and reuse them in WebD projects on this browser.</p>
+              <button type="button" onClick={saveCurrentToLibrary} className="mt-2 rounded-lg bg-indigo-600 px-3 py-2 text-[11px] font-semibold text-white">Save selected UI block</button>
             </div>
             {!libraryReady ? <p className="text-xs text-slate-500">Loading saved components…</p> : myLibrary.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-500">No saved components yet. Open UI Blocks, select one, then save it here.</div>
-            ) : (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {myLibrary.map((item) => (
-                  <article key={item.id} className="rounded-xl border border-slate-200 bg-white p-3">
-                    <div className="text-xs font-semibold text-slate-900">{item.title}</div>
-                    <p className="mt-1 text-[10px] text-slate-500">{item.description}</p>
-                    <div className="mt-3 flex gap-2">
-                      <button type="button" onClick={() => applySavedComponent(item)} className="flex-1 rounded-lg bg-indigo-600 px-3 py-2 text-[11px] font-semibold text-white">Insert into page</button>
-                      <button type="button" onClick={() => persistMyLibrary(myLibrary.filter((saved) => saved.id !== item.id))} className="rounded-lg border border-slate-200 px-3 py-2 text-[11px] font-semibold text-slate-600">Remove</button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
+              <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-500">No saved components yet. Select a block in UI Blocks, then save it here.</div>
+            ) : <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {myLibrary.map((item) => <article key={item.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="text-xs font-semibold text-slate-900">{item.title}</div>
+                <p className="mt-1 text-[10px] text-slate-500">{item.description}</p>
+                <div className="mt-3 flex gap-2">
+                  <button type="button" onClick={() => applySavedComponent(item)} className="flex-1 rounded-lg bg-indigo-600 px-3 py-2 text-[11px] font-semibold text-white">Insert into page</button>
+                  <button type="button" onClick={() => persistMyLibrary(myLibrary.filter((saved) => saved.id !== item.id))} className="rounded-lg border border-slate-200 px-3 py-2 text-[11px] font-semibold text-slate-600">Remove</button>
+                </div>
+              </article>)}
+            </div>}
           </div>
         )}
-
         {/* Status / Error Banner */}
         {(statusNotice || errorMsg) && (
           <div className="border-b border-slate-200 px-4 py-2 sm:px-5">
