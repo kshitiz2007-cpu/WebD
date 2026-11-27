@@ -1999,7 +1999,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         const videoSnippet = isHtml
           ? `<video src="${cleanSrc}" autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none;"></video>`
           : `<video src="${cleanSrc}" autoPlay muted loop playsInline style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0, pointerEvents: 'none' }} />`;
-        const updated = insertJsxSnippetIntoSource({ targetCode: parentPatched, targetElementIndex: selected.elementIndex, position: 'before', jsxSnippet: videoSnippet });
+        const updated = insertJsxSnippetIntoSource({ targetCode: parentPatched, targetElementIndex: selected.elementIndex, position: 'inside-start', jsxSnippet: videoSnippet });
         if (!updated || updated === parentPatched) return;
         commitFilesMutation({ ...registered.nextFiles, [selected.filePath]: updated }, selected.filePath);
         return;
