@@ -3307,13 +3307,12 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         {showLeftPanel && (
           <div
             className={
-              isCompactViewport
+              (isCompactViewport
                 ? isPhoneViewport
                   ? 'absolute inset-x-0 bottom-0 z-40 flex h-[72vh] max-h-[580px] rounded-t-2xl shadow-2xl overflow-hidden'
                   : 'absolute inset-y-0 left-0 z-40 flex shadow-xl'
-                : 'hidden lg:flex h-full shrink-0'
+                : 'hidden lg:flex h-full shrink-0') + ' webd-editor-left-dock'
             }
-            className="webd-editor-left-dock"
           >
             <PagesLayersPanel
               pages={project.pages}
@@ -3769,13 +3768,12 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         {showRightPanel && (
           <div
             className={
-              isCompactViewport
+              (isCompactViewport
                 ? isPhoneViewport
                   ? 'absolute inset-x-0 bottom-0 z-40 flex h-[74vh] max-h-[620px] rounded-t-2xl shadow-2xl overflow-hidden'
                   : 'absolute inset-y-0 right-0 z-40 flex shadow-xl'
-                : 'hidden lg:flex h-full shrink-0'
+                : 'hidden lg:flex h-full shrink-0') + ' webd-editor-right-dock'
             }
-            className="webd-editor-right-dock"
           >
             <StyleInspectorPanel
               selected={selected}
