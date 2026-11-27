@@ -1214,7 +1214,7 @@ export default function VisualCanvas({
       aria-label="Visual design canvas"
       onWheel={handleStageWheel}
       onPointerDown={startStagePan}
-      className={`studio-canvas-grid relative flex min-w-0 flex-1 flex-col items-stretch overflow-auto px-2.5 pt-0 pb-20 lg:px-5 lg:pb-5 ${
+      className={`webd-reference-canvas studio-canvas-grid relative flex min-w-0 flex-1 flex-col items-stretch overflow-auto px-2.5 pt-0 pb-20 lg:px-5 lg:pb-5 ${
         spacePanActive ? 'cursor-grab active:cursor-grabbing' : ''
       }`}
     >
