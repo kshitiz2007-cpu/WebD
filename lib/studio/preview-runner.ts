@@ -1685,6 +1685,23 @@ function runLogicRule(rule, event) {
       }
       resolveVirtualAssetsInDom();
     } else if (msg.type === 'studio:replay-animations') {
+      // Replay all CSS animations across the preview, including entrance and custom animations.
+      var animatedNodes = document.querySelectorAll('*');
+      var replayNodes = [];
+      for (var ri = 0; ri < animatedNodes.length; ri++) {
+        var replayNode = animatedNodes[ri];
+        var replayStyle = window.getComputedStyle(replayNode);
+        if (replayStyle.animationName && replayStyle.animationName !== 'none') {
+          replayNodes.push({ node: replayNode, animation: replayNode.style.animation, animationName: replayNode.style.animationName });
+          replayNode.style.animation = 'none';
+        }
+      }
+      // Force layout so the browser discards the current animation timeline.
+      void document.body.offsetHeight;
+      replayNodes.forEach(function(item) {
+        item.node.style.animation = item.animation;
+        if (!item.animation && item.animationName) item.node.style.animationName = item.animationName;
+      });
       initMotionReveals(true);
     } else if (msg.type === 'studio:ping-tree') {
       if (msg.selectStudioId) {
