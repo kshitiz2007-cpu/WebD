@@ -1967,7 +1967,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
   );
 
   const handleInsertMediaAsset = useCallback(
-    (asset: { name: string; type: string; dataUrl: string }, mode: 'normal' | 'cutout' = 'normal') => {
+    (asset: { name: string; type: string; dataUrl: string }, mode: 'normal' | 'cutout' | 'background' = 'normal') => {
       if (!selected) return;
       const registered = registerMediaAssetInProjectFiles(
         project.files,
@@ -1985,6 +1985,25 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
       const currentSource = registered.nextFiles[selected.filePath];
       if (!currentSource) return;
       const isHtml = /\.html?$/i.test(selected.filePath);
+
+      if (mode === 'background' && (mediaKind === 'image' || mediaKind === 'video')) {
+        const backgroundStyles = { position: 'relative', isolation: 'isolate', overflow: 'hidden', minHeight: '320px' };
+        const parentPatched = applyElementPatchToSource(currentSource, selected.elementIndex, isHtml, { styles: backgroundStyles });
+        if (mediaKind === 'image') {
+          const updated = applyElementPatchToSource(parentPatched, selected.elementIndex, isHtml, {
+            styles: { backgroundImage: `url("${cleanSrc}")`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' },
+          });
+          commitFilesMutation({ ...registered.nextFiles, [selected.filePath]: updated }, selected.filePath);
+          return;
+        }
+        const videoSnippet = isHtml
+          ? `<video src="${cleanSrc}" autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none;"></video>`
+          : `<video src="${cleanSrc}" autoPlay muted loop playsInline style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0, pointerEvents: 'none' }} />`;
+        const updated = insertJsxSnippetIntoSource({ targetCode: parentPatched, targetElementIndex: selected.elementIndex, position: 'before', jsxSnippet: videoSnippet });
+        if (!updated || updated === parentPatched) return;
+        commitFilesMutation({ ...registered.nextFiles, [selected.filePath]: updated }, selected.filePath);
+        return;
+      }
 
       if (matchingTag || (mediaKind === 'image' && selected.src)) {
         const updatedCode = applyElementPatchToSource(
