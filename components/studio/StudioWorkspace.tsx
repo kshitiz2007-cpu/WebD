@@ -3236,7 +3236,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
   );
 
   return (
-    <div className="flex h-dvh w-full flex-col overflow-hidden bg-slate-50 text-slate-900">
+    <div className="webd-editor-shell flex h-dvh w-full flex-col overflow-hidden bg-slate-950 text-slate-100">
       <TopToolbar
         projectName={project.name}
         pages={project.pages}
@@ -3313,6 +3313,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
                   : 'absolute inset-y-0 left-0 z-40 flex shadow-xl'
                 : 'hidden lg:flex h-full shrink-0'
             }
+            className="webd-editor-left-dock"
           >
             <PagesLayersPanel
               pages={project.pages}
@@ -3774,6 +3775,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
                   : 'absolute inset-y-0 right-0 z-40 flex shadow-xl'
                 : 'hidden lg:flex h-full shrink-0'
             }
+            className="webd-editor-right-dock"
           >
             <StyleInspectorPanel
               selected={selected}
