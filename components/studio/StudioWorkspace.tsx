@@ -3343,6 +3343,10 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
                 handleCreateComponent(name, preset);
                 if (isCompactViewport) setCompactLeftOpen(false);
               }}
+              onInsertSnippet={(snippet) => {
+                handleInsertLayoutBlock(snippet);
+                showToastFeedback('Component inserted into current page');
+              }}
               onInsertComponentOnPage={(compPath) => {
                 handleInsertComponentOnPage(compPath);
                 if (isCompactViewport) setCompactLeftOpen(false);
