@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import ComponentsStudioPanel from './ComponentsStudioPanel';
 import {
   ChevronDown,
   ChevronRight,
@@ -71,6 +72,7 @@ interface PagesLayersPanelProps {
   onSelectLayer: (studioId: string) => void;
   onClose?: () => void;
   isBottomSheet?: boolean;
+  onInsertSnippet?: (snippet: string) => void;
 }
 
 export default function PagesLayersPanel({
@@ -101,6 +103,7 @@ export default function PagesLayersPanel({
   onSelectLayer,
   onClose,
   isBottomSheet = false,
+  onInsertSnippet,
 }: PagesLayersPanelProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [layerSearch, setLayerSearch] = useState('');
@@ -500,6 +503,8 @@ export default function PagesLayersPanel({
           </div>
         ) : (
           <div className="space-y-2">
+            <ComponentsStudioPanel onInsertSnippet={(snippet) => onInsertSnippet?.(snippet)} />
+
             {onCreateComponent && (
               <div className="space-y-1">
                 <div className="flex items-center gap-1">
