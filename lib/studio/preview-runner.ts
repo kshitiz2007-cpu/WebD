@@ -1685,24 +1685,43 @@ function runLogicRule(rule, event) {
       }
       resolveVirtualAssetsInDom();
     } else if (msg.type === 'studio:replay-animations') {
-      // Replay all CSS animations across the preview, including entrance and custom animations.
+      // Restart stylesheet-defined and inline CSS animations by resetting computed animation properties.
       var animatedNodes = document.querySelectorAll('*');
       var replayNodes = [];
       for (var ri = 0; ri < animatedNodes.length; ri++) {
         var replayNode = animatedNodes[ri];
         var replayStyle = window.getComputedStyle(replayNode);
-        if (replayStyle.animationName && replayStyle.animationName !== 'none') {
-          replayNodes.push({ node: replayNode, animation: replayNode.style.animation, animationName: replayNode.style.animationName });
-          replayNode.style.animation = 'none';
+        var names = replayStyle.animationName;
+        if (names && names !== 'none') {
+          replayNodes.push({
+            node: replayNode,
+            name: names,
+            duration: replayStyle.animationDuration,
+            delay: replayStyle.animationDelay,
+            timing: replayStyle.animationTimingFunction,
+            iteration: replayStyle.animationIterationCount,
+            direction: replayStyle.animationDirection,
+            fill: replayStyle.animationFillMode,
+            playState: replayStyle.animationPlayState
+          });
+          replayNode.style.animationName = 'none';
         }
       }
-      // Force layout so the browser discards the current animation timeline.
-      void document.body.offsetHeight;
-      replayNodes.forEach(function(item) {
-        item.node.style.animation = item.animation;
-        if (!item.animation && item.animationName) item.node.style.animationName = item.animationName;
+      // Read layout to commit the reset, then restore the computed animation timeline next frame.
+      void document.documentElement.offsetHeight;
+      requestAnimationFrame(function() {
+        replayNodes.forEach(function(item) {
+          item.node.style.animationName = item.name;
+          item.node.style.animationDuration = item.duration;
+          item.node.style.animationDelay = item.delay;
+          item.node.style.animationTimingFunction = item.timing;
+          item.node.style.animationIterationCount = item.iteration;
+          item.node.style.animationDirection = item.direction;
+          item.node.style.animationFillMode = item.fill;
+          item.node.style.animationPlayState = item.playState;
+        });
+        initMotionReveals(true);
       });
-      initMotionReveals(true);
     } else if (msg.type === 'studio:ping-tree') {
       if (msg.selectStudioId) {
         SELECTED_ID = msg.selectStudioId;
