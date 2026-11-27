@@ -1686,7 +1686,7 @@ function runLogicRule(rule, event) {
       resolveVirtualAssetsInDom();
     } else if (msg.type === 'studio:replay-animations') {
       // Replay WebD transition reveals, loop presets, and regular CSS keyframe animations.
-      var replaySelector = '.webd-reveal, .webd-stagger-children, [class*="webd-loop-"]';
+      var replaySelector = '.webd-reveal, .webd-stagger-children, [class*="webd-loop-"], [class*="webd-custom-motion-"]';
       var replayMotionNodes = Array.prototype.slice.call(document.querySelectorAll(replaySelector));
       replayMotionNodes.forEach(function(node) {
         node.classList.remove('webd-in-view');
