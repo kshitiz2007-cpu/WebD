@@ -3429,11 +3429,9 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         onOpenDraftsModal={() => setIsDraftsOpen(true)}
       />
 
-      <div className="absolute right-4 top-[4.25rem] z-[70]">
-        <button type="button" onClick={handleReplayAnimations} title="Replay all page motion effects" aria-label="Replay Motion" className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-white/95 px-3 py-2 text-xs font-semibold text-indigo-700 shadow-md backdrop-blur hover:bg-indigo-50 active:scale-95">
-          <RotateCcw className="h-3.5 w-3.5" /> Replay Motion
-        </button>
-      </div>
+      <button type="button" onClick={handleReplayAnimations} title="Replay Motion — replay all page motion effects" aria-label="Replay Motion" className="fixed bottom-24 right-4 z-[100] flex h-12 w-12 items-center justify-center rounded-full border border-indigo-300/50 bg-indigo-600 text-white shadow-xl shadow-indigo-900/20 transition-all hover:scale-105 hover:bg-indigo-700 active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2">
+        <RotateCcw className="h-5 w-5" />
+      </button>
 
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
