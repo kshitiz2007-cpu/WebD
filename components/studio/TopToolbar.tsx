@@ -179,7 +179,7 @@ export default function TopToolbar({
   };
 
   return (
-    <header className="relative z-50 w-full shrink-0 border-b border-slate-200 bg-white">
+    <header className="webd-editor-topbar relative z-50 w-full shrink-0 border-b border-slate-200 bg-white">
       <div className="flex h-12 items-center justify-between gap-2 px-2.5 sm:px-3 lg:gap-3 lg:px-4">
         {/* Left Zone: Panel Toggle + Brand + Page Selector */}
         <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">

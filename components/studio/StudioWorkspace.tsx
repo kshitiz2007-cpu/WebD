@@ -3236,7 +3236,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
   );
 
   return (
-    <div className="flex h-dvh w-full flex-col overflow-hidden bg-slate-50 text-slate-900">
+    <div className="webd-editor-shell flex h-dvh w-full flex-col overflow-hidden bg-slate-950 text-slate-100">
       <TopToolbar
         projectName={project.name}
         pages={project.pages}
@@ -3307,11 +3307,11 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         {showLeftPanel && (
           <div
             className={
-              isCompactViewport
+              (isCompactViewport
                 ? isPhoneViewport
                   ? 'absolute inset-x-0 bottom-0 z-40 flex h-[72vh] max-h-[580px] rounded-t-2xl shadow-2xl overflow-hidden'
                   : 'absolute inset-y-0 left-0 z-40 flex shadow-xl'
-                : 'hidden lg:flex h-full shrink-0'
+                : 'hidden lg:flex h-full shrink-0') + ' webd-editor-left-dock'
             }
           >
             <PagesLayersPanel
@@ -3342,6 +3342,10 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
               onCreateComponent={(name, preset) => {
                 handleCreateComponent(name, preset);
                 if (isCompactViewport) setCompactLeftOpen(false);
+              }}
+              onInsertSnippet={(snippet) => {
+                handleInsertLayoutBlock(snippet);
+                showToastFeedback('Component inserted into current page');
               }}
               onInsertComponentOnPage={(compPath) => {
                 handleInsertComponentOnPage(compPath);
@@ -3764,11 +3768,11 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         {showRightPanel && (
           <div
             className={
-              isCompactViewport
+              (isCompactViewport
                 ? isPhoneViewport
                   ? 'absolute inset-x-0 bottom-0 z-40 flex h-[74vh] max-h-[620px] rounded-t-2xl shadow-2xl overflow-hidden'
                   : 'absolute inset-y-0 right-0 z-40 flex shadow-xl'
-                : 'hidden lg:flex h-full shrink-0'
+                : 'hidden lg:flex h-full shrink-0') + ' webd-editor-right-dock'
             }
           >
             <StyleInspectorPanel

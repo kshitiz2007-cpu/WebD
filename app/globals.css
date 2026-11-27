@@ -30,3 +30,26 @@
 .studio-scroll::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+
+/* Reference-inspired compact, dark visual editor chrome */
+.webd-editor-shell { background: #101317; color: #e5e7eb; }
+.webd-editor-topbar { background: #171a1f !important; border-color: #2b3038 !important; color: #e5e7eb; }
+.webd-editor-topbar button, .webd-editor-topbar select { border-color: #303640 !important; }
+.webd-editor-topbar [class*="text-slate-900"], .webd-editor-topbar [class*="text-slate-700"], .webd-editor-topbar [class*="text-slate-800"] { color: #e5e7eb !important; }
+.webd-editor-topbar [class*="bg-white"], .webd-editor-topbar [class*="bg-slate-50"], .webd-editor-topbar [class*="bg-slate-100"] { background-color: #1b2026 !important; }
+.webd-editor-left-dock, .webd-editor-right-dock { background: #171a1f; border-color: #2a3038; color: #d1d5db; }
+.webd-editor-left-dock > aside, .webd-editor-right-dock > aside { background: #171a1f !important; border-color: #2a3038 !important; color: #d1d5db !important; }
+.webd-editor-left-dock [class*="border-slate-200"], .webd-editor-right-dock [class*="border-slate-200"] { border-color: #303640 !important; }
+.webd-editor-left-dock [class*="text-slate-900"], .webd-editor-right-dock [class*="text-slate-900"], .webd-editor-left-dock [class*="text-slate-800"], .webd-editor-right-dock [class*="text-slate-800"], .webd-editor-left-dock [class*="text-slate-700"], .webd-editor-right-dock [class*="text-slate-700"], .webd-editor-left-dock [class*="text-slate-600"], .webd-editor-right-dock [class*="text-slate-600"] { color: #cbd5e1 !important; }
+.webd-editor-left-dock [class*="bg-white"], .webd-editor-right-dock [class*="bg-white"], .webd-editor-left-dock [class*="bg-slate-50"], .webd-editor-right-dock [class*="bg-slate-50"], .webd-editor-left-dock [class*="bg-slate-100"], .webd-editor-right-dock [class*="bg-slate-100"] { background-color: #20252c !important; }
+.webd-editor-left-dock input, .webd-editor-left-dock textarea, .webd-editor-left-dock select, .webd-editor-right-dock input, .webd-editor-right-dock textarea, .webd-editor-right-dock select { background: #20252c !important; color: #e5e7eb !important; border-color: #343b45 !important; }
+.webd-editor-left-dock button:hover, .webd-editor-right-dock button:hover { background-color: #29313a; }
+.webd-editor-left-dock [class*="bg-indigo-50"], .webd-editor-right-dock [class*="bg-indigo-50"] { background-color: #242f48 !important; }
+.webd-editor-left-dock [class*="text-indigo-"], .webd-editor-right-dock [class*="text-indigo-"] { color: #93b4ff !important; }
+.webd-editor-left-dock [class*="bg-emerald-50"], .webd-editor-right-dock [class*="bg-emerald-50"] { background-color: #16352e !important; }
+.webd-editor-left-dock [class*="text-emerald-"], .webd-editor-right-dock [class*="text-emerald-"] { color: #6ee7b7 !important; }
+.webd-reference-canvas { background-color: #111419 !important; background-image: radial-gradient(#343942 1px, transparent 1px) !important; background-size: 22px 22px !important; }
+.webd-reference-canvas > div.sticky { background: #15191e !important; border-bottom: 1px solid #2a3038; }
+.webd-editor-shell .studio-scroll::-webkit-scrollbar-thumb { background: #414853; }
+@media (max-width: 1023px) { .webd-editor-left-dock, .webd-editor-right-dock { border-radius: 14px 14px 0 0; } }
