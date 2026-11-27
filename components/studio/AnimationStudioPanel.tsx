@@ -153,7 +153,7 @@ export default function AnimationStudioPanel({
     setMotionTargetKey(selectedSyncKey);
     setKeyframes([]);
     setHeroMotionBundle(false);
-    setFrame({ id: 'draft', at: 100, x: 0, y: 0, scale: 1, rotate: 0 });
+    setFrame({ id: 'draft', at: 100, x: 0, y: 0, scale: 1, rotate: 0, opacity: 1, blur: 0 });
   }
 
   if (selectedSyncKey !== lastSyncKey) {
