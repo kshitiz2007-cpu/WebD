@@ -176,13 +176,18 @@ function buildDesignerBridgeScript(
     var nodes = Array.prototype.slice.call(document.querySelectorAll('.webd-reveal, .webd-stagger-children'));
     if (forceReplay) {
       nodes.forEach(function(n) { n.classList.remove('webd-in-view'); });
-      var loopNodes = document.querySelectorAll('[class*="webd-loop-"]');
-      for (var li = 0; li < loopNodes.length; li++) {
-        var ln = loopNodes[li];
-        ln.style.animation = 'none';
-        void ln.offsetWidth;
-        ln.style.animation = '';
+      // Replay every CSS animation in the preview (custom motion, FX, typography, imported components).
+      var animatedNodes = document.querySelectorAll('*');
+      var animationRestores = [];
+      for (var ai = 0; ai < animatedNodes.length; ai++) {
+        var an = animatedNodes[ai];
+        var computedAnimation = window.getComputedStyle(an).animationName;
+        if (!computedAnimation || computedAnimation === 'none') continue;
+        animationRestores.push({ node: an, animation: an.style.animation });
+        an.style.animation = 'none';
       }
+      void document.body.offsetHeight;
+      animationRestores.forEach(function(item) { item.node.style.animation = item.animation; });
       void document.body.offsetHeight;
     }
     if (nodes.length === 0) return;
