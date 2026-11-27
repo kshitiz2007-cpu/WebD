@@ -688,7 +688,7 @@ function ReactLibraryModalInner({
                   aria-selected={active}
                   onClick={() => {
                     setErrorMsg(null);
-                    setActiveTab(t.id);
+                    setActiveTab(t.id as 'ui' | 'saved' | 'project' | 'packages');
                   }}
                   className={`inline-flex items-center gap-1.5 border-b-2 pb-2 text-[11px] sm:text-xs font-semibold whitespace-nowrap transition-colors ${
                     active
