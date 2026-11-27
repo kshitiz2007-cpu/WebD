@@ -3466,6 +3466,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
             }
           >
             <PagesLayersPanel
+              onInsertSnippet={(snippet) => handleInsertLayoutBlock(snippet)}
               pages={project.pages}
               activeRoute={activePage.route}
               onSelectPage={(route) => {
