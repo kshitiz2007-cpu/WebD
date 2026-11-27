@@ -1685,7 +1685,16 @@ function runLogicRule(rule, event) {
       }
       resolveVirtualAssetsInDom();
     } else if (msg.type === 'studio:replay-animations') {
-      // Restart stylesheet-defined and inline CSS animations by resetting computed animation properties.
+      // Replay WebD transition reveals, loop presets, and regular CSS keyframe animations.
+      var replaySelector = '.webd-reveal, .webd-stagger-children, [class*="webd-loop-"]';
+      var replayMotionNodes = Array.prototype.slice.call(document.querySelectorAll(replaySelector));
+      replayMotionNodes.forEach(function(node) {
+        node.classList.remove('webd-in-view');
+        var classes = Array.prototype.slice.call(node.classList).filter(function(cls) { return cls.indexOf('webd-loop-') === 0; });
+        classes.forEach(function(cls) { node.classList.remove(cls); });
+        node.__webdReplayLoopClasses = classes;
+      });
+      // Also restart any CSS keyframe animations, including stylesheet-only declarations.
       var animatedNodes = document.querySelectorAll('*');
       var replayNodes = [];
       for (var ri = 0; ri < animatedNodes.length; ri++) {
@@ -1707,9 +1716,13 @@ function runLogicRule(rule, event) {
           replayNode.style.animationName = 'none';
         }
       }
-      // Read layout to commit the reset, then restore the computed animation timeline next frame.
+      // Commit the reset to layout before restoring loop classes and animation timelines.
       void document.documentElement.offsetHeight;
       requestAnimationFrame(function() {
+        replayMotionNodes.forEach(function(node) {
+          (node.__webdReplayLoopClasses || []).forEach(function(cls) { node.classList.add(cls); });
+          delete node.__webdReplayLoopClasses;
+        });
         replayNodes.forEach(function(item) {
           item.node.style.animationName = item.name;
           item.node.style.animationDuration = item.duration;
