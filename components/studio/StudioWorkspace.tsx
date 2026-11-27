@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Code2, FileCode2, Layers, Search, SlidersHorizontal, Wrench } from 'lucide-react';
+import { Code2, FileCode2, Layers, Search, SlidersHorizontal, Wrench, RotateCcw } from 'lucide-react';
 import LogicPanel from './LogicPanel';
 import AnimationStudioPanel from './AnimationStudioPanel';
 import ExportProductionModal from './ExportProductionModal';
@@ -3428,6 +3428,13 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         onQuickSaveDraft={handleQuickSaveDraft}
         onOpenDraftsModal={() => setIsDraftsOpen(true)}
       />
+
+      <div className="absolute right-4 top-[4.25rem] z-[70]">
+        <button type="button" onClick={handleReplayAnimations} title="Replay all page motion effects" aria-label="Replay Motion" className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-white/95 px-3 py-2 text-xs font-semibold text-indigo-700 shadow-md backdrop-blur hover:bg-indigo-50 active:scale-95">
+          <RotateCcw className="h-3.5 w-3.5" /> Replay Motion
+        </button>
+      </div>
+
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {isAndroidIdeOpen && <AndroidIDEPanel onExitAndroid={() => setIsAndroidIdeOpen(false)} />}
