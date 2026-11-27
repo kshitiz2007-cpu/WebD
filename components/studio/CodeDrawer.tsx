@@ -6,6 +6,7 @@ import {
   Check,
   Code2,
   Copy,
+  FolderTree,
   Maximize2,
   Minimize2,
   Moon,
@@ -35,6 +36,7 @@ interface CodeDrawerProps {
   onSelectFile: (path: string) => void;
   onUpdateFile: (path: string, content: string) => void;
   onRevertFile: (path: string) => void;
+  onOpenProjectFiles?: () => void;
 }
 
 export default function CodeDrawer({
@@ -46,6 +48,7 @@ export default function CodeDrawer({
   onSelectFile,
   onUpdateFile,
   onRevertFile,
+  onOpenProjectFiles,
 }: CodeDrawerProps) {
   const code = files[activeFilePath] ?? '';
   const orig = originalFiles[activeFilePath] ?? '';
@@ -181,6 +184,11 @@ export default function CodeDrawer({
             ))}
           </select>
 
+          {onOpenProjectFiles && (
+            <button type="button" onClick={onOpenProjectFiles} title="Open full project file explorer" className="inline-flex h-7 items-center gap-1 rounded border border-slate-700 px-2 text-[11px] text-slate-300 hover:bg-slate-800">
+              <FolderTree className="h-3.5 w-3.5" /><span className="hidden sm:inline">Files</span>
+            </button>
+          )}
           <span
             className={`hidden 2xl:inline-flex shrink-0 items-center rounded px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap ${
               hasPendingDraft

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Code2, Layers, Search, SlidersHorizontal, Wrench } from 'lucide-react';
+import { Code2, FileCode2, Layers, Search, SlidersHorizontal, Wrench } from 'lucide-react';
 import LogicPanel from './LogicPanel';
 import AnimationStudioPanel from './AnimationStudioPanel';
 import ExportProductionModal from './ExportProductionModal';
@@ -56,6 +56,7 @@ import {
 import TopToolbar from './TopToolbar';
 import AndroidIDEPanel from './AndroidIDEPanel';
 import PagesLayersPanel from './PagesLayersPanel';
+import ProjectFilesPanel from './ProjectFilesPanel';
 import VisualCanvas from './VisualCanvas';
 import StyleInspectorPanel from './StyleInspectorPanel';
 import GradientCssPanel from './GradientCssPanel';
@@ -141,8 +142,9 @@ import {
   saveDraftToStorage,
   subscribeDraftStorage,
 } from '@/lib/studio/draft-storage';
-import { createProjectFromFiles, STARTER_NEXTJS_FILES } from '@/lib/studio/sample-project';
+import { createProjectFromFiles, BLANK_NEXTJS_FILES, STARTER_NEXTJS_FILES } from '@/lib/studio/sample-project';
 import { scanProjectStructure } from '@/lib/studio/project-scanner';
+import { createProjectFile, deleteProjectFile, normalizeProjectFilePath, renameProjectFile, renameProjectFolder } from '@/lib/studio/file-manager';
 import { createPageFile, type PageTemplatePreset } from '@/lib/studio/page-generator';
 import { createSharedSiteKit } from '@/lib/studio/site-kit';
 import {
@@ -182,6 +184,7 @@ export default function StudioWorkspace() {
   const [pseudoState, setPseudoState] = useState<'default' | 'hover' | 'focus'>('default');
   const [layerTree, setLayerTree] = useState<LayerTreeNode[]>([]);
   const [isCodeDrawerOpen, setIsCodeDrawerOpen] = useState(false);
+  const [isProjectFilesOpen, setIsProjectFilesOpen] = useState(false);
   const [isLogicPanelOpen, setIsLogicPanelOpen] = useState(false);
   const [isMotionPanelOpen, setIsMotionPanelOpen] = useState(false);
   const [isBrandRemixerOpen, setIsBrandRemixerOpen] = useState(false);
@@ -574,6 +577,78 @@ export default function StudioWorkspace() {
     [project.files, commitFilesMutation]
   );
 
+  const handleCreateSourceFile = useCallback((rawPath: string) => {
+    try {
+      const created = createProjectFile(project.files, rawPath, '');
+      commitFilesMutation(created.files, created.path, `Created ${created.path}`);
+      setCodeDrawerFile(created.path);
+      setIsCodeDrawerOpen(true);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Could not create file.' };
+    }
+  }, [project.files, commitFilesMutation]);
+
+  const handleCreateSourceFolder = useCallback((rawPath: string) => {
+    try {
+      const folder = rawPath.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+      if (!folder || folder.split('/').some((part) => !part || part === '.' || part === '..') || /[<>:"|?*\u0000-\u001f]/.test(folder)) {
+        throw new Error('Enter a valid folder path.');
+      }
+      const markerPath = normalizeProjectFilePath(folder + '/.gitkeep');
+      if (Object.prototype.hasOwnProperty.call(project.files, markerPath)) throw new Error('That folder already exists.');
+      commitFilesMutation({ ...project.files, [markerPath]: '' }, markerPath, `Created folder ${folder}`);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Could not create folder.' };
+    }
+  }, [project.files, commitFilesMutation]);
+
+  const handleRenameSourcePath = useCallback((oldPath: string, newPath: string, isFolder: boolean) => {
+    try {
+      const nextFiles = isFolder
+        ? renameProjectFolder(project.files, oldPath, newPath)
+        : renameProjectFile(project.files, oldPath, newPath);
+      commitFilesMutation(nextFiles, newPath, `Renamed ${oldPath} to ${newPath}`);
+      if (codeDrawerFile === oldPath || (isFolder && codeDrawerFile.startsWith(oldPath + '/'))) {
+        setCodeDrawerFile(isFolder ? newPath + codeDrawerFile.slice(oldPath.length) : newPath);
+      }
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Could not rename path.' };
+    }
+  }, [project.files, codeDrawerFile, commitFilesMutation]);
+
+  const showToastFeedback = useCallback((message: string) => {
+    setActionToast(message);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => {
+      setActionToast(null);
+    }, 2400);
+  }, []);
+
+  const handleDeleteSourcePath = useCallback((path: string, isFolder: boolean) => {
+    try {
+      const targets = isFolder ? Object.keys(project.files).filter((item) => item.startsWith(path.replace(/\/+$/g, '') + '/')) : [path];
+      if (targets.length === 0) return false;
+      if (!isFolder && /page\.(tsx|jsx|ts|js)$/i.test(path)) {
+        const protectedRoot = path === 'app/page.tsx' || path === 'src/app/page.tsx' || path === 'pages/index.tsx' || path === 'src/pages/index.tsx';
+        if (protectedRoot) {
+          window.alert('The root route is protected. Use the Pages tab to manage route pages.');
+          return false;
+        }
+      }
+      if (targets.includes(codeDrawerFile)) setCodeDrawerFile('app/page.tsx');
+      const nextFiles = { ...project.files };
+      targets.forEach((item) => delete nextFiles[item]);
+      commitFilesMutation(nextFiles, undefined, `Deleted ${isFolder ? 'folder' : 'file'} ${path}`);
+      return true;
+    } catch (error) {
+      showToastFeedback(error instanceof Error ? error.message : 'Could not delete path.');
+      return false;
+    }
+  }, [project.files, codeDrawerFile, commitFilesMutation, showToastFeedback]);
+
   const handleOpenInMonaco = useCallback((filePath: string) => {
     setDesktopGlobalStylesOpen(false);
     setDesktopGradientOpen(false);
@@ -642,14 +717,6 @@ export default function StudioWorkspace() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleUndo, handleRedo]);
-
-  const showToastFeedback = useCallback((message: string) => {
-    setActionToast(message);
-    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => {
-      setActionToast(null);
-    }, 2400);
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -1096,6 +1163,25 @@ export default function StudioWorkspace() {
     setCodeDrawerFile(filePath);
   }, []);
 
+  // Keep the file opener, editor, and preview target in sync.
+  const handleOpenProjectFile = useCallback((filePath: string) => {
+    const routePage = project.pages.find((page) => page.filePath === filePath);
+    if (routePage) {
+      handleSelectPage(routePage.route);
+      setCodeDrawerFile(filePath);
+      setIsCodeDrawerOpen(true);
+      return;
+    }
+    const component = projectComponents.find((item) => item.filePath === filePath);
+    if (component) {
+      handleSelectComponent(filePath);
+      setIsCodeDrawerOpen(true);
+      return;
+    }
+    setCodeDrawerFile(filePath);
+    setIsCodeDrawerOpen(true);
+  }, [project.pages, projectComponents, handleSelectPage, handleSelectComponent]);
+
   const handleExitComponentIsolation = useCallback(() => {
     setIsolatedComponentPath(null);
     setSelected(null);
@@ -1103,6 +1189,27 @@ export default function StudioWorkspace() {
     setPseudoState('default');
     setCodeDrawerFile(activePage.filePath);
   }, [activePage.filePath]);
+
+  const handleNewBlankProject = useCallback(() => {
+    if (!window.confirm('Start a new blank project? This replaces the current project in the workspace. Save a draft first if you want to keep it.')) return;
+    const blankProject = createProjectFromFiles(BLANK_NEXTJS_FILES, 'Blank Next.js Project', 'blank-nextjs-app');
+    setProject(blankProject);
+    setHistoryPast([]);
+    setHistoryFuture([]);
+    setHistoryTimeline([{ id: 'cp-blank-initial', label: 'Blank Project', timestamp: 'Start', files: BLANK_NEXTJS_FILES }]);
+    setHistoryIndex(0);
+    setActiveRoute('/');
+    setCodeDrawerFile('app/page.tsx');
+    setIsCodeDrawerOpen(false);
+    setIsProjectFilesOpen(false);
+    setIsolatedComponentPath(null);
+    setSelected(null);
+    setMultiSelected([]);
+    setLockedIds([]);
+    setHiddenIds([]);
+    setPseudoState('default');
+    setInteractionMode('design');
+  }, []);
 
   const handleCreatePage = useCallback(
     (title: string, slug: string, template: PageTemplatePreset, customTemplateCode?: string, customTemplateCss?: string): { ok: boolean; error?: string } => {
@@ -1140,6 +1247,18 @@ export default function StudioWorkspace() {
     },
     [project.framework, project.files, project.pages, commitFilesMutation]
   );
+
+  const handleAddBlankPage = useCallback(() => {
+    let pageNumber = 2;
+    let slug = `page-${String(pageNumber).padStart(2, '0')}`;
+    while (project.pages.some((page) => page.route === `/${slug}`)) {
+      pageNumber += 1;
+      slug = `page-${String(pageNumber).padStart(2, '0')}`;
+    }
+    const result = handleCreatePage(`Page ${String(pageNumber).padStart(2, '0')}`, slug, 'blank');
+    if (result.ok) showToastFeedback(`Created / ${slug} — new blank page`);
+    else showToastFeedback(result.error || 'Could not create page');
+  }, [project.pages, handleCreatePage, showToastFeedback]);
 
   const handleDeletePage = useCallback((route: string): boolean => {
     const page = project.pages.find((item) => item.route === route);
@@ -2859,6 +2978,14 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         iconKey: 'export',
       },
       {
+        id: 'tool:new-blank-project',
+        label: 'New Blank Project',
+        description: 'Reset workspace to a clean Next.js project canvas',
+        category: 'tools',
+        keywords: ['new', 'blank', 'empty', 'project', 'starter', 'scratch'],
+        iconKey: 'import',
+      },
+      {
         id: 'tool:import-project',
         label: 'Import ZIP or GitHub Repository',
         description: 'Load an existing Next.js, React, or HTML project into studio',
@@ -3151,6 +3278,9 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         case 'tool:export-production':
           handleOpenExportModal();
           break;
+        case 'tool:new-blank-project':
+          handleNewBlankProject();
+          break;
         case 'tool:import-project':
           setIsImportOpen(true);
           break;
@@ -3238,6 +3368,8 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
   return (
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-slate-50 text-slate-900">
       <TopToolbar
+        onNewBlankProject={handleNewBlankProject}
+        onAddPage={handleAddBlankPage}
         projectName={project.name}
         pages={project.pages}
         activeRoute={activePage.route}
@@ -3302,7 +3434,26 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         {!isAndroidIdeOpen && <div className="absolute left-3 top-2 z-[60] flex overflow-hidden rounded-lg border border-slate-200 bg-white/95 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
           <button type="button" onClick={() => setIsAndroidIdeOpen(false)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Code2 size={14}/> Web IDE</button>
           <button type="button" onClick={() => setIsAndroidIdeOpen(true)} className="flex items-center gap-1.5 border-l border-slate-200 px-3 py-1.5 text-xs font-medium bg-emerald-600 text-white"><Layers size={14}/> Android IDE</button>
+          <button type="button" onClick={() => setIsProjectFilesOpen((v) => !v)} aria-pressed={isProjectFilesOpen} className="flex items-center gap-1.5 border-l border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><FileCode2 size={14}/> Files</button>
         </div>}
+        {isProjectFilesOpen && (
+          <div className={isCompactViewport ? 'absolute inset-0 z-50 flex' : 'absolute inset-y-0 left-0 z-50 flex shadow-2xl'}>
+            {isCompactViewport && <button type="button" aria-label="Close project files" onClick={() => setIsProjectFilesOpen(false)} className="flex-1 bg-slate-950/40" />}
+            <ProjectFilesPanel
+              files={project.files}
+              originalFiles={project.originalFiles}
+              activeFilePath={codeDrawerFile}
+              onSelectFile={(path) => { handleOpenProjectFile(path); if (isCompactViewport) setIsProjectFilesOpen(false); }}
+              onCreateFile={handleCreateSourceFile}
+              onCreateFolder={handleCreateSourceFolder}
+              onRenamePath={handleRenameSourcePath}
+              onDeletePath={handleDeleteSourcePath}
+              onRefresh={() => showToastFeedback('File tree refreshed')}
+              onClose={() => setIsProjectFilesOpen(false)}
+              isBottomSheet={isCompactViewport}
+            />
+          </div>
+        )}
         {/* Left Panel: docked on >=1024px, slide-over drawer on tablet, bottom sheet on phone */}
         {showLeftPanel && (
           <div
@@ -3589,9 +3740,10 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
             files={project.files}
             originalFiles={project.originalFiles}
             activeFilePath={codeDrawerFile}
-            onSelectFile={setCodeDrawerFile}
+            onSelectFile={handleOpenProjectFile}
             onUpdateFile={handleUpdateFileContent}
             onRevertFile={handleRevertFile}
+            onOpenProjectFiles={() => setIsProjectFilesOpen(true)}
           />
         </div>
 

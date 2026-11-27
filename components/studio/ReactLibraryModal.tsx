@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDownToLine,
   ArrowUpToLine,
@@ -11,6 +11,8 @@ import {
   CornerDownRight,
   Package,
   PackagePlus,
+  ExternalLink,
+  Loader2,
   Pencil,
   Plus,
   Replace,
@@ -109,6 +111,37 @@ function getElementSlotLabel(code: string, el: ParsedElement): string {
   return `#${el.index} <${el.tagName}> "${clipped}"`;
 }
 
+
+function buildNpmLivePreviewDoc(packageName: string, componentGuess: string) {
+  const safePackage = packageName.replace(/[^@a-zA-Z0-9._/-]/g, '');
+  const safeGuess = componentGuess.replace(/[^a-zA-Z0-9_$]/g, '') || 'Component';
+  const reactUrl = 'https://esm.sh/react@18.3.1';
+  const jsxUrl = 'https://esm.sh/react@18.3.1/jsx-runtime';
+  const jsxDevUrl = 'https://esm.sh/react@18.3.1/jsx-dev-runtime';
+  const reactDomUrl = 'https://esm.sh/react-dom@18.3.1/client';
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+  body{font:14px system-ui;margin:0;padding:16px;color:#111827;background:#fff}
+  #root{min-height:160px;display:grid;place-items:center}
+  .error{color:#b91c1c;white-space:pre-wrap;overflow-wrap:anywhere}
+  .hint{color:#64748b;font-size:12px;margin-top:8px}
+  </style>
+  <script type="importmap">{"imports":{"react":"${reactUrl}","react-dom":"https://esm.sh/react-dom@18.3.1","react-dom/client":"${reactDomUrl}","react/jsx-runtime":"${jsxUrl}","react/jsx-dev-runtime":"${jsxDevUrl}"}}</script>
+  </head><body><div id="root">Loading live component…</div><script type="module">
+  const root=document.getElementById('root');
+  try {
+    const React=await import('react');
+    const ReactDOM=await import('react-dom/client');
+    const mod=await import('https://esm.sh/${safePackage}?bundle&external=react,react-dom');
+    const guess='${safeGuess}';
+    const C=mod[guess]||mod.default||Object.values(mod).find(v=>typeof v==='function');
+    if(!C) throw new Error('No component export found. Package exports: '+Object.keys(mod).join(', '));
+    ReactDOM.createRoot(root).render(React.createElement(C,{}));
+  } catch(e) {
+    root.innerHTML='<div class="error">Live preview could not render this package.<br>'+String(e?.message||e)+'<p class="hint">This package may require specific props, styles, browser APIs, or may not support browser rendering.</p></div>';
+  }
+  </script></body></html>`;
+}
+
 export default function ReactLibraryModal(props: ReactLibraryModalProps) {
   if (!props.isOpen) return null;
   return <ReactLibraryModalInner {...props} />;
@@ -128,7 +161,7 @@ function ReactLibraryModalInner({
   onImportLibrary,
   onRemoveDependency,
 }: ReactLibraryModalProps) {
-  const [activeTab, setActiveTab] = useState<'ui' | 'project' | 'packages'>('ui');
+  const [activeTab, setActiveTab] = useState<'ui' | 'project' | 'packages' | 'live'>('ui');
   const [targetFile, setTargetFile] = useState(
     selectedTarget?.filePath && files[selectedTarget.filePath]
       ? selectedTarget.filePath
@@ -170,9 +203,37 @@ function ReactLibraryModalInner({
   const [importMode, setImportMode] = useState<'named' | 'default' | 'namespace'>('named');
   const [identifiersText, setIdentifiersText] = useState('');
   const [pkgSearch, setPkgSearch] = useState('');
+  const [liveSearch, setLiveSearch] = useState('react ui component');
+  const [livePackages, setLivePackages] = useState<Array<{name:string;description:string;version:string;downloads:number;homepage:string;keywords:string[]}>>([]);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const [liveError, setLiveError] = useState('');
+  const [livePreview, setLivePreview] = useState<{name:string;version:string;readme:string;homepage:string}|null>(null);
+  const [livePreviewLoading, setLivePreviewLoading] = useState(false);
+  const [liveInstallLoading, setLiveInstallLoading] = useState<string|null>(null);
 
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const query = liveSearch.trim();
+    if (!query) { setLivePackages([]); return; }
+    let cancelled = false;
+    setLiveLoading(true);
+    setLiveError('');
+    fetch(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(query + ' keywords:react')}&size=24`)
+      .then((response) => { if (!response.ok) throw new Error(`npm registry search failed (${response.status})`); return response.json(); })
+      .then((data) => {
+        if (cancelled) return;
+        const objects = Array.isArray(data.objects) ? data.objects : [];
+        setLivePackages(objects.map((entry: any) => {
+          const p = entry.package || {};
+          return { name: String(p.name || ''), description: String(p.description || ''), version: String(p.version || 'latest'), downloads: Number(entry.score?.detail?.popularity || 0), homepage: String(p.links?.homepage || p.links?.repository || `https://www.npmjs.com/package/${p.name}`), keywords: Array.isArray(p.keywords) ? p.keywords : [] };
+        }).filter((p: {name:string}) => p.name));
+      })
+      .catch((error) => { if (!cancelled) setLiveError(error instanceof Error ? error.message : 'Search unavailable.'); })
+      .finally(() => { if (!cancelled) setLiveLoading(false); });
+    return () => { cancelled = true; };
+  }, [liveSearch]);
 
   const sourceFiles = useMemo(
     () => Object.keys(files).filter((p) => /\.(tsx|jsx|ts|js)$/i.test(p)).sort(),
@@ -649,6 +710,7 @@ function ReactLibraryModalInner({
               { id: 'ui' as const, label: `UI Blocks (${REACT_UI_LIBRARY_ITEMS.length})`, icon: Sparkles },
               { id: 'project' as const, label: `Your Components (${projectComponents.length})`, icon: Box },
               { id: 'packages' as const, label: `npm (${depEntries.length})`, icon: PackagePlus },
+              { id: 'live' as const, label: 'Live Browser', icon: Search },
             ].map((t) => {
               const Icon = t.icon;
               const active = activeTab === t.id;
@@ -1150,6 +1212,67 @@ function ReactLibraryModalInner({
                   </>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Live npm React component browser */}
+        {activeTab === 'live' && (
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5 studio-scroll">
+            <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50/60 p-3">
+              <h3 className="text-sm font-semibold text-slate-900">Live React Component Browser</h3>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">Search npm's live registry for React UI packages. Pick a package to continue through WebD's installer and add it to your reusable components.</p>
+              <div className="mt-3 flex gap-2">
+                <input value={liveSearch} onChange={(e) => setLiveSearch(e.target.value)} placeholder="Search React components, animation, charts..." className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-800 outline-none focus:border-sky-500" />
+                <button type="button" onClick={() => setLiveSearch((q) => q.trim())} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-sky-600 px-3 text-xs font-semibold text-white hover:bg-sky-700"><Search className="h-3.5 w-3.5" />Search</button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {['react animation','react carousel','react charts','react dashboard','react buttons','react backgrounds'].map((q) => <button key={q} type="button" onClick={() => setLiveSearch(q)} className="rounded-full border border-sky-200 bg-white px-2.5 py-1 text-[10px] font-medium text-sky-700 hover:bg-sky-100">{q}</button>)}
+              </div>
+            </div>
+            {livePreview && <section className="mb-4 overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50/50 p-3"><div className="flex items-center justify-between gap-2"><div><h4 className="text-xs font-bold text-slate-900">{livePreview.name}</h4><p className="text-[10px] text-slate-500">v{livePreview.version} · Isolated live preview</p></div><button type="button" onClick={()=>setLivePreview(null)} className="rounded border px-2 py-1 text-[10px]">Close</button></div><iframe title={`Live preview of ${livePreview.name}`} sandbox="allow-scripts" srcDoc={buildNpmLivePreviewDoc(livePreview.name, livePreview.name.split('/').pop()?.replace(/^react-/,'').replace(/[^a-zA-Z0-9_$]/g,'') || 'Component')} className="mt-2 h-56 w-full rounded-lg border border-slate-200 bg-white" />{livePreview.homepage && <a href={livePreview.homepage} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[10px] text-indigo-700 underline">Open package demo/homepage <ExternalLink className="h-3 w-3"/></a>}<p className="mt-2 text-[10px] text-slate-500">Preview runs in a sandboxed iframe; some packages require specific props or may not be browser-renderable.</p></section>}
+            {liveLoading && <div className="flex items-center gap-2 py-6 text-xs text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Searching live npm registry…</div>}
+            {liveError && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{liveError}</div>}
+            {!liveLoading && !liveError && livePackages.length === 0 && <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-500">No results. Try another search.</div>}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {livePackages.map((pkg) => {
+                const suggestedName = pkg.name.split('/').pop()?.replace(/^react-/, '').replace(/[^a-zA-Z0-9]/g, '') || 'ReactComponent';
+                const componentName = suggestedName.charAt(0).toUpperCase() + suggestedName.slice(1);
+                return <article key={pkg.name} className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-3">
+                  <div>
+                    <div className="flex items-start justify-between gap-2"><h4 className="break-all font-mono text-xs font-semibold text-slate-900">{pkg.name}</h4><span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">v{pkg.version}</span></div>
+                    <p className="mt-1 line-clamp-3 text-[11px] leading-relaxed text-slate-500">{pkg.description || 'React ecosystem package'}</p>
+                    <div className="mt-2 flex flex-wrap gap-1">{pkg.keywords.slice(0,4).map((k) => <span key={k} className="rounded bg-slate-50 px-1.5 py-0.5 text-[9px] text-slate-500">{k}</span>)}</div>
+                  </div>
+                  <div className="mt-3 flex gap-1.5">
+                    <button type="button" disabled={liveInstallLoading===pkg.name} onClick={async () => {
+                      setLiveInstallLoading(pkg.name); setErrorMsg(null); setStatusNotice(null);
+                      try {
+                        const metaRes = await fetch('https://registry.npmjs.org/'+encodeURIComponent(pkg.name)+'/'+encodeURIComponent(pkg.version));
+                        if (!metaRes.ok) throw new Error(`Package metadata unavailable (${metaRes.status})`);
+                        const meta = await metaRes.json();
+                        const rawDeps = {...(meta.dependencies || {}), ...(meta.peerDependencies || {})};
+                        const resolvedDeps = Object.entries(rawDeps).filter(([name]) => name !== 'react' && name !== 'react-dom' && name !== 'next').map(([packageName, version]) => ({packageName,version:String(version)}));
+                        const guess = pkg.name.split('/').pop()?.replace(/^react-/, '').replace(/[^a-zA-Z0-9]/g, '') || 'ReactComponent';
+                        const componentName = guess.charAt(0).toUpperCase()+guess.slice(1);
+                        const exportsMap = meta.exports && typeof meta.exports === 'object' ? meta.exports : {};
+                        const exportGuess = Object.keys(exportsMap).find((key) => key !== '.' && key.startsWith('./') && !key.includes('css'))?.replace('./','') || 'default';
+                        const res = onImportLibrary({packageName:pkg.name,version:pkg.version,importMode:exportGuess==='default'?'default':'named',identifiers:[exportGuess==='default'?componentName+'Primitive':exportGuess],targetFilePath:resolvedTargetFile,componentLibraryName:componentName,componentExportName:exportGuess,dependencyPackages:resolvedDeps});
+                        if(!res.ok) throw new Error(res.error || 'Import failed');
+                        setStatusNotice(`Installed ${pkg.name} with ${resolvedDeps.length} resolved dependencies`);
+                        setLiveInstallLoading(null);
+                      } catch(e) { setErrorMsg(e instanceof Error ? e.message : 'One-click installation failed'); setLiveInstallLoading(null); }
+                    }} className="inline-flex h-8 flex-1 items-center justify-center gap-1 rounded-md bg-indigo-600 px-2 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"><PackagePlus className="h-3.5 w-3.5" />{liveInstallLoading===pkg.name?'Installing…':'One-click Install'}</button>
+                    <button type="button" onClick={async () => {
+                      setLivePreviewLoading(true); setLivePreview(null);
+                      try { const res=await fetch('https://registry.npmjs.org/'+encodeURIComponent(pkg.name)+'/'+encodeURIComponent(pkg.version)); if(!res.ok) throw new Error('Metadata unavailable'); const data=await res.json(); setLivePreview({name:pkg.name,version:pkg.version,readme:String(data.readme||pkg.description||'No README preview available.'),homepage:String(data.homepage||pkg.homepage||'')}); }
+                      catch(e){setLivePreview({name:pkg.name,version:pkg.version,readme:e instanceof Error?e.message:'Preview unavailable',homepage:pkg.homepage});}
+                      setLivePreviewLoading(false);
+                    }} className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-slate-200 px-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">{livePreviewLoading?'Loading…':'Preview'}</button>
+                    <a href={`https://www.npmjs.com/package/${encodeURIComponent(pkg.name)}`} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-slate-200 px-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"><ExternalLink className="h-3.5 w-3.5" />npm</a>
+                  </div>
+                </article>;
+              })}
             </div>
           </div>
         )}

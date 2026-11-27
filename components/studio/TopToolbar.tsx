@@ -51,6 +51,8 @@ interface TopToolbarProps {
   isCodeDrawerOpen: boolean;
   onToggleCodeDrawer: () => void;
   onOpenImportModal: () => void;
+  onNewBlankProject: () => void;
+  onAddPage: () => void;
   onOpenMediaLibrary: () => void;
   onOpenTypographyEffects: () => void;
   onOpenLayoutBuilder: () => void;
@@ -105,6 +107,8 @@ export default function TopToolbar({
   isCodeDrawerOpen,
   onToggleCodeDrawer,
   onOpenImportModal,
+  onNewBlankProject,
+  onAddPage,
   onOpenMediaLibrary,
   onOpenTypographyEffects,
   onOpenLayoutBuilder,
@@ -223,6 +227,16 @@ export default function TopToolbar({
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            onClick={onAddPage}
+            title="Create a new blank route/page"
+            aria-label="Create new page"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 sm:h-8 sm:w-auto sm:gap-1.5 sm:px-2.5"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline text-xs font-semibold">Add Page</span>
+          </button>
         </div>
 
         {/* Center Zone: Mode + Viewport + Undo/Redo + Quick Command Palette */}
@@ -677,6 +691,16 @@ export default function TopToolbar({
                 aria-label="Project file actions"
                 className="absolute right-0 top-10 z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl ring-1 ring-slate-900/5"
               >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => runMenuAction(onNewBlankProject)}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <Plus className="h-4 w-4 text-blue-600" />
+                  <span>New Blank Project</span>
+                </button>
+                <div className="my-1 border-t border-slate-100" />
                 <button
                   type="button"
                   role="menuitem"
