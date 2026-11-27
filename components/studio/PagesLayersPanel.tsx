@@ -22,6 +22,7 @@ import {
 } from '@/lib/studio/component-editor';
 import { LayerTreeNode, ProjectPage } from '@/lib/studio/types';
 import type { PageTemplatePreset } from '@/lib/studio/page-generator';
+import ComponentsStudioPanel from './ComponentsStudioPanel';
 
 
 const REACT_HOOK_NAMES = ['useState', 'useEffect', 'useLayoutEffect', 'useRef', 'useMemo', 'useCallback', 'useReducer', 'useContext', 'useId', 'useTransition', 'useDeferredValue', 'useSyncExternalStore'];
@@ -61,6 +62,7 @@ interface PagesLayersPanelProps {
   onRemoveComponent?: (componentFilePath: string) => void;
   installedLibCount?: number;
   onOpenLibraryModal?: () => void;
+  onInsertSnippet?: (snippet: string) => void;
   layerTree: LayerTreeNode[];
   selectedStudioId: string | null;
   multiSelectedIds?: string[];
@@ -91,6 +93,7 @@ export default function PagesLayersPanel({
   onRemoveComponent,
   installedLibCount = 0,
   onOpenLibraryModal,
+  onInsertSnippet,
   layerTree,
   selectedStudioId,
   multiSelectedIds = [],
@@ -500,6 +503,9 @@ export default function PagesLayersPanel({
           </div>
         ) : (
           <div className="space-y-2">
+            {onInsertSnippet && (
+              <ComponentsStudioPanel onInsertSnippet={onInsertSnippet} />
+            )}
             {onCreateComponent && (
               <div className="space-y-1">
                 <div className="flex items-center gap-1">
