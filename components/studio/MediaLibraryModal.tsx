@@ -86,7 +86,7 @@ export default function MediaLibraryModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onInsert: (asset: { name: string; type: string; dataUrl: string }, mode?: 'normal' | 'cutout') => void;
+  onInsert: (asset: { name: string; type: string; dataUrl: string }, mode?: 'normal' | 'cutout' | 'background') => void;
   hasSelection: boolean;
 }) {
   const [assets, setAssets] = useState<MediaAsset[]>([]);
@@ -219,6 +219,7 @@ export default function MediaLibraryModal({
               <button type="button" onClick={() => void handleDelete(selected)} className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-rose-200 text-xs font-medium text-rose-600 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" />Delete asset</button>
               <button type="button" disabled={!hasSelection} onClick={() => { onInsert({ name: selected.name, type: selected.type, dataUrl: selected.dataUrl }, 'normal'); onClose(); }} className="mt-auto flex h-10 items-center justify-center gap-1.5 rounded-lg bg-violet-600 text-xs font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"><Check className="h-3.5 w-3.5" />{selected.type.startsWith('image/') ? 'Insert image' : selected.type.startsWith('video/') ? 'Insert video' : 'Insert audio'}</button>
               {selected.type.startsWith('image/') && <button type="button" disabled={!hasSelection} onClick={() => { onInsert({ name: selected.name, type: selected.type, dataUrl: selected.dataUrl }, 'cutout'); onClose(); }} className="flex h-10 items-center justify-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 text-xs font-semibold text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-40"><ImagePlus className="h-3.5 w-3.5" />Insert as floating cutout</button>}
+              {(selected.type.startsWith('image/') || selected.type.startsWith('video/')) && <button type="button" disabled={!hasSelection} onClick={() => { onInsert({ name: selected.name, type: selected.type, dataUrl: selected.dataUrl }, 'background'); onClose(); }} className="flex h-10 items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 text-xs font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-40"><ImagePlus className="h-3.5 w-3.5" />Set as background</button>}
               {!hasSelection && <p className="text-[10px] leading-4 text-slate-500">Select an element on the canvas first. Choose a matching media element to replace its source, or another element to insert this asset after it.</p>}
             </> : <div className="flex flex-1 flex-col items-center justify-center text-center text-slate-400"><FileImage className="h-8 w-8" /><p className="mt-2 text-xs">Select an asset to preview</p></div>}
             {notice && <p className="rounded-lg bg-slate-100 p-2 text-[10px] leading-4 text-slate-600">{notice}</p>}
