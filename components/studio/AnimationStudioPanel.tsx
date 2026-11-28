@@ -23,6 +23,7 @@ import {
   parseAnimationConfigFromElement,
 } from '@/lib/studio/animation-studio';
 import type { StudioElementSnapshot } from '@/lib/studio/types';
+import { parseMotionPreset, serializeMotionPreset, type MotionPreset } from '@/lib/studio/motion-presets';
 
 interface AnimationStudioPanelProps {
   selected: StudioElementSnapshot | null;
@@ -34,6 +35,7 @@ interface AnimationStudioPanelProps {
   };
   onApplyAnimation: (config: ElementAnimationConfig) => void;
   onReplayAnimations: () => void;
+  onApplyMotionPreset?: (preset: MotionPreset) => void;
   onClose: () => void;
   isBottomSheet?: boolean;
 }
@@ -43,6 +45,7 @@ export default function AnimationStudioPanel({
   animatedSummary,
   onApplyAnimation,
   onReplayAnimations,
+  onApplyMotionPreset,
   onClose,
   isBottomSheet = false,
 }: AnimationStudioPanelProps) {
@@ -67,6 +70,8 @@ export default function AnimationStudioPanel({
   const [isPlaying, setIsPlaying] = useState(false);
   const [tracks, setTracks] = useState({position:true,scale:true,rotation:true,opacity:false,blur:false});
   const timelineRef = useRef<HTMLDivElement | null>(null);
+  const presetFileRef = useRef<HTMLInputElement | null>(null);
+  const [presetImportStatus, setPresetImportStatus] = useState('');
   const easingOptions: Record<string, string> = { smooth: 'cubic-bezier(.22,1,.36,1)', ease: 'cubic-bezier(.25,.1,.25,1)', linear: 'linear', snappy: 'cubic-bezier(.16,1,.3,1)', custom: `cubic-bezier(${bezier.x1},${bezier.y1},${bezier.x2},${bezier.y2})` };
   const springOptions: Record<string,string> = { gentle: 'cubic-bezier(.22,1,.36,1)', bouncy: 'cubic-bezier(.34,1.56,.64,1)', stiff: 'cubic-bezier(.16,1,.3,1)' };
   const moveFrame = (event: React.PointerEvent<HTMLDivElement>) => { if (!dragFrameId || !timelineRef.current) return; const rect = timelineRef.current.getBoundingClientRect(); const at = Math.max(0, Math.min(100, Math.round(((event.clientX - rect.left) / rect.width) * 100))); setKeyframes(current => current.map(k => k.id === dragFrameId ? { ...k, at } : k).sort((a,b)=>a.at-b.at)); setFrame(current => current.id === dragFrameId ? { ...current, at } : current); };
@@ -204,6 +209,22 @@ export default function AnimationStudioPanel({
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <input ref={presetFileRef} type="file" accept=".json,application/json" className="hidden" onChange={async (event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            try {
+              if (file.size > 512 * 1024) throw new Error('JSON preset must be smaller than 512 KB.');
+              const preset = parseMotionPreset(await file.text());
+              if (!onApplyMotionPreset) throw new Error('Global preset import is not available in this workspace.');
+              onApplyMotionPreset(preset);
+              setPresetImportStatus(`Imported and applied: ${preset.name}`);
+            } catch (error) {
+              setPresetImportStatus(error instanceof Error ? error.message : 'Could not import motion preset.');
+            } finally { event.target.value = ''; }
+          }} />
+          <button type="button" onClick={() => presetFileRef.current?.click()} title="Import a project-wide motion preset JSON" className="inline-flex h-8 items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 text-[11px] font-semibold text-violet-700 hover:bg-violet-100">
+            <Upload className="h-3 w-3" /> Import JSON
+          </button>
           <button
             type="button"
             onClick={onReplayAnimations}
@@ -225,6 +246,7 @@ export default function AnimationStudioPanel({
         </div>
       </div>
 
+      {presetImportStatus && <div className="border-b border-slate-200 bg-violet-50 px-3 py-2 text-[10px] text-violet-700" role="status">{presetImportStatus}</div>}
       {/* Scrollable Body */}
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
         {/* Selected Target Card */}
