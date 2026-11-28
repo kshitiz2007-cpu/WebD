@@ -768,7 +768,7 @@ export default function StudioWorkspace() {
     );
   }, []);
 
-  const handleApplyMotionPreset = useCallback((preset: MotionPreset) => {
+    const handleApplyMotionPreset = useCallback((preset: MotionPreset) => {
     try {
       const nextFiles = applyMotionPresetToFiles(project.files, preset);
       commitFilesMutation({ ...nextFiles, [MOTION_PRESET_FILE]: JSON.stringify(preset, null, 2) }, Object.keys(nextFiles).find((path) => /\.css$/i.test(path)), 'Applied Motion Preset');
@@ -780,7 +780,7 @@ export default function StudioWorkspace() {
     }
   }, [project.files, commitFilesMutation, showToastFeedback]);
 
-  const handleApplyElementAnimation = useCallback(
+const handleApplyElementAnimation = useCallback(
     (config: ElementAnimationConfig) => {
       if (!selected) return;
       const source = project.files[selected.filePath];
