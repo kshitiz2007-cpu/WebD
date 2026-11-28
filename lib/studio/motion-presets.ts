@@ -149,8 +149,8 @@ export function applyMotionPresetToFiles(files: Record<string, string>, preset: 
   if (!cssPath) throw new Error('Add a global CSS file before applying project-wide motion.');
   const safeRules = preset.rules.filter((rule) => rule.enabled && (rule.config.reveal !== 'none' || rule.config.hover !== 'none' || rule.config.loop !== 'none'));
   const css = safeRules.map((rule) => {
-    const selector = rule.target === '*' ? '[data-webd-motion].webd-motion-' + id : rule.target === '.card' ? '.card.webd-motion-' + id + ', article.webd-motion-' + id : rule.target + '.webd-motion-' + id;
     const id = rule.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60);
+    const selector = rule.target === '*' ? '[data-webd-motion].webd-motion-' + id : rule.target === '.card' ? '.card.webd-motion-' + id + ', article.webd-motion-' + id : rule.target + '.webd-motion-' + id;
     const duration = Math.max(0.15, Math.min(3, rule.config.duration / Math.max(0.25, preset.settings.intensity || 1)));
     const delay = rule.config.delay;
     const easing = ({ smooth: 'cubic-bezier(.22,1,.36,1)', spring: 'cubic-bezier(.34,1.56,.64,1)', snappy: 'cubic-bezier(.16,1,.3,1)', linear: 'linear' } as const)[rule.config.easing];
