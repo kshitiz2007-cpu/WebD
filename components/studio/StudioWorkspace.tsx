@@ -3561,6 +3561,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
                 selected={selected}
                 animatedSummary={animatedSummary}
                 onApplyAnimation={handleApplyElementAnimation}
+                onApplyMotionPreset={handleApplyMotionPreset}
                 onReplayAnimations={handleReplayAnimations}
                 onClose={() => setIsMotionPanelOpen(false)}
               />
@@ -3749,6 +3750,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
               selected={selected}
               animatedSummary={animatedSummary}
               onApplyAnimation={handleApplyElementAnimation}
+              onApplyMotionPreset={handleApplyMotionPreset}
               onReplayAnimations={handleReplayAnimations}
               onClose={() => setIsMotionPanelOpen(false)}
               isBottomSheet={isPhoneViewport}
