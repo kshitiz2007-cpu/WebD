@@ -174,6 +174,11 @@ function buildDesignerBridgeScript(
       REVEAL_OBSERVER = null;
     }
     var nodes = Array.prototype.slice.call(document.querySelectorAll('.webd-reveal, .webd-stagger-children'));
+    var presetNodes = Array.prototype.slice.call(document.querySelectorAll('[class*="webd-motion-"]'));
+    presetNodes.forEach(function(node) {
+      var rules = node.className && String(node.className).split(/\\s+/).filter(function(token) { return token.indexOf('webd-motion-') === 0 && token !== 'webd-motion-visible'; });
+      if (rules && rules.length) node.classList.add('webd-motion-visible');
+    });
     if (forceReplay) {
       nodes.forEach(function(n) { n.classList.remove('webd-in-view'); });
       // Replay every CSS animation in the preview (custom motion, FX, typography, imported components).
