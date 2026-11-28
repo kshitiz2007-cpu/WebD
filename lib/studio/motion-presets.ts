@@ -133,7 +133,7 @@ export function serializeMotionPreset(preset: MotionPreset): string {
 export function applyMotionPresetToFiles(files: Record<string, string>, preset: MotionPreset): Record<string, string> {
   const next = { ...files };
   if (!preset.settings.enabled) {
-    const cssPath = Object.keys(next).find((path) => /(^|\\/)globals\\.css$/i.test(path)) || Object.keys(next).find((path) => /\\.css$/i.test(path));
+    const cssPath = Object.keys(next).find((path) => /(^|\/)globals\.css$/i.test(path)) || Object.keys(next).find((path) => /\.css$/i.test(path));
     if (cssPath) {
       const start = '/* WEBD_GLOBAL_MOTION_START */';
       const end = '/* WEBD_GLOBAL_MOTION_END */';
@@ -184,7 +184,7 @@ export function applyMotionPresetToFiles(files: Record<string, string>, preset: 
 @keyframes webd-preset-wave { 0%,100% { transform: translateY(0) rotate(0) } 50% { transform: translateY(-5px) rotate(1deg) } }
 @keyframes webd-preset-glow { 0%,100% { filter: drop-shadow(0 0 0 transparent) } 50% { filter: drop-shadow(0 0 14px rgba(139,92,246,.36)) } }`;
   const reduced = preset.settings.respectReducedMotion ? `@media (prefers-reduced-motion: reduce) { ${safeRules.map((rule) => `${rule.target === '*' ? '[data-webd-motion]' : rule.target}.webd-motion-${rule.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)}`).join(', ')} { transition: none !important; animation: none !important; transform: none !important; filter: none !important; opacity: 1 !important; } }` : '';
-  const outputBlock = `\n\n${startMarker}\n/* Preset: ${preset.name.replace(/[\\*\\/]/g, '')} */\n${keyframes}\n${css}\n${reduced}\n${endMarker}\n`;
+  const outputBlock = `\n\n${startMarker}\n/* Preset: ${preset.name.replace(/[\*\/]/g, '')} */\n${keyframes}\n${css}\n${reduced}\n${endMarker}\n`;
   next[cssPath] = without + outputBlock;
 
   // Attach stable classes to matching JSX/HTML tags. Imported preset data is schema-validated; no code is executed.
@@ -195,7 +195,7 @@ export function applyMotionPresetToFiles(files: Record<string, string>, preset: 
       const id = rule.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60);
       const tag = rule.target;
       if (tag === '*') continue;
-      const matcher = new RegExp(`(<${tag}(?=[\\s/>])[^>]*?)(\\s*/?>)`, 'gi');
+      const matcher = new RegExp(`(<${tag}(?=[\s/>])[^>]*?)(\s*/?>)`, 'gi');
       updated = updated.replace(matcher, (match, before: string, close: string) => {
         const existingClass = before.match(/\bclassName?=(["'])(.*?)\1/i);
         if (existingClass) {
