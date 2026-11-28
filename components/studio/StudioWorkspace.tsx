@@ -187,7 +187,14 @@ export default function StudioWorkspace() {
   const [isLogicPanelOpen, setIsLogicPanelOpen] = useState(false);
   const [isMotionPanelOpen, setIsMotionPanelOpen] = useState(false);
   const [isMotionPresetPanelOpen, setIsMotionPresetPanelOpen] = useState(false);
-  const [motionPreset, setMotionPreset] = useState<MotionPreset>(DEFAULT_MOTION_PRESET);
+  const [motionPreset, setMotionPreset] = useState<MotionPreset>(() => {
+    try {
+      const saved = STARTER_NEXTJS_FILES[MOTION_PRESET_FILE];
+      return saved ? JSON.parse(saved) as MotionPreset : DEFAULT_MOTION_PRESET;
+    } catch {
+      return DEFAULT_MOTION_PRESET;
+    }
+  });
   const [isBrandRemixerOpen, setIsBrandRemixerOpen] = useState(false);
   const [brandRemixConfig, setBrandRemixConfig] = useState<BrandRemixConfig>(
     DEFAULT_BRAND_REMIX_CONFIG
