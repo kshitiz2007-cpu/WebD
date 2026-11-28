@@ -46,6 +46,8 @@ import {
   isVirtualMediaDataUrlFile,
   registerMediaAssetInProjectFiles,
 } from '@/lib/studio/media-pipeline';
+import MotionPresetStudioPanel from './MotionPresetStudioPanel';
+import { DEFAULT_MOTION_PRESET, MOTION_PRESET_FILE, applyMotionPresetToFiles, type MotionPreset } from '@/lib/studio/motion-presets';
 import { StudioCommandItem } from '@/lib/studio/command-palette';
 import {
   CopiedStyleClipboard,
@@ -184,6 +186,8 @@ export default function StudioWorkspace() {
   const [isCodeDrawerOpen, setIsCodeDrawerOpen] = useState(false);
   const [isLogicPanelOpen, setIsLogicPanelOpen] = useState(false);
   const [isMotionPanelOpen, setIsMotionPanelOpen] = useState(false);
+  const [isMotionPresetPanelOpen, setIsMotionPresetPanelOpen] = useState(false);
+  const [motionPreset, setMotionPreset] = useState<MotionPreset>(DEFAULT_MOTION_PRESET);
   const [isBrandRemixerOpen, setIsBrandRemixerOpen] = useState(false);
   const [brandRemixConfig, setBrandRemixConfig] = useState<BrandRemixConfig>(
     DEFAULT_BRAND_REMIX_CONFIG
@@ -271,6 +275,7 @@ export default function StudioWorkspace() {
   const closeTransientOverlayPanels = useCallback(() => {
     setIsLogicPanelOpen(false);
     setIsMotionPanelOpen(false);
+    setIsMotionPresetPanelOpen(false);
     setIsBrandRemixerOpen(false);
     setIsHistoryPanelOpen(false);
     setIsQaPanelOpen(false);
@@ -762,6 +767,18 @@ export default function StudioWorkspace() {
       '*'
     );
   }, []);
+
+  const handleApplyMotionPreset = useCallback((preset: MotionPreset) => {
+    try {
+      const nextFiles = applyMotionPresetToFiles(project.files, preset);
+      commitFilesMutation({ ...nextFiles, [MOTION_PRESET_FILE]: JSON.stringify(preset, null, 2) }, Object.keys(nextFiles).find((path) => /\.css$/i.test(path)), 'Applied Motion Preset');
+      setMotionPreset(preset);
+      window.setTimeout(() => iframeRef.current?.contentWindow?.postMessage({ type: 'studio:replay-animations' }, '*'), 140);
+      showToastFeedback(`Applied "${preset.name}" to project`);
+    } catch (error) {
+      showToastFeedback(error instanceof Error ? error.message : 'Could not apply motion preset');
+    }
+  }, [project.files, commitFilesMutation, showToastFeedback]);
 
   const handleApplyElementAnimation = useCallback(
     (config: ElementAnimationConfig) => {
@@ -3296,6 +3313,13 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
           setIsLogicPanelOpen(next);
         }}
         showMotionPanel={isMotionPanelOpen}
+        showMotionPresetPanel={isMotionPresetPanelOpen}
+        onToggleMotionPresetPanel={() => {
+          const next = !isMotionPresetPanelOpen;
+          closeTransientOverlayPanels();
+          setIsMotionPresetPanelOpen(next);
+        }}
+
         onToggleMotionPanel={() => {
           const next = !isMotionPanelOpen;
           closeTransientOverlayPanels();
@@ -3401,6 +3425,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
             showSmartAligner ||
             isLogicPanelOpen ||
             isMotionPanelOpen ||
+            isMotionPresetPanelOpen ||
             isBrandRemixerOpen ||
             isHistoryPanelOpen ||
             isQaPanelOpen ||
@@ -3532,6 +3557,13 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
                 onReplayAnimations={handleReplayAnimations}
                 onClose={() => setIsMotionPanelOpen(false)}
               />
+            </div>
+          )}
+
+          {/* Project-wide Motion Preset Manager */}
+          {!isCompactViewport && isMotionPresetPanelOpen && (
+            <div className="absolute inset-y-0 right-0 z-40 flex shadow-xl">
+              <MotionPresetStudioPanel preset={motionPreset} onChange={setMotionPreset} onApply={handleApplyMotionPreset} onClose={() => setIsMotionPresetPanelOpen(false)} />
             </div>
           )}
 
@@ -3714,6 +3746,13 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
               onClose={() => setIsMotionPanelOpen(false)}
               isBottomSheet={isPhoneViewport}
             />
+          </div>
+        )}
+
+        {/* Project-wide Motion Preset Manager — mobile */}
+        {isCompactViewport && isMotionPresetPanelOpen && (
+          <div className={isPhoneViewport ? 'absolute inset-x-0 bottom-0 z-50 flex h-[84vh] max-h-[760px] overflow-hidden rounded-t-2xl shadow-2xl' : 'absolute inset-y-0 right-0 z-50 flex shadow-2xl'}>
+            <MotionPresetStudioPanel preset={motionPreset} onChange={setMotionPreset} onApply={handleApplyMotionPreset} onClose={() => setIsMotionPresetPanelOpen(false)} isBottomSheet={isPhoneViewport} />
           </div>
         )}
 
