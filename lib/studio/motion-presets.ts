@@ -149,7 +149,7 @@ export function applyMotionPresetToFiles(files: Record<string, string>, preset: 
   if (!cssPath) throw new Error('Add a global CSS file before applying project-wide motion.');
   const safeRules = preset.rules.filter((rule) => rule.enabled && (rule.config.reveal !== 'none' || rule.config.hover !== 'none' || rule.config.loop !== 'none'));
   const css = safeRules.map((rule) => {
-    const selector = rule.target === '*' ? '[data-webd-motion]' : rule.target === '.card' ? '.card, article' : rule.target;
+    const selector = rule.target === '*' ? '[data-webd-motion].webd-motion-' + id : rule.target === '.card' ? '.card.webd-motion-' + id + ', article.webd-motion-' + id : rule.target + '.webd-motion-' + id;
     const id = rule.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60);
     const duration = Math.max(0.15, Math.min(3, rule.config.duration / Math.max(0.25, preset.settings.intensity || 1)));
     const delay = rule.config.delay;
@@ -157,7 +157,7 @@ export function applyMotionPresetToFiles(files: Record<string, string>, preset: 
     const blocks: string[] = [];
     if (rule.config.reveal !== 'none') {
       const transforms: Record<string, string> = { 'fade-up': 'translateY(28px)', 'fade-down': 'translateY(-28px)', 'fade-left': 'translateX(28px)', 'fade-right': 'translateX(-28px)', 'zoom-in': 'scale(.92)', 'zoom-out': 'scale(1.08)', 'blur-up': 'translateY(22px)', 'flip-up': 'perspective(800px) rotateX(12deg) translateY(18px)' };
-      blocks.push(`${selector}.webd-motion-${id} { opacity: 0; transform: ${transforms[rule.config.reveal] || 'translateY(20px)'}; ${rule.config.reveal === 'blur-up' ? 'filter: blur(8px);' : ''} transition: opacity ${duration}s ${easing} ${delay}s, transform ${duration}s ${easing} ${delay}s, filter ${duration}s ${easing} ${delay}s; }`);
+      blocks.push(`${selector} { opacity: 0; transform: ${transforms[rule.config.reveal] || 'translateY(20px)'}; ${rule.config.reveal === 'blur-up' ? 'filter: blur(8px);' : ''} transition: opacity ${duration}s ${easing} ${delay}s, transform ${duration}s ${easing} ${delay}s, filter ${duration}s ${easing} ${delay}s; }`);
       blocks.push(`${selector}.webd-motion-${id}.webd-motion-visible { opacity: 1; transform: none; filter: none; }`);
     }
     if (rule.config.hover !== 'none') {
