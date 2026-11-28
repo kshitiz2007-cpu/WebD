@@ -88,6 +88,10 @@ function normalizeConfig(input: unknown): ElementAnimationConfig {
 export function parseMotionPreset(raw: string): MotionPreset {
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { throw new Error('This file is not valid JSON.'); }
+  return normalizeMotionPreset(parsed);
+}
+
+export function normalizeMotionPreset(parsed: unknown): MotionPreset {
   if (!parsed || typeof parsed !== 'object') throw new Error('Preset must be a JSON object.');
   const value = parsed as Record<string, unknown>;
   if (value.schema !== 'webd.motion-preset') throw new Error('This is not a WebD motion preset.');
