@@ -175,10 +175,9 @@ function buildDesignerBridgeScript(
     }
     var nodes = Array.prototype.slice.call(document.querySelectorAll('.webd-reveal, .webd-stagger-children'));
     var presetNodes = Array.prototype.slice.call(document.querySelectorAll('[class*="webd-motion-"]'));
-    presetNodes.forEach(function(node) {
-      var rules = node.className && String(node.className).split(/\\s+/).filter(function(token) { return token.indexOf('webd-motion-') === 0 && token !== 'webd-motion-visible'; });
-      if (rules && rules.length) node.classList.add('webd-motion-visible');
-    });
+    // Preset reveal classes start hidden; add the visible state only after layout
+    // so browsers can animate opacity/transform instead of painting the final state.
+    presetNodes.forEach(function(node) { node.classList.remove('webd-motion-visible'); });
     if (forceReplay) {
       nodes.forEach(function(n) { n.classList.remove('webd-in-view'); });
       // Replay every CSS animation in the preview (custom motion, FX, typography, imported components).
@@ -195,41 +194,41 @@ function buildDesignerBridgeScript(
       animationRestores.forEach(function(item) { item.node.style.animation = item.animation; });
       void document.body.offsetHeight;
     }
-    if (nodes.length === 0) return;
+    if (nodes.length === 0 && presetNodes.length === 0) return;
 
     var activate = function() {
       var vh = window.innerHeight || document.documentElement.clientHeight || 800;
       if (typeof IntersectionObserver !== 'undefined') {
         REVEAL_OBSERVER = new IntersectionObserver(function(entries) {
           entries.forEach(function(entry) {
-            if (entry.isIntersecting) {
-              entry.target.classList.add('webd-in-view');
-              if (!entry.target.classList.contains('webd-reveal-repeat')) {
-                REVEAL_OBSERVER.unobserve(entry.target);
-              }
-            } else if (entry.target.classList.contains('webd-reveal-repeat')) {
-              entry.target.classList.remove('webd-in-view');
+            if (!entry.isIntersecting) return;
+            entry.target.classList.add('webd-in-view');
+            if (entry.target.classList.contains('webd-motion-visible') || entry.target.className && String(entry.target.className).indexOf('webd-motion-') !== -1) {
+              entry.target.classList.add('webd-motion-visible');
+            }
+            if (!entry.target.classList.contains('webd-reveal-repeat')) {
+              REVEAL_OBSERVER.unobserve(entry.target);
             }
           });
-        }, { threshold: 0.05 });
-        nodes.forEach(function(node) {
+        }, { threshold: 0.05, rootMargin: '0px 0px -5% 0px' });
+        nodes.concat(presetNodes).forEach(function(node) {
           REVEAL_OBSERVER.observe(node);
           var rect = node.getBoundingClientRect();
           if (rect.top < vh + 40 && rect.bottom > -40) {
             node.classList.add('webd-in-view');
+            node.classList.add('webd-motion-visible');
+            REVEAL_OBSERVER.unobserve(node);
           }
         });
       } else {
         nodes.forEach(function(node) { node.classList.add('webd-in-view'); });
+        presetNodes.forEach(function(node) { node.classList.add('webd-motion-visible'); });
       }
     };
-
     if (forceReplay) {
-      requestAnimationFrame(function() {
-        requestAnimationFrame(activate);
-      });
+      requestAnimationFrame(function() { requestAnimationFrame(activate); });
     } else {
-      activate();
+      requestAnimationFrame(activate);
     }
   }
 
