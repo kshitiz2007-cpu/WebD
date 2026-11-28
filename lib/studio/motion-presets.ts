@@ -131,8 +131,19 @@ export function serializeMotionPreset(preset: MotionPreset): string {
 
 /** Apply rules to the project's actual files; custom code/CSS in a preset is never executed. */
 export function applyMotionPresetToFiles(files: Record<string, string>, preset: MotionPreset): Record<string, string> {
-  if (!preset.settings.enabled) return files;
   const next = { ...files };
+  if (!preset.settings.enabled) {
+    const cssPath = Object.keys(next).find((path) => /(^|\\/)globals\\.css$/i.test(path)) || Object.keys(next).find((path) => /\\.css$/i.test(path));
+    if (cssPath) {
+      const start = '/* WEBD_GLOBAL_MOTION_START */';
+      const end = '/* WEBD_GLOBAL_MOTION_END */';
+      const css = next[cssPath] || '';
+      const from = css.indexOf(start);
+      const to = css.indexOf(end);
+      if (from >= 0 && to > from) next[cssPath] = css.slice(0, from) + css.slice(to + end.length);
+    }
+    return next;
+  }
   const cssPath = Object.keys(next).find((path) => /(^|\/)globals\.css$/i.test(path)) ||
     Object.keys(next).find((path) => /\.css$/i.test(path));
   if (!cssPath) throw new Error('Add a global CSS file before applying project-wide motion.');
