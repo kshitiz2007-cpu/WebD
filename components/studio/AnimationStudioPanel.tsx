@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Sparkles,
   Trash2,
+  Upload,
   X,
 } from 'lucide-react';
 import {
@@ -23,7 +24,7 @@ import {
   parseAnimationConfigFromElement,
 } from '@/lib/studio/animation-studio';
 import type { StudioElementSnapshot } from '@/lib/studio/types';
-import { parseMotionPreset, serializeMotionPreset, type MotionPreset } from '@/lib/studio/motion-presets';
+import { parseMotionPreset, type MotionPreset } from '@/lib/studio/motion-presets';
 
 interface AnimationStudioPanelProps {
   selected: StudioElementSnapshot | null;
