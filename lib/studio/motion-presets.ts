@@ -149,7 +149,7 @@ export function applyMotionPresetToFiles(files: Record<string, string>, preset: 
   if (!cssPath) throw new Error('Add a global CSS file before applying project-wide motion.');
   const safeRules = preset.rules.filter((rule) => rule.enabled && (rule.config.reveal !== 'none' || rule.config.hover !== 'none' || rule.config.loop !== 'none'));
   const css = safeRules.map((rule) => {
-    const selector = rule.target === '*' ? '[data-webd-motion]' : rule.target;
+    const selector = rule.target === '*' ? '[data-webd-motion]' : rule.target === '.card' ? '.card, article' : rule.target;
     const id = rule.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60);
     const duration = Math.max(0.15, Math.min(3, rule.config.duration / Math.max(0.25, preset.settings.intensity || 1)));
     const delay = rule.config.delay;
@@ -195,16 +195,23 @@ export function applyMotionPresetToFiles(files: Record<string, string>, preset: 
       const id = rule.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60);
       const tag = rule.target;
       if (tag === '*') continue;
-      const matcher = new RegExp(`(<${tag}(?=[\\s/>])[^>]*?)(\\s*/?>)`, 'gi');
+      const matcher = tag === '.card'
+        ? new RegExp(`(<[a-z][a-z0-9:-]*(?=[\\s/>])[^>]*?)(\\s*/?>)`, 'gi')
+        : new RegExp(`(<${tag}(?=[\\s/>])[^>]*?)(\\s*/?>)`, 'gi');
       updated = updated.replace(matcher, (match, before: string, close: string) => {
         const existingClass = before.match(/\\bclassName?=(["'])(.*?)\\1/i);
+        if (tag === '.card') {
+          const tagName = before.match(/^<([a-z][a-z0-9:-]*)/i)?.[1]?.toLowerCase();
+          const hasCardClass = Boolean(existingClass && existingClass[2].split(/\\s+/).includes('card'));
+          if (!hasCardClass && tagName !== 'article') return match;
+        }
         if (existingClass) {
           if (existingClass[2].split(/\\s+/).includes(`webd-motion-${id}`)) return match;
           const nextClass = `${existingClass[2]} webd-motion-${id}`;
           return before.replace(existingClass[0], `className=${existingClass[1]}${nextClass}${existingClass[1]}`) + close;
         }
         return `${before} className="webd-motion-${id}"${close}`;
-      });;
+      });;;
     }
     next[filePath] = updated;
   }
