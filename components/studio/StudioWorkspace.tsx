@@ -3321,7 +3321,7 @@ export default function ${componentName}(props: ComponentProps<typeof ${primitiv
         }}
         showMotionPanel={isMotionPanelOpen}
         showMotionPresetPanel={isMotionPresetPanelOpen}
-        onToggleMotionPresetPanel={() => { const next = !isMotionPresetPanelOpen; closeTransientOverlayPanels(); setIsMotionPresetPanelOpen(next); }}
+        onToggleMotionPresetPanel={() => {
           const next = !isMotionPresetPanelOpen;
           closeTransientOverlayPanels();
           setIsMotionPresetPanelOpen(next);
