@@ -72,6 +72,8 @@ interface TopToolbarProps {
   onToggleLogicPanel: () => void;
   showMotionPanel: boolean;
   onToggleMotionPanel: () => void;
+  showMotionPresetPanel?: boolean;
+  onToggleMotionPresetPanel?: () => void;
   showBrandRemixer?: boolean;
   onToggleBrandRemixer?: () => void;
   showHistoryPanel?: boolean;
@@ -126,6 +128,8 @@ export default function TopToolbar({
   onToggleLogicPanel,
   showMotionPanel,
   onToggleMotionPanel,
+  showMotionPresetPanel = false,
+  onToggleMotionPresetPanel,
   showBrandRemixer = false,
   onToggleBrandRemixer,
   showHistoryPanel = false,
@@ -167,6 +171,7 @@ export default function TopToolbar({
     showGlobalStylesPanel,
     showLogicPanel,
     showMotionPanel,
+    showMotionPresetPanel,
     showBrandRemixer,
     showHistoryPanel,
     showQaPanel,
@@ -484,6 +489,23 @@ export default function TopToolbar({
                     </span>
                   </span>
                   {showMotionPanel && <Check className="h-3.5 w-3.5 text-indigo-600" />}
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={showMotionPresetPanel}
+                  onClick={() => onToggleMotionPresetPanel && runMenuAction(onToggleMotionPresetPanel)}
+                  className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${showMotionPresetPanel ? 'bg-violet-50 text-violet-900' : 'hover:bg-slate-50'}`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Sparkles className="h-4 w-4 shrink-0 text-violet-600" />
+                    <span>
+                      <span className="block text-xs font-semibold">Motion Presets</span>
+                      <span className="block text-[11px] text-slate-500">Import, edit & apply project-wide JSON</span>
+                    </span>
+                  </span>
+                  {showMotionPresetPanel && <Check className="h-3.5 w-3.5 text-violet-600" />}
                 </button>
 
                 <button
