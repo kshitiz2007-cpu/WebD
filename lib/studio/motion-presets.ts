@@ -195,7 +195,7 @@ export function applyMotionPresetToFiles(files: Record<string, string>, preset: 
       const id = rule.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60);
       const tag = rule.target;
       if (tag === '*') continue;
-      const matcher = new RegExp(`(<${tag}(?=[\\\\s/>])[^>]*?)(\\\\s*/?>)`, 'gi');
+      const matcher = new RegExp(`(<${tag}(?=[\\s/>])[^>]*?)(\\s*/?>)`, 'gi');
       updated = updated.replace(matcher, (match, before: string, close: string) => {
         const existingClass = before.match(/\\bclassName?=(["'])(.*?)\\1/i);
         if (existingClass) {
