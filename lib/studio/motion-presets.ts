@@ -195,16 +195,16 @@ export function applyMotionPresetToFiles(files: Record<string, string>, preset: 
       const id = rule.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60);
       const tag = rule.target;
       if (tag === '*') continue;
-      const matcher = new RegExp(`(<${tag}(?=[\s/>])[^>]*?)(\s*/?>)`, 'gi');
+      const matcher = new RegExp(`(<${tag}(?=[\\\\s/>])[^>]*?)(\\\\s*/?>)`, 'gi');
       updated = updated.replace(matcher, (match, before: string, close: string) => {
-        const existingClass = before.match(/\bclassName?=(["'])(.*?)\1/i);
+        const existingClass = before.match(/\\bclassName?=(["'])(.*?)\\1/i);
         if (existingClass) {
-          if (existingClass[2].split(/\s+/).includes(`webd-motion-${id}`)) return match;
+          if (existingClass[2].split(/\\s+/).includes(`webd-motion-${id}`)) return match;
           const nextClass = `${existingClass[2]} webd-motion-${id}`;
           return before.replace(existingClass[0], `className=${existingClass[1]}${nextClass}${existingClass[1]}`) + close;
         }
         return `${before} className="webd-motion-${id}"${close}`;
-      });
+      });;
     }
     next[filePath] = updated;
   }
