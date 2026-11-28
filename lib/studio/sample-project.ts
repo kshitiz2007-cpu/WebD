@@ -17,6 +17,7 @@ export const STARTER_NEXTJS_FILES: Record<string, string> = {
     null,
     2
   ),
+  'webd.motion-preset.json': JSON.stringify({ schema: 'webd.motion-preset', version: 1, name: 'WebD Extreme Motion', settings: { enabled: true, intensity: 1, respectReducedMotion: true }, rules: [] }, null, 2),
   'app/globals.css': `@import "tailwindcss";
 
 body {
