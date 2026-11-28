@@ -47,7 +47,7 @@ import {
   registerMediaAssetInProjectFiles,
 } from '@/lib/studio/media-pipeline';
 import MotionPresetStudioPanel from './MotionPresetStudioPanel';
-import { DEFAULT_MOTION_PRESET, MOTION_PRESET_FILE, applyMotionPresetToFiles, type MotionPreset } from '@/lib/studio/motion-presets';
+import { DEFAULT_MOTION_PRESET, MOTION_PRESET_FILE, applyMotionPresetToFiles, normalizeMotionPreset, type MotionPreset } from '@/lib/studio/motion-presets';
 import { StudioCommandItem } from '@/lib/studio/command-palette';
 import {
   CopiedStyleClipboard,
@@ -190,7 +190,7 @@ export default function StudioWorkspace() {
   const [motionPreset, setMotionPreset] = useState<MotionPreset>(() => {
     try {
       const saved = STARTER_NEXTJS_FILES[MOTION_PRESET_FILE];
-      return saved ? JSON.parse(saved) as MotionPreset : DEFAULT_MOTION_PRESET;
+      return saved ? normalizeMotionPreset(JSON.parse(saved)) : DEFAULT_MOTION_PRESET;
     } catch {
       return DEFAULT_MOTION_PRESET;
     }
