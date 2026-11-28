@@ -158,17 +158,17 @@ export function applyMotionPresetToFiles(files: Record<string, string>, preset: 
     if (rule.config.reveal !== 'none') {
       const transforms: Record<string, string> = { 'fade-up': 'translateY(28px)', 'fade-down': 'translateY(-28px)', 'fade-left': 'translateX(28px)', 'fade-right': 'translateX(-28px)', 'zoom-in': 'scale(.92)', 'zoom-out': 'scale(1.08)', 'blur-up': 'translateY(22px)', 'flip-up': 'perspective(800px) rotateX(12deg) translateY(18px)' };
       blocks.push(`${selector} { opacity: 0; transform: ${transforms[rule.config.reveal] || 'translateY(20px)'}; ${rule.config.reveal === 'blur-up' ? 'filter: blur(8px);' : ''} transition: opacity ${duration}s ${easing} ${delay}s, transform ${duration}s ${easing} ${delay}s, filter ${duration}s ${easing} ${delay}s; }`);
-      blocks.push(`${selector}.webd-motion-${id}.webd-motion-visible { opacity: 1; transform: none; filter: none; }`);
+      blocks.push(`${selector}.webd-motion-visible { opacity: 1; transform: none; filter: none; }`);
     }
     if (rule.config.hover !== 'none') {
       const hover = rule.config.hover === 'tilt-soft' ? 'translateY(-3px) rotateX(2deg) rotateY(-2deg)' : rule.config.hover === 'scale-pop' ? 'translateY(-1px) scale(1.04)' : rule.config.hover === 'press-tap' ? 'translateY(-1px) scale(1.02)' : 'translateY(-4px)';
       const shadow = rule.config.hover === 'glow-ring' ? '0 0 0 1px rgba(139,92,246,.55), 0 12px 36px rgba(139,92,246,.22)' : '0 14px 34px rgba(0,0,0,.14)';
-      blocks.push(`${selector}.webd-motion-${id} { transition: transform ${duration}s ${easing}, box-shadow ${duration}s ${easing}; }`);
-      blocks.push(`${selector}.webd-motion-${id}:hover { transform: ${hover}; box-shadow: ${shadow}; }`);
+      blocks.push(`${selector} { transition: transform ${duration}s ${easing}, box-shadow ${duration}s ${easing}; }`);
+      blocks.push(`${selector}:hover { transform: ${hover}; box-shadow: ${shadow}; }`);
     }
     if (rule.config.loop !== 'none') {
       const animation = rule.config.loop === 'float' ? 'webd-preset-float' : rule.config.loop === 'pulse-soft' ? 'webd-preset-pulse' : rule.config.loop === 'wave' ? 'webd-preset-wave' : 'webd-preset-glow';
-      blocks.push(`${selector}.webd-motion-${id} { animation: ${animation} ${Math.max(1.2, duration * 3.5)}s ease-in-out infinite; }`);
+      blocks.push(`${selector} { animation: ${animation} ${Math.max(1.2, duration * 3.5)}s ease-in-out infinite; }`);
     }
     return blocks.join('\n');
   }).join('\n');
@@ -183,7 +183,7 @@ export function applyMotionPresetToFiles(files: Record<string, string>, preset: 
 @keyframes webd-preset-pulse { 0%,100% { transform: scale(1) } 50% { transform: scale(1.035) } }
 @keyframes webd-preset-wave { 0%,100% { transform: translateY(0) rotate(0) } 50% { transform: translateY(-5px) rotate(1deg) } }
 @keyframes webd-preset-glow { 0%,100% { filter: drop-shadow(0 0 0 transparent) } 50% { filter: drop-shadow(0 0 14px rgba(139,92,246,.36)) } }`;
-  const reduced = preset.settings.respectReducedMotion ? `@media (prefers-reduced-motion: reduce) { ${safeRules.map((rule) => `${rule.target === '*' ? '[data-webd-motion]' : rule.target}.webd-motion-${rule.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)}`).join(', ')} { transition: none !important; animation: none !important; transform: none !important; filter: none !important; opacity: 1 !important; } }` : '';
+  const reduced = preset.settings.respectReducedMotion ? `@media (prefers-reduced-motion: reduce) { ${safeRules.map((rule) => rule.target === '*' ? '[data-webd-motion].webd-motion-' + rule.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60) : rule.target === '.card' ? '.card.webd-motion-' + rule.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60) + ', article.webd-motion-' + rule.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60) : rule.target + '.webd-motion-' + rule.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)).join(', ')} { transition: none !important; animation: none !important; transform: none !important; filter: none !important; opacity: 1 !important; } }` : '';
   const outputBlock = `\n\n${startMarker}\n/* Preset: ${preset.name.replace(/[\*\/]/g, '')} */\n${keyframes}\n${css}\n${reduced}\n${endMarker}\n`;
   next[cssPath] = without + outputBlock;
 
